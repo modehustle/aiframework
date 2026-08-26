@@ -4,7 +4,7 @@ description: Bring an EXISTING project or a STACK already running under the syst
 
 # /onboard — Bring an Existing Project Under the System
 
-The rest of the family assumes **greenfield**: `design_session` → `project_bootstrap_workflow` → `docker_deploy_workflow`, deciding things *before* the code or the box exists. This workflow is the **on-ramp for what already exists** — a codebase you wrote (and evolved) before this discipline, or a stack you deployed before it.
+The rest of the family assumes **greenfield**: `design_session` → `bootstrap` → `docker_deploy`, deciding things *before* the code or the box exists. This workflow is the **on-ramp for what already exists** — a codebase you wrote (and evolved) before this discipline, or a stack you deployed before it.
 
 The shape is **reverse bootstrap / reverse deploy**: greenfield goes design → documents → code; onboarding goes the other way — **reality → documents derived from it → ratified by the human**. The artifact on the way out is the same foundation; the direction is flipped. It shares its engine with `/prune` (read reality, build a fresh map) — the difference is that `/prune` *reconciles* a foundation that already exists, while `/onboard` *creates* one from scratch.
 
@@ -68,9 +68,9 @@ Show the drafts; the human corrects what the code could not tell you. On confirm
 
 ### Step 2 — Derive `STACK.md` and flag legacy deviations
 
-Fill the passport (Appendix C of `docker_deploy_workflow.md`) from what is actually running. A box deployed before the discipline will likely **violate the deploy invariants** — the default `bridge` network, a DB port on `0.0.0.0`, a container running as root, no compose file. Record each in `STACK.md`'s **Deviations / legacy risks** section, marked **accepted** or **should be remediated**.
+Fill the passport (Appendix C of `docker_deploy.md`) from what is actually running. A box deployed before the discipline will likely **violate the deploy invariants** — the default `bridge` network, a DB port on `0.0.0.0`, a container running as root, no compose file. Record each in `STACK.md`'s **Deviations / legacy risks** section, marked **accepted** or **should be remediated**.
 
-> You do **NOT** fix the running stack here. Remediation is a deliberate `docker_deploy_workflow.md` change, one risk at a time, with its own stop signals (opening a port, restarting, `chown`, etc.). Onboarding gives the human an honest passport plus a risk to-do list — not a silently re-secured prod.
+> You do **NOT** fix the running stack here. Remediation is a deliberate `docker_deploy.md` change, one risk at a time, with its own stop signals (opening a port, restarting, `chown`, etc.). Onboarding gives the human an honest passport plus a risk to-do list — not a silently re-secured prod.
 
 ---
 

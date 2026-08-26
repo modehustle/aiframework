@@ -50,12 +50,12 @@ There is no wrong time to garden, but those are the triggers that catch drift be
 
 ## Section 2 — Stack passport (truth = `docker-compose.yml` + `.env` + running state)
 
-> Do this only if the project has a `STACK.md` (i.e. it has been boxed by `docker_deploy_workflow.md`). The truth source here is the infrastructure, NOT `src/` — keep the two audits distinct.
+> Do this only if the project has a `STACK.md` (i.e. it has been boxed by `docker_deploy.md`). The truth source here is the infrastructure, NOT `src/` — keep the two audits distinct.
 
 1. **Read the real infra.** `docker-compose.yml`, `.env` (mask secrets), and the live state: `sudo docker compose ps`, `sudo docker ps`, `sudo ss -tlnp` (these are read-only — never restart, rebuild, or prune containers here).
 2. **Diff against `STACK.md`:** image/tag, container name, network, what is exposed and where (ports, reverse-proxy), data dirs/volumes, env keys, and any recorded deviations — does each still match reality?
 3. **Propose a diff** for the stale facts. Keep the AGENT DIRECTIVE block at the top of `STACK.md` verbatim.
-4. Same fork rule: if reality contradicts the passport in a way that looks like a misconfiguration rather than a doc lag, flag it for the user — do not change the running stack from here (that is `docker_deploy_workflow.md`, with its own stop signals).
+4. Same fork rule: if reality contradicts the passport in a way that looks like a misconfiguration rather than a doc lag, flag it for the user — do not change the running stack from here (that is `docker_deploy.md`, with its own stop signals).
 
 ---
 

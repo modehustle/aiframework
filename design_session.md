@@ -2,8 +2,8 @@
 
 > A step-by-step playbook for the **thinking session that comes first** — deciding *what* you are about to stand up and *why*, before any folder, code, or container exists.
 > The **front door** of the family. It routes to one of the two downstream playbooks and hands each the exact artifact it expects:
-> - `project_bootstrap_workflow.md` — for an **authored** project (your own code). Input: a **Design Brief** (Appendix A).
-> - `docker_deploy_workflow.md` — for an **off-the-shelf** stack (n8n, Postgres, Redis…). Input: a **per-stack prompt** (Appendix B).
+> - `bootstrap.md` — for an **authored** project (your own code). Input: a **Design Brief** (Appendix A).
+> - `docker_deploy.md` — for an **off-the-shelf** stack (n8n, Postgres, Redis…). Input: a **per-stack prompt** (Appendix B).
 > Purpose: persistent context for AI development assistants (Windsurf Cascade, etc.).
 > The agent is a **thinking partner here, not a builder** — it challenges, explores, and converges; it does not write code or create files beyond the single output artifact.
 
@@ -22,14 +22,14 @@ Three layers, one direction of flow:
 | Stage | Workflow | Output | Answers |
 |---|---|---|---|
 | **Decide** (this) | this one | a Design Brief **or** a per-stack prompt | *What are we standing up, and why; which path does it take* |
-| **Foundation** (authored only) | `project_bootstrap_workflow.md` | foundation files + code skeleton | *How is the code organized, why, how do we work on it* |
-| **Box** (infra) | `docker_deploy_workflow.md` | secure stack + `STACK.md` passport | *What image/network/ports/data, how is it deployed* |
+| **Foundation** (authored only) | `bootstrap.md` | foundation files + code skeleton | *How is the code organized, why, how do we work on it* |
+| **Box** (infra) | `docker_deploy.md` | secure stack + `STACK.md` passport | *What image/network/ports/data, how is it deployed* |
 
 Canonical flow from a cold start:
 
 1. **This session** with the human → the routing decision + the matching artifact.
-2a. **Authored** → `project_bootstrap_workflow.md` Phase 1 **Path A** validates the Design Brief, then lays the foundation and skeleton; deploy boxes it later.
-2b. **Off-the-shelf** → `docker_deploy_workflow.md` consumes the per-stack prompt directly.
+2a. **Authored** → `bootstrap.md` Phase 1 **Path A** validates the Design Brief, then lays the foundation and skeleton; deploy boxes it later.
+2b. **Off-the-shelf** → `docker_deploy.md` consumes the per-stack prompt directly.
 
 ---
 
@@ -66,8 +66,8 @@ Ask the one question that sends the work down the right pipe:
 
 > **Will this stack contain my own code that I will keep developing?**
 
-- **Yes** → **authored project**. The session targets the **Design Brief** (Appendix A) → feeds `project_bootstrap_workflow.md`.
-- **No** → **off-the-shelf** service run as-is. The session targets the **per-stack prompt** (Appendix B) → feeds `docker_deploy_workflow.md` directly. The remaining phases shrink to "pick the image and the access mode"; there is no architecture to design.
+- **Yes** → **authored project**. The session targets the **Design Brief** (Appendix A) → feeds `bootstrap.md`.
+- **No** → **off-the-shelf** service run as-is. The session targets the **per-stack prompt** (Appendix B) → feeds `docker_deploy.md` directly. The remaining phases shrink to "pick the image and the access mode"; there is no architecture to design.
 
 > If it is a mix (your code + bundled off-the-shelf services), it is **authored** — the off-the-shelf parts become components in the Design Brief.
 
@@ -115,7 +115,7 @@ Split the work explicitly:
 
 Assemble the decisions into the artifact for the chosen path — **Appendix A** (authored) or **Appendix B** (off-the-shelf) — and hand it to the next session.
 
-> **STOP — human confirms before the session ends.** Show the full artifact as a short summary and wait for an explicit "yes". Then state the next step plainly: *"Open the project folder and run `project_bootstrap_workflow.md` with this brief attached"* (or `docker_deploy_workflow.md` with this per-stack prompt). The artifact is the only thing that leaves this session.
+> **STOP — human confirms before the session ends.** Show the full artifact as a short summary and wait for an explicit "yes". Then state the next step plainly: *"Open the project folder and run `bootstrap.md` with this brief attached"* (or `docker_deploy.md` with this per-stack prompt). The artifact is the only thing that leaves this session.
 
 ---
 
@@ -130,14 +130,14 @@ Assemble the decisions into the artifact for the chosen path — **Appendix A** 
 
 ---
 
-## Appendix A. Design Brief (authored → `project_bootstrap_workflow.md`)
+## Appendix A. Design Brief (authored → `bootstrap.md`)
 
 This is the artifact that bootstrap's **Phase 1, Path A** validates against. Fill every section from the converged decisions. Keep it to about a page.
 
 ````markdown
 # DESIGN BRIEF — <project>
 
-> Output of a design session. Feeds `project_bootstrap_workflow.md` (Phase 1, Path A).
+> Output of a design session. Feeds `bootstrap.md` (Phase 1, Path A).
 > The agent there VALIDATES this against its Phase 1 checklist — do not leave gaps.
 
 ## Purpose & scope
@@ -169,9 +169,9 @@ Access mode: <A internal | B HTTP-to-internet | C non-HTTP-to-other-machines>.
 
 ---
 
-## Appendix B. Per-stack prompt (off-the-shelf → `docker_deploy_workflow.md`)
+## Appendix B. Per-stack prompt (off-the-shelf → `docker_deploy.md`)
 
-When the routing decision is "off-the-shelf", the session's output is the per-stack prompt that `docker_deploy_workflow.md` consumes (its Appendix A). The minimum to specify:
+When the routing decision is "off-the-shelf", the session's output is the per-stack prompt that `docker_deploy.md` consumes (its Appendix A). The minimum to specify:
 
 - **Image and tag** (`<image:tag>`), project/container name.
 - **Access mode** (A/B/C) and port(s).

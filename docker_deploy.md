@@ -480,6 +480,9 @@ Drop this in the stack root and fill it from the facts of the deploy. Half a pag
 - Common ops: <restart / logs / where config lives>
 - To add <thing you anticipate>: <short pointer>
 
-## Deviations from docker_deploy_workflow standard
-- <deviation + reason> | none
+## Deviations / legacy risks
+<Both kinds live here: a deliberate deviation from the docker_deploy standard taken during this
+deploy, and a pre-existing violation found when an already-running box was onboarded.>
+- <deviation from the standard + reason> | none
+- <legacy risk found at onboarding + reason> — <accepted | should be remediated> | none
 ````

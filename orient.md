@@ -14,11 +14,11 @@ Read whatever exists, in this order, and note what is missing:
 1. `ARCHITECTURE.md` — what the project is, components, data model, interfaces.
 2. `CONVENTIONS.md` — how work is done here; the house rules; the `## Known Pitfalls / Lessons` accrued so far.
 3. `DECISIONS.md` — the decision trail (read at least the most recent entries).
-4. `STACK.md` — the deploy passport, if the project has been boxed (`docker_deploy_workflow.md`).
+4. `STACK.md` — the deploy passport, if the project has been boxed (`docker_deploy.md`).
 5. `README.md` — entry point / run instructions.
 
 If none of these exist, this project has not been bootstrapped:
-> Tell the user: "Нет файлов фундамента. Это не bootstrap-проект — начни с `design_session_workflow.md` → `project_bootstrap_workflow.md`." Then stop.
+> Tell the user: "Нет файлов фундамента. Это не bootstrap-проект — начни с `design_session.md` → `bootstrap.md`." Then stop.
 
 ## Step 2 — Read the task queue and the drift signals
 
