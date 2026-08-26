@@ -33,16 +33,6 @@ shape of both files you write.
 - **G4 — Never execute.** You write the plan. Running it is `/run_task`'s job, in another chat.
 - **G5 — A defective plan is `/revise_task`.** If an existing task came back blocked, it is
   repaired in place — not replaced by a fresh `/make_task`. (why: N3)
-- **G6 — The task ceiling.** A plan that breaks any of these is too big for one task and must be
-  split (Step 1c). This measures **size, not importance** — the same way `/hotfix`'s ceiling
-  measures radius, not importance. (why: N8)
-  - [ ] At most **5 files** in `Files to Change`, dependents from the reference scan included.
-  - [ ] At most **12 steps** in `Step-by-step Implementation`.
-  - [ ] Exactly **one** goal sentence — no "and also", no second outcome.
-  - [ ] No step requires a decision this plan does not already make.
-- **G7 — Match the plan to the declared tier.** The plan states which executor tier it is written
-  for, and honours it. For `weak`, the plan carries what the executor needs instead of sending it
-  to go and find it. (why: N9)
 
 ---
 
@@ -58,8 +48,6 @@ shape of both files you write.
 0.4 Read `DECISIONS.md`. Do not contradict a recorded decision silently.
 0.5 No foundation files exist → tell the user the project was never bootstrapped, and continue
     only if they confirm that is intentional.
-0.6 Ask the user which executor tier will run this task: `weak`, `mid`, or `strong`.
-0.7 The user does not say → use `weak`. (why: N9)
 
 ### Step 1 — Name the task, check the queue
 
@@ -89,28 +77,11 @@ shape of both files you write.
      dynamic dispatch, reflection, string-built calls, or cross-language boundaries. Name any
      that are plausible here, so the executor re-checks at runtime.
 
-### Step 1c — Check the task ceiling
-
-1c.1 Count the files this task will change, including every dependent Step 1b surfaced.
-1c.2 Count the implementation steps this task will need.
-1c.3 Read the goal you are about to write. Count its outcomes.
-1c.4 Every gate in G6 holds → go to Step 2.
-1c.5 Any gate in G6 is broken → do not write this plan. Go to 1c.6.
-1c.6 Split the work into sequenced tasks `<slug>-1`, `<slug>-2`, … each inside the ceiling.
-1c.7 State the dependency between them explicitly, in each one's own `context.md`
-     ("assumes `<slug>-1` has already landed").
-1c.8 Show the user the proposed split and wait for their answer before writing any file.
-
 ### Step 2 — Write the two files
 
 2.1 Write `ai/tasks/<slug>/context.md` from TEMPLATE C.
 2.2 Write `ai/tasks/<slug>/task.md` from TEMPLATE T.
 2.3 Fill every section of both templates. Leave no `<...>` placeholder in the final files.
-2.4 Tier is `weak` → for every pattern the plan tells the executor to mirror, paste the relevant
-    excerpt of that pattern directly into `task.md`, under the file it applies to. (why: N9)
-2.5 Tier is `weak` → having inlined the excerpts, cut `Codebase Context` to the files the executor
-    still genuinely has to open. Keep `ARCHITECTURE.md` and `CONVENTIONS.md` always.
-2.6 Tier is `mid` or `strong` → reference the pattern files as usual; do not inline.
 
 ### Step 3 — Self-check before saving
 
@@ -132,9 +103,7 @@ Verify each line against the files you just wrote. Any failure → fix the file 
      structural change is expected.
 3.12 `Verification Commands` holds at least one command that exits non-zero on failure — or, if
      this change genuinely cannot be checked by a command, the manual check is written out AND
-     an `Operator confirmed:` line is in Acceptance Criteria. The section is never empty. (why: N10)
-3.13 `Executor tier` is filled in `Plan provenance`, and the plan matches it (see G7).
-3.14 Every gate in G6 still holds against the files as written.
+     an `Operator confirmed:` line is in Acceptance Criteria. The section is never empty. (why: N8)
 
 ### Step 4 — Confirm to the user
 
@@ -157,9 +126,6 @@ Verify each line against the files you just wrote. Any failure → fix the file 
 - Planned: <YYYY-MM-DD>
 - Based on: <git ref, e.g. `HEAD a1b2c3d`> — OR, if not using git: <list of the files this plan
   assumes the current state of>
-- Executor tier: <weak | mid | strong>
-<The tier this plan is written for. `weak` means the plan carries its own patterns inline and
-assumes zero inference. The executor reads this line and adopts the matching posture.>
 <This is the snapshot the plan was written against. The executor re-checks it before running,
 so it can detect a plan that went stale while sitting in the queue behind another task.>
 
@@ -298,25 +264,7 @@ prevents the whole cycle.
 approach B, find it reasonable, and "improve" the plan by reverting your decision — silently,
 and with good intentions.
 
-**N8 — Why the task has a ceiling.** `/hotfix` is bounded by six mechanical gates; a task
-handed to a weak model was bounded by nothing. The reference scan fixes a plan that is
-*incomplete*; the ceiling fixes a plan that is *too big*. A weak executor loses the plan around
-the tenth step whether or not that plan is complete — so size is its own failure mode, and it
-needs its own gate. The numbers 5 and 12 are deliberate starting values, siblings of the
-"~5 hotfixes → /prune" and "5 barren cycles → dead-end" tripwires. Tighten or loosen them once
-you know where they actually bite.
-
-**N9 — Why the tier is declared, and what `weak` changes.** You do not choose the executor, but
-the plan should still say which one it was written for: without it, you cannot tell later whether
-a blocker was a defective plan or a mismatched tier, and the executor has no way to know which
-posture to adopt. Unstated defaults to `weak` because over-specification is the safe error (G2).
-The tier does more than set a tone. "Plan to the floor" is usually read as *specify more* — it
-should also mean *require less reading*. A weak model spending its context window reading four
-pattern files has that much less left for the plan itself. So for `weak` the pattern travels
-inline, in `task.md`, and `Codebase Context` shrinks to what must still be opened. The plan gets
-longer and the executor's job gets smaller, which is the right trade at that tier.
-
-**N10 — Why verification can never be empty.** "Empty if truly not applicable" is an escape a
+**N8 — Why verification can never be empty.** "Empty if truly not applicable" is an escape a
 weak model under pressure will take, and a plan with no check produces a report whose ✓ marks
 mean nothing — which `/prune` will later read as ground truth. There is no such thing as an
 unverifiable task; there are tasks whose verification belongs to the human. Saying that out loud

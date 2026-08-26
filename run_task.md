@@ -32,8 +32,6 @@ workflow, not a shortcut.
   unless the plan says so.
 - **G5 — No bug fixes.** A defect you find in existing code goes in the report, not in the diff.
 - **G6 — No guessing.** A step you cannot execute without inventing something → Step 4d.
-  Under a `weak` plan tier this is absolute: anything not written down is a defect, not a
-  judgment call. (why: N13)
 - **G7 — Reality wins.** Where the plan and the code in front of you disagree, the code is right
   and the plan is wrong → Step 4d. Do not defer to the plan and do not improvise around it.
   (why: N0)
@@ -58,8 +56,6 @@ workflow, not a shortcut.
 1.12 Read `ai/tasks/<slug>/context.md`.
 1.13 Read `ai/tasks/<slug>/task.md`.
 1.14 Either file is missing or empty → plan defect. Go to Step 4d.
-1.15 Read `Executor tier` in `## Plan provenance`. Missing → treat it as `weak`. (why: N13)
-1.16 Tier is `weak` → adopt literal mode: infer nothing, and treat every ambiguity as G6.
 
 ### Step 2 — Load the codebase context
 
@@ -287,12 +283,3 @@ the planner: `/make_task` reads `## Known Pitfalls / Lessons` before planning.
 **N12 — Why archiving is user-initiated.** Acceptance means the work is right; archiving means
 you are done looking at it. Those are different moments, and only the user knows when the second
 one has arrived.
-
-**N13 — Why the plan declares an executor tier.** `Executor tier` in the plan's provenance says
-which executor the planner wrote for. It is not a rating of you — it tells you how much the plan
-is carrying on your behalf. A `weak` plan is written to be executed with zero inference: its
-patterns are pasted inline rather than referenced, and its `Codebase Context` is deliberately
-short. Reading a gap in such a plan as "something I should work out" defeats the way it was
-built, so under `weak` every gap is a defect for `/revise_task`. A missing tier defaults to
-`weak` for the same reason the planner defaults to it: over-specification is the safe error,
-and so is over-caution.
