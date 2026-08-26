@@ -46,7 +46,7 @@ workflow, not a shortcut.
 1.2 Read `CONVENTIONS.md`, including `## Known Pitfalls / Lessons`. Missing → STOP, same message.
 1.3 List every folder in `ai/tasks/`.
 1.4 Label each folder: has `blockers.md` → BLOCKED. Else has `result.md` → DONE. Else → RUNNABLE.
-1.5 The user asked to archive a DONE task → go to Step 9 now and skip the rest of this procedure.
+1.5 The user asked to archive a DONE task → go to Step 10 now and skip the rest of this procedure.
 1.6 The user named a slug (`/run_task <slug>`) → that is your task; go to 1.10.
 1.7 No RUNNABLE task → STOP. Say: *"Очередь пуста. Запусти `/make_task` в чате планирования."*
 1.8 Exactly one RUNNABLE task → that is your task.
@@ -87,7 +87,7 @@ workflow, not a shortcut.
 
 ### Step 4d — Plan-defect protocol
 
-Enter here from 1.14, 2.2, 4.8, 8.5, or gate G6/G7.
+Enter here from 1.14, 2.2, 4.8, 9.3, or gate G6/G7.
 
 4d.1 Stop executing. Write no further code. (why: N4)
 4d.2 Do not edit the plan and do not code around it.
@@ -110,50 +110,50 @@ Enter here from 1.14, 2.2, 4.8, 8.5, or gate G6/G7.
     command output, file content, or observed behavior.
 6.4 A criterion you cannot prove is failed. Mark it failed. (why: N6)
 
-### Step 6b — Update the foundation
+### Step 7 — Update the foundation
 
-6b.1 The change altered structure, components, data flow, or interfaces → update `ARCHITECTURE.md`.
-6b.2 You made, or the plan recorded, a non-obvious choice → append an entry to `DECISIONS.md`,
+7.1 The change altered structure, components, data flow, or interfaces → update `ARCHITECTURE.md`.
+7.2 You made, or the plan recorded, a non-obvious choice → append an entry to `DECISIONS.md`,
      newest on top.
-6b.3 Nothing structural changed → say so explicitly in the report. (why: N7)
+7.3 Nothing structural changed → say so explicitly in the report. (why: N7)
 
-### Step 7 — Save
+### Step 8 — Save
 
-7.1 Write the report (TEMPLATE R) to `ai/tasks/<slug>/result.md`. (why: N8)
-7.2 Print a copy of the report in the chat.
-7.3 Stage: the changed code files, `ARCHITECTURE.md` and `DECISIONS.md` if you touched them,
+8.1 Write the report (TEMPLATE R) to `ai/tasks/<slug>/result.md`. (why: N8)
+8.2 Print a copy of the report in the chat.
+8.3 Stage: the changed code files, `ARCHITECTURE.md` and `DECISIONS.md` if you touched them,
     and `result.md`.
-7.4 Commit using TEMPLATE C. Commit now, before you ask the user anything. (why: N9)
-7.5 The project has no git → skip 7.3 and 7.4 silently.
-7.6 Ask the user, verbatim: **"Принимаем результат?"**
+8.4 Commit using TEMPLATE C. Commit now, before you ask the user anything. (why: N9)
+8.5 The project has no git → skip 8.3 and 8.4 silently.
+8.6 Ask the user, verbatim: **"Принимаем результат?"**
 
-### Step 8 — Read the answer, then feed the loop
+### Step 9 — Read the answer, then feed the loop
 
-8.1 The answer is unclear → ask again. Do not guess which case it is.
-8.2 A step was executed wrong but the plan is sound → return to Step 5 and redo it. (why: N10)
-8.3 The plan itself is wrong → delete `ai/tasks/<slug>/result.md`, then go to Step 4d.
-8.4 Accepted → continue at 8.5. Do not archive.
-8.5 Take each `(pitfall)` from your `## Out-of-plan observations`.
-8.6 Propose each one as a single line for `## Known Pitfalls / Lessons` in `CONVENTIONS.md`.
-8.7 Ask the user to approve each line: yes / edit / skip.
-8.8 One or more lines approved → append them to `CONVENTIONS.md`.
-8.9 One or more lines approved → commit them separately: `task: <slug> — pitfalls to CONVENTIONS`. (why: N11)
-8.10 Nothing approved → make no commit, and say so.
-8.11 Leave every `(bug)` item for the user to schedule. Fix none of them.
-8.12 Tell the user the task can be archived now or later, in this chat or a fresh one.
+9.1 The answer is unclear → ask again. Do not guess which case it is.
+9.2 A step was executed wrong but the plan is sound → return to Step 5 and redo it. (why: N10)
+9.3 The plan itself is wrong → delete `ai/tasks/<slug>/result.md`, then go to Step 4d.
+9.4 Accepted → continue at 9.5. Do not archive.
+9.5 Take each `(pitfall)` from your `## Out-of-plan observations`.
+9.6 Propose each one as a single line for `## Known Pitfalls / Lessons` in `CONVENTIONS.md`.
+9.7 Ask the user to approve each line: yes / edit / skip.
+9.8 One or more lines approved → append them to `CONVENTIONS.md`.
+9.9 One or more lines approved → commit them separately: `task: <slug> — pitfalls to CONVENTIONS`. (why: N11)
+9.10 Nothing approved → make no commit, and say so.
+9.11 Leave every `(bug)` item for the user to schedule. Fix none of them.
+9.12 Tell the user the task can be archived now or later, in this chat or a fresh one.
 
-### Step 9 — Archive
+### Step 10 — Archive
 
 Enter here only when the user asks to archive — never automatically on acceptance. (why: N12)
 
-9.1 Identify the task: the folder holding a `result.md`. Several qualify → name them and ask which.
-9.2 Create `ai/archive/<YYYY-MM-DD_HHMM>_<slug>/` using current local time.
-9.3 Move `context.md`, `task.md`, `result.md`, and any leftover `blockers.md` into that directory.
-9.4 Delete the now-empty `ai/tasks/<slug>/` folder.
-9.5 Confirm `ai/tasks/<slug>/` no longer exists and the other queued tasks are untouched.
-9.6 Commit: `archive: <slug>`. No git → skip silently.
-9.7 Tell the user: *"Архивировано в `<full path>`. Осталось в очереди: <slug list, or 'пусто'>."*
-9.8 Any step from 9.2–9.6 failed → STOP and report the error. Do not leave a half-archived folder.
+10.1 Identify the task: the folder holding a `result.md`. Several qualify → name them and ask which.
+10.2 Create `ai/archive/<YYYY-MM-DD_HHMM>_<slug>/` using current local time.
+10.3 Move `context.md`, `task.md`, `result.md`, and any leftover `blockers.md` into that directory.
+10.4 Delete the now-empty `ai/tasks/<slug>/` folder.
+10.5 Confirm `ai/tasks/<slug>/` no longer exists and the other queued tasks are untouched.
+10.6 Commit: `archive: <slug>`. No git → skip silently.
+10.7 Tell the user: *"Архивировано в `<full path>`. Осталось в очереди: <slug list, or 'пусто'>."*
+10.8 Any step from 9.2–9.6 failed → STOP and report the error. Do not leave a half-archived folder.
 
 ---
 
@@ -271,8 +271,8 @@ the user's "да" is not a save point. The caveat rides in the commit message on
 --oneline` then shows at a glance which points were clean and which carried a tail. A committed
 "⚠️ with caveats" snapshot is honest and recoverable — strictly better than an uncommitted one.
 
-**N10 — Why iterating is safe.** The next pass ends in its own Step 7 commit on top, and the
-earlier snapshot stays in history as a fallback. Re-running Step 7 overwrites `result.md`, which
+**N10 — Why iterating is safe.** The next pass ends in its own Step 8 commit on top, and the
+earlier snapshot stays in history as a fallback. Re-running Step 8 overwrites `result.md`, which
 is correct: the file describes the current state of the task, not its history.
 
 **N11 — Why the pitfalls get their own commit.** "Recorded house-rule lessons" is a distinct act

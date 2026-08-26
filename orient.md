@@ -50,7 +50,7 @@ Give a tight briefing, not a wall of text:
 Based on state, name the single most likely next command — do not run it:
 
 - **A task is blocked** → "Задача `<slug>` заблокирована. Запусти `/revise_task`, затем `/run_task`."
-- **A task is done, awaiting archive** → "Задача `<slug>` исполнена и ждёт архивации. Запусти `/run_task` и попроси заархивировать её (Шаг 9), когда будешь готов."
+- **A task is done, awaiting archive** → "Задача `<slug>` исполнена и ждёт архивации. Запусти `/run_task` и попроси заархивировать её (Шаг 10), когда будешь готов."
 - **A queued plan looks stale** → "Задача `<slug>` могла устареть, пока ждала в очереди. Перед `/run_task` стоит проверить её provenance — `/run_task` поймает это сам, либо почини через `/revise_task`."
 - **Runnable task(s) in the queue** → "В очереди <N> задач(а). Запусти `/run_task`" + (if several) "и выбери, какую исполнять."
 - **Empty queue** → "Очередь пуста. Обсуди следующий шаг и запусти `/make_task`, когда план согласован."
