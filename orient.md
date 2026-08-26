@@ -14,11 +14,11 @@ Read whatever exists, in this order, and note what is missing:
 1. `ARCHITECTURE.md` — what the project is, components, data model, interfaces.
 2. `CONVENTIONS.md` — how work is done here; the house rules; the `## Known Pitfalls / Lessons` accrued so far.
 3. `DECISIONS.md` — the decision trail (read at least the most recent entries).
-4. `STACK.md` — the deploy passport, if the project has been boxed (`docker_deploy_workflow.md`).
+4. `STACK.md` — the deploy passport, if the project has been boxed (`docker_deploy.md`).
 5. `README.md` — entry point / run instructions.
 
 If none of these exist, this project has not been bootstrapped:
-> Tell the user: "Нет файлов фундамента. Это не bootstrap-проект — начни с `design_session_workflow.md` → `project_bootstrap_workflow.md`." Then stop.
+> Tell the user: "Нет файлов фундамента. Это не bootstrap-проект — начни с `design_session.md` → `bootstrap.md`." Then stop.
 
 ## Step 2 — Read the task queue and the drift signals
 
@@ -50,7 +50,7 @@ Give a tight briefing, not a wall of text:
 Based on state, name the single most likely next command — do not run it:
 
 - **A task is blocked** → "Задача `<slug>` заблокирована. Запусти `/revise_task`, затем `/run_task`."
-- **A task is done, awaiting archive** → "Задача `<slug>` исполнена и ждёт архивации. Запусти `/run_task` и попроси заархивировать её (Шаг 9), когда будешь готов."
+- **A task is done, awaiting archive** → "Задача `<slug>` исполнена и ждёт архивации. Запусти `/run_task` и попроси заархивировать её (Шаг 10), когда будешь готов."
 - **A queued plan looks stale** → "Задача `<slug>` могла устареть, пока ждала в очереди. Перед `/run_task` стоит проверить её provenance — `/run_task` поймает это сам, либо почини через `/revise_task`."
 - **Runnable task(s) in the queue** → "В очереди <N> задач(а). Запусти `/run_task`" + (if several) "и выбери, какую исполнять."
 - **Empty queue** → "Очередь пуста. Обсуди следующий шаг и запусти `/make_task`, когда план согласован."

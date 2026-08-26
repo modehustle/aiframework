@@ -1,7 +1,7 @@
 # Project Bootstrap Workflow for AI Agents (universal)
 
 > A step-by-step playbook for laying the **development foundation** of an **authored** project — one that contains your own source code that you will keep changing — so that you and the AI agent can re-enter it weeks later with full context instead of guessing.
-> Sibling to `docker_deploy_workflow.md`. That one builds and documents the **box** (the Docker stack). This one establishes the **code foundation** that lives inside the box.
+> Sibling to `docker_deploy.md`. That one builds and documents the **box** (the Docker stack). This one establishes the **code foundation** that lives inside the box.
 > Purpose: persistent context for AI development assistants (Windsurf Cascade, etc.).
 > The agent **follows the phases in order** and does not skip the design phase.
 
@@ -13,8 +13,8 @@ Ask one question about the thing you are about to create:
 
 > **Does this stack contain my own code that I will keep developing?**
 
-- **No** — it is an off-the-shelf service (n8n, Postgres, Redis, Ollama, Whisper). Use **`docker_deploy_workflow.md` alone**. It produces the box + a `STACK.md` passport, and that is the whole story. **Do not use this workflow.**
-- **Yes** — it is an authored project (a backend, an app, a data pipeline you write). Use **this workflow first** to lay the foundation, **then** `docker_deploy_workflow.md` to box it.
+- **No** — it is an off-the-shelf service (n8n, Postgres, Redis, Ollama, Whisper). Use **`docker_deploy.md` alone**. It produces the box + a `STACK.md` passport, and that is the whole story. **Do not use this workflow.**
+- **Yes** — it is an authored project (a backend, an app, a data pipeline you write). Use **this workflow first** to lay the foundation, **then** `docker_deploy.md` to box it.
 
 This workflow is engine- and language-agnostic. The concrete shape of the project (stack, framework, datastore, entities) is decided in Phase 1 with the human and recorded — never assumed.
 
@@ -25,14 +25,14 @@ Two complementary layers, never duplicates:
 | Layer | Workflow | Output | Answers |
 |---|---|---|---|
 | **Code** (yours) | this one | `README.md`, `ARCHITECTURE.md`, `CONVENTIONS.md`, `DECISIONS.md`, `ai/`, code skeleton | *What is this project, how is the code organized, why, how do we work on it* |
-| **Box** (infra) | `docker_deploy_workflow.md` | secure stack + `STACK.md` passport | *What image/network/ports/data, how is it deployed* |
+| **Box** (infra) | `docker_deploy.md` | secure stack + `STACK.md` passport | *What image/network/ports/data, how is it deployed* |
 
 Canonical order for an authored project from scratch:
 
 1. Create the folder `/data/apps/<project>/`, open it in Windsurf over SSH.
-2. **Design session** with the human (`design_session_workflow.md`) → the agreed architecture, captured as a Design Brief. This is the authored-project equivalent of a per-stack prompt, but it is a *design artifact*, not a one-line deploy instruction.
+2. **Design session** with the human (`design_session.md`) → the agreed architecture, captured as a Design Brief. This is the authored-project equivalent of a per-stack prompt, but it is a *design artifact*, not a one-line deploy instruction.
 3. This workflow (Phases 2–3) → foundation files + a minimal runnable code skeleton.
-4. `docker_deploy_workflow.md` (when there is something to run) → the box + `STACK.md`.
+4. `docker_deploy.md` (when there is something to run) → the box + `STACK.md`.
 5. Forever after: the planner→executor loop (`/make_task`, `/run_task`) operates inside `ai/` and keeps the foundation current (Phase 5).
 
 ## Standard layout (environment invariant)
@@ -49,8 +49,8 @@ Same as the deploy workflow: the project is **its own folder under `/data/apps/<
 ├── .env.example       # (this workflow) — real .env is filled by the human
 ├── ai/                # planner→executor task structure (this workflow)
 ├── src/ (or app/…)    # your code (this workflow scaffolds the skeleton)
-├── docker-compose.yml # the box (docker_deploy_workflow)
-└── STACK.md           # the box passport (docker_deploy_workflow)
+├── docker-compose.yml # the box (docker_deploy)
+└── STACK.md           # the box passport (docker_deploy)
 ```
 
 ---
@@ -59,11 +59,11 @@ Same as the deploy workflow: the project is **its own folder under `/data/apps/<
 
 Checked ALWAYS, regardless of the task:
 
-1. **This workflow is for authored projects only.** Pure off-the-shelf services use `docker_deploy_workflow.md` alone. (See "When to use".)
+1. **This workflow is for authored projects only.** Pure off-the-shelf services use `docker_deploy.md` alone. (See "When to use".)
 2. **Architecture is decided WITH the human and RECORDED before any code is written.** The agent never invents an architecture and silently commits it. No code in Phases 0–1.
 3. **Every authored project has, in its root:** `README.md`, `ARCHITECTURE.md`, `CONVENTIONS.md`, `DECISIONS.md`, and an `ai/` directory. The deploy is not the foundation; this is.
 4. **`ARCHITECTURE.md` and `CONVENTIONS.md` are read FIRST on every task** and **updated as the FINAL step, unprompted,** whenever the task changes structure, components, or conventions. `DECISIONS.md` is append-only (supersede, never rewrite). A stale foundation is a bug. (This mirrors deploy invariant 0.8 for `STACK.md`.)
-5. **This workflow lays code foundation only.** The box and its `STACK.md` passport come from `docker_deploy_workflow.md` — they are not created or duplicated here.
+5. **This workflow lays code foundation only.** The box and its `STACK.md` passport come from `docker_deploy.md` — they are not created or duplicated here.
 6. **All artifacts in English** (code, comments, docs, file contents). Chat with the human may be in another language.
 7. **The foundation stays lean.** Fixed-schema, roughly half a page each; not a wiki. The high-value files are the ones the agent reads every task (`ARCHITECTURE`, `CONVENTIONS`) and the decision log — keep exactly those sharp, add nothing speculative. Drift and bloat are reconciled periodically by `/prune` (Phase 5).
 8. **Secrets and data are never committed.** `.gitignore` covers `.env`, `data/`, and reproducible deps (`node_modules`, `venv`, `__pycache__`). Real secrets live only in `.env` (`chmod 600`), tracked by `.env.example` with empty values.
@@ -78,7 +78,7 @@ The design checklist below must be satisfied before Phase 2 — but **how** it g
 
 ### Path A — a design artifact is already attached (the common case)
 
-If a design artifact / pre-stack prompt produced in a separate **design session** (see `design_session_workflow.md`, Appendix A — the Design Brief) is attached, **Phase 1 is essentially already done** — that artifact *is* its output. The agent does **not** re-run the design session. Instead it:
+If a design artifact / pre-stack prompt produced in a separate **design session** (see `design_session.md`, Appendix A — the Design Brief) is attached, **Phase 1 is essentially already done** — that artifact *is* its output. The agent does **not** re-run the design session. Instead it:
 
 1. **Validates** the artifact against the checklist below and lists any items it does not cover.
 2. Surfaces gaps/contradictions to the human (do not fill them silently).
@@ -124,7 +124,7 @@ Create the **minimal runnable skeleton** that the agreed architecture implies �
 - Dependency manifest (`requirements.txt` / `pyproject.toml` / `package.json`).
 - An entrypoint that starts and a trivial **health endpoint** (so the later deploy's `healthcheck` has something to hit).
 - A `Dockerfile` if the project is built rather than pulled (this is the bridge to the deploy workflow).
-- Nothing host-level. Installing system packages, opening ports, touching `/etc` — all deferred to `docker_deploy_workflow.md` and its stop signals.
+- Nothing host-level. Installing system packages, opening ports, touching `/etc` — all deferred to `docker_deploy.md` and its stop signals.
 
 > Keep the skeleton honest: a "hello world" that genuinely matches the architecture beats a large generated app no one decided on.
 
@@ -132,7 +132,7 @@ Create the **minimal runnable skeleton** that the agreed architecture implies �
 
 ## 4. Phase: hand off to the deploy workflow
 
-When there is something to run, box it. Attach `docker_deploy_workflow.md` + a per-stack prompt and run it as normal. It produces the secure stack and the `STACK.md` passport.
+When there is something to run, box it. Attach `docker_deploy.md` + a per-stack prompt and run it as normal. It produces the secure stack and the `STACK.md` passport.
 
 - `README.md`'s "Run / deploy" pointer should reference `STACK.md`.
 - `ARCHITECTURE.md`'s "Deployment" line records the access mode; the box details live in `STACK.md`, not duplicated in `ARCHITECTURE.md`.
@@ -166,7 +166,7 @@ The same approach as the deploy passport: the directives live *inside* the files
 - **Writing any code before the Phase 1 design is confirmed** by the human.
 - **Inventing or changing the architecture without recording it** in `ARCHITECTURE.md` + `DECISIONS.md`.
 - A scope that has quietly grown beyond the agreed v1 — surface it, do not silently build it.
-- Anything host-level or box-level (installing packages, opening ports, editing `/etc`, system services) — that belongs to `docker_deploy_workflow.md`, with its own stop signals.
+- Anything host-level or box-level (installing packages, opening ports, editing `/etc`, system services) — that belongs to `docker_deploy.md`, with its own stop signals.
 - Committing `.env`, real secrets, or `data/`.
 - Deleting or rewriting history in `DECISIONS.md` (it is append-only; supersede instead, or relocate via `/prune`).
 
@@ -185,7 +185,7 @@ Fill from the Phase 1 design. Keep each to about half a page. The `AGENT DIRECTI
 
 ## Run
 - Dev: <command to run locally>
-- Deploy / prod: see `STACK.md` (built by docker_deploy_workflow)
+- Deploy / prod: see `STACK.md` (built by docker_deploy)
 
 ## Where things are
 See `ARCHITECTURE.md` for components, data model, and layout.
@@ -251,7 +251,7 @@ Access mode: <A | B | C>. Box + wiring: see `STACK.md`.
   stale when the first lands.
 - Code style: <formatter / linter / naming / structure rules>
 - Secrets: never commit `.env` or `data/` (see `.gitignore`).
-- Deploy: never hand-edit host/system; use `docker_deploy_workflow.md`.
+- Deploy: never hand-edit host/system; use `docker_deploy.md`.
 - <project-specific rules>
 
 ## Known Pitfalls / Lessons

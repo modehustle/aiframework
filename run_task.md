@@ -4,122 +4,182 @@ description: Pick a task from the ai/tasks/ queue, execute it literally, then ar
 
 # /run_task — Execute Prepared Task
 
-You are the **executor** in the project's planner→executor→reviser loop (see `project_bootstrap_workflow.md`, Phase 5). A planning pass — typically a stronger model, though that is not what gives the plan its authority — has written a precise, self-contained plan into the queue at `ai/tasks/<slug>/`. Your job: pick one task, execute it literally, verify it, refresh the foundation, write and commit the result, and archive it when the user asks.
+You are the **executor**. A precise, self-contained plan is waiting in `ai/tasks/<slug>/`.
+Pick one task, execute it literally, verify it, refresh the foundation, save the result, and
+archive it when the user asks.
 
-**Where authority comes from.** You follow the plan literally because it is explicit, self-contained, and mechanically verifiable — **not** because of who or what wrote it. This matters at the one moment it ever matters: when something looks off. The rule then is **reality wins** — where the plan diverges from the code in front of you, you do not defer to the plan and you do not improvise around it. You stop and hand it back (see the Plan-defect protocol). A capable executor that notices the plan is wrong is doing its job by raising a blocker, not by quietly "fixing" the plan.
+**How to read this file:** check `## GATES` before you touch anything, then follow
+`## PROCEDURE` in order. Each numbered line is one action. `(why: N…)` points to the
+reasoning in `## NOTES` — read a note when you want to understand a step, not in order to
+perform it. `## TEMPLATES` holds the exact text of every file you write.
 
-You will NOT improvise. You will NOT "improve" the plan. If anything is unclear, you stop and ask.
+> Paths are **repo-relative to the project root** (the folder the agent has open).
+> Never hardcode an absolute project path.
 
-> Paths are **repo-relative to the project root** (the folder Cascade has open). Never hardcode an absolute project path.
+---
 
-## Step 1 — Load the foundation, then pick a task
+## GATES
 
-1. Read `ARCHITECTURE.md` + `CONVENTIONS.md` first — the project map and house rules (invariant 0.4). If they are missing, this project was never bootstrapped — STOP and tell the user to run `project_bootstrap_workflow.md`.
-2. **Scan the queue** `ai/tasks/` for task folders and choose one:
-   - **None** → **STOP.** Tell the user: "Очередь пуста. Запусти `/make_task` в чате планирования."
-   - If the user named a task with the command (e.g. `/run_task <slug>`), use `ai/tasks/<slug>/`.
-   - **Exactly one runnable task** → use it.
-   - **Several** → list the runnable slugs and ask which to execute.
-   - A folder containing `blockers.md` is **not runnable** — it is paused awaiting `/revise_task`. Exclude it from the choices and say so.
-   - A folder containing `result.md` (and no `blockers.md`) is **not runnable** — it is a finished task awaiting archive (Step 9). Exclude it from the choices and say so. (`blockers.md` takes precedence: if a folder somehow has both, treat it as blocked.)
-   - If the user's message asks to **archive** a finished task (a folder with `result.md`, e.g. `/run_task archive <slug>` or just "архивируй `<slug>`"), skip execution and go straight to **Step 9**.
-3. For the chosen `<slug>`: if `ai/tasks/<slug>/blockers.md` exists, **STOP** and tell the user to run `/revise_task` on it first.
-4. Read, in order: `ai/tasks/<slug>/context.md` (provenance, why, constraints, decisions), then `ai/tasks/<slug>/task.md` (what, files, steps, criteria). If either is missing or empty, treat it as a plan defect (protocol below).
+Check these before starting and hold them throughout. Breaking any one is a failure of this
+workflow, not a shortcut.
 
-## Step 2 — Load codebase context
+- **G1 — Files.** Touch only the files listed in `## Files to Change`. Any other file requires
+  asking the user first.
+- **G2 — No unplanned features.** Do not add anything the plan does not specify, however obvious
+  it seems.
+- **G3 — No adjacent refactoring.** Do not clean up code you happen to be passing through.
+- **G4 — No infrastructure changes.** Do not touch tests, configs, dependencies, or lockfiles
+  unless the plan says so.
+- **G5 — No bug fixes.** A defect you find in existing code goes in the report, not in the diff.
+- **G6 — No guessing.** A step you cannot execute without inventing something → Step 4d.
+- **G7 — Reality wins.** Where the plan and the code in front of you disagree, the code is right
+  and the plan is wrong → Step 4d. Do not defer to the plan and do not improvise around it.
+  (why: N0)
 
-Read **every file** listed under `## Codebase Context` in the task's `context.md`. These define the patterns you must mirror. Do not skip any. Do not skim.
+---
 
-If a referenced file does not exist or is empty, this is a **plan defect** — follow the Plan-defect protocol below; do not guess a replacement path.
+## PROCEDURE
 
-## Step 3 — Acknowledge and reconcile
+### Step 1 — Load the foundation, pick a task
 
-Output a brief understanding (5–8 bullets total):
-- Goal in your own words.
-- Files you will change.
-- Patterns you will follow (with source file).
-- Verification commands you will run.
+1.1 Read `ARCHITECTURE.md`. Missing → STOP and tell the user the project was never bootstrapped.
+1.2 Read `CONVENTIONS.md`, including `## Known Pitfalls / Lessons`. Missing → STOP, same message.
+1.3 List every folder in `ai/tasks/`.
+1.4 Label each folder: has `blockers.md` → BLOCKED. Else has `result.md` → DONE. Else → RUNNABLE.
+1.5 The user asked to archive a DONE task → go to Step 10 now and skip the rest of this procedure.
+1.6 The user named a slug (`/run_task <slug>`) → that is your task; go to 1.10.
+1.7 No RUNNABLE task → STOP. Say: *"Очередь пуста. Запусти `/make_task` в чате планирования."*
+1.8 Exactly one RUNNABLE task → that is your task.
+1.9 Several RUNNABLE tasks → list their slugs, ask the user which to execute, and wait.
+1.10 Name any BLOCKED or DONE folders you excluded, and say which state each is in.
+1.11 Your chosen task has a `blockers.md` → STOP. Say: *"Задача `<slug>` заблокирована. Запусти `/revise_task`."*
+1.12 Read `ai/tasks/<slug>/context.md`.
+1.13 Read `ai/tasks/<slug>/task.md`.
+1.14 Either file is missing or empty → plan defect. Go to Step 4d.
 
-If the user wrote any extra message in this chat alongside `/run_task`:
-- If compatible with the plan → incorporate it as additional detail, mention how.
-- If it conflicts with the plan → **flag the conflict explicitly and ask**. Do not silently merge.
+### Step 2 — Load the codebase context
 
-## Step 4 — Sanity check (BEFORE writing any code)
+2.1 Read every file listed under `## Codebase Context` in `context.md`, in full. (why: N1)
+2.2 A listed file does not exist or is empty → plan defect. Go to Step 4d.
+2.3 Never substitute a path you guessed for one that is missing.
 
-Ask yourself:
-- Is anything in the plan ambiguous?
-- Does any referenced file path not exist?
-- Is any Acceptance Criterion unverifiable as written?
-- Does any step depend on information not in the files?
-- Does the plan contradict `ARCHITECTURE.md` / `CONVENTIONS.md` / reality of the code?
+### Step 3 — State your understanding
 
-**Then run the staleness check** — a plan can rot while it waits in the queue behind another task that changed the same files:
-- Read `## Plan provenance` in `context.md`. Compare its basis (git ref, or the listed files' current state) against the code now. Has anything the plan depends on changed since it was planned?
-- Re-open the `## Codebase Context` files and confirm the **patterns the plan tells you to mirror still hold**. If a pattern the plan relies on has moved or changed, the plan no longer matches reality.
+3.1 Output 5–8 bullets covering: the goal in your own words · the files you will change ·
+    the patterns you will follow, each with its source file · the verification commands you will run.
+3.2 The user wrote nothing else in this chat → go to Step 4.
+3.3 The user's extra message is compatible with the plan → incorporate it and say in one line how.
+3.4 The user's extra message conflicts with the plan → name the conflict and ask. (why: N2)
 
-If **YES to any** (including "the plan went stale") → it is a **plan defect**. Do not guess, do not start coding → follow the Plan-defect protocol.
+### Step 4 — Sanity and staleness check (before writing any code)
 
-If all clear → proceed.
+4.1 Check: is anything in the plan ambiguous?
+4.2 Check: does every referenced file path exist?
+4.3 Check: is every Acceptance Criterion verifiable exactly as written?
+4.4 Check: does any step depend on information that is not in the files?
+4.5 Check: does the plan contradict `ARCHITECTURE.md`, `CONVENTIONS.md`, or the code as it is?
+4.6 Read `## Plan provenance` in `context.md` and compare its basis — the git ref, or the listed
+    files — against the code as it is now. (why: N3)
+4.7 Re-open the `## Codebase Context` files and confirm the patterns the plan tells you to mirror
+    still hold.
+4.8 Any check from 4.1–4.7 failed → plan defect. Go to Step 4d.
+4.9 All clear → go to Step 5.
 
-### Plan-defect protocol (the plan is wrong, not your execution)
+### Step 4d — Plan-defect protocol
 
-This is the one escape hatch that keeps you from improvising. Use it whenever the plan cannot be executed as written (wrong/missing path, ambiguity, unverifiable criterion, contradicts the code or foundation, or went stale against its provenance).
+Enter here from 1.14, 2.2, 4.8, 9.3, or gate G6/G7.
 
-1. **Do not patch the plan and do not code around it.** Repairing the plan is the planner's job.
-2. Write `ai/tasks/<slug>/blockers.md` capturing what you learned, so the fix does not start from zero:
-   ```markdown
-   # Blockers
-   ## What is wrong
-   - <defect 1: which step/file, and why it cannot be executed as written>
-   ## Evidence
-   - <command output / actual file contents / the real path that exists instead>
-   ## What I did NOT change
-   - <state that no code was written, or list exactly what was, if you had already started>
-   ## Suggested direction (optional, for the planner)
-   - <a hint, not a decision>
-   ```
-3. **STOP** and tell the user: *"План `<slug>` невыполним как написан. Записал `ai/tasks/<slug>/blockers.md`. Запусти `/revise_task` (в этом или новом чате), чтобы починить план, затем `/run_task` снова."*
-4. Do not archive. Do not continue.
+4d.1 Stop executing. Write no further code. (why: N4)
+4d.2 Do not edit the plan and do not code around it.
+4d.3 Write `ai/tasks/<slug>/blockers.md` using TEMPLATE B.
+4d.4 Tell the user, verbatim: *"План `<slug>` невыполним как написан. Записал `ai/tasks/<slug>/blockers.md`. Запусти `/revise_task` (в этом или новом чате), чтобы починить план, затем `/run_task` снова."*
+4d.5 STOP. Do not archive. Do not continue.
 
-## Step 5 — Execute step by step
+### Step 5 — Execute
 
-Work through `## Step-by-step Implementation` in order. For each step:
-- Make the change exactly as specified.
-- Mirror patterns from referenced files.
-- Stay strictly within `## Files to Change`.
+5.1 Work through `## Step-by-step Implementation` in order, one step at a time.
+5.2 Make each change exactly as the plan specifies it.
+5.3 Mirror the pattern from the file that step names.
+5.4 Record every bug, smell, or improvement you notice, for the report. Change none of them. (why: N5)
 
-Hard rules — violating any is a failure of this workflow:
-- **No features not in the plan**, even if obvious.
-- **No refactoring of adjacent code** "while you're there".
-- **No changes to tests, configs, dependencies, lockfiles** unless the plan says so.
-- **No file outside "Files to Change"** without asking the user first.
-- **No fixing of existing bugs** — note them for the report instead.
-- **No silent assumptions** — if a step is underspecified, stop and ask.
+### Step 6 — Verify
 
-## Step 6 — Verify
+6.1 Run every command in `## Verification Commands`.
+6.2 Capture each command's output verbatim.
+6.3 Take each Acceptance Criterion in turn and point to the concrete evidence that proves it —
+    command output, file content, or observed behavior.
+6.4 A criterion you cannot prove is failed. Mark it failed. (why: N6)
 
-Run every command in `## Verification Commands` and capture output verbatim.
+### Step 7 — Update the foundation
 
-Walk through `## Acceptance Criteria` one by one:
-- For each, point to concrete evidence (command output, file content, behavior) that proves it.
-- If you cannot prove it, mark it failed. Do not pretend.
+7.1 The change altered structure, components, data flow, or interfaces → update `ARCHITECTURE.md`.
+7.2 You made, or the plan recorded, a non-obvious choice → append an entry to `DECISIONS.md`,
+     newest on top.
+7.3 Nothing structural changed → say so explicitly in the report. (why: N7)
 
-## Step 6b — Update the foundation (invariant 0.4)
+### Step 8 — Save
 
-Before reporting, do the `## Foundation updates` from the task's `task.md`, unprompted:
-- If the change altered structure, components, data flow, or interfaces → **update `ARCHITECTURE.md`**.
-- If you made (or the plan recorded) a non-obvious choice → **append an entry to `DECISIONS.md`** (append-only, newest on top).
-- If nothing structural changed, state that explicitly in the report.
+8.1 Write the report (TEMPLATE R) to `ai/tasks/<slug>/result.md`. (why: N8)
+8.2 Print a copy of the report in the chat.
+8.3 Stage: the changed code files, `ARCHITECTURE.md` and `DECISIONS.md` if you touched them,
+    and `result.md`.
+8.4 Commit using TEMPLATE C. Commit now, before you ask the user anything. (why: N9)
+8.5 The project has no git → skip 8.3 and 8.4 silently.
+8.6 Ask the user, verbatim: **"Принимаем результат?"**
 
-This is what keeps context always-current; skipping it is a bug, not a shortcut.
+### Step 9 — Read the answer, then feed the loop
 
-## Step 7 — Write the report, save it, commit (unconditional)
+9.1 The answer is unclear → ask again. Do not guess which case it is.
+9.2 A step was executed wrong but the plan is sound → return to Step 5 and redo it. (why: N10)
+9.3 The plan itself is wrong → delete `ai/tasks/<slug>/result.md`, then go to Step 4d.
+9.4 Accepted → continue at 9.5. Do not archive.
+9.5 Take each `(pitfall)` from your `## Out-of-plan observations`.
+9.6 Propose each one as a single line for `## Known Pitfalls / Lessons` in `CONVENTIONS.md`.
+9.7 Ask the user to approve each line: yes / edit / skip.
+9.8 One or more lines approved → append them to `CONVENTIONS.md`.
+9.9 One or more lines approved → commit them separately: `task: <slug> — pitfalls to CONVENTIONS`. (why: N11)
+9.10 Nothing approved → make no commit, and say so.
+9.11 Leave every `(bug)` item for the user to schedule. Fix none of them.
+9.12 Tell the user the task can be archived now or later, in this chat or a fresh one.
 
-Produce the structured report below. **The report is a file artifact, not chat output.** You write it to `ai/tasks/<slug>/result.md` FIRST; printing it in chat is a *copy* of that file, never a substitute. A report that lives only in chat is lost the moment the chat closes — and this file is exactly what `/orient` reads for "recent history" and what `/prune` reads later. The `## Out-of-plan observations` — every `(pitfall)`, `(bug)`, and `(one-off)` — live in this file and nowhere else, so it is the only durable record of them. Do not treat printing the report in chat as completing this step.
+### Step 10 — Archive
 
-Produce a structured report:
+Enter here only when the user asks to archive — never automatically on acceptance. (why: N12)
 
+10.1 Identify the task: the folder holding a `result.md`. Several qualify → name them and ask which.
+10.2 Create `ai/archive/<YYYY-MM-DD_HHMM>_<slug>/` using current local time.
+10.3 Move `context.md`, `task.md`, `result.md`, and any leftover `blockers.md` into that directory.
+10.4 Delete the now-empty `ai/tasks/<slug>/` folder.
+10.5 Confirm `ai/tasks/<slug>/` no longer exists and the other queued tasks are untouched.
+10.6 Commit: `archive: <slug>`. No git → skip silently.
+10.7 Tell the user: *"Архивировано в `<full path>`. Осталось в очереди: <slug list, or 'пусто'>."*
+10.8 Any step from 9.2–9.6 failed → STOP and report the error. Do not leave a half-archived folder.
+
+---
+
+## TEMPLATES
+
+### TEMPLATE B — `ai/tasks/<slug>/blockers.md`
+
+```markdown
+# Blockers
+
+## What is wrong
+- <defect 1: which step or file, and why it cannot be executed as written>
+
+## Evidence
+- <command output / actual file contents / the real path that exists instead>
+
+## What I did NOT change
+- <state that no code was written, or list exactly what was, if you had already started>
+
+## Suggested direction (optional, for the planner)
+- <a hint, not a decision>
 ```
+
+### TEMPLATE R — `ai/tasks/<slug>/result.md`
+
+```markdown
 ## Status
 ✅ complete | ⚠️ complete with caveats | ❌ blocked
 
@@ -130,7 +190,6 @@ Produce a structured report:
 ## Verification
 - [x/✗] Criterion 1 — <evidence>
 - [x/✗] Criterion 2 — <evidence>
-...
 
 ## Command output
 <verbatim, trimmed only if huge>
@@ -140,9 +199,10 @@ Produce a structured report:
 - `DECISIONS.md`: <entry appended | none needed>
 
 ## Out-of-plan observations
-<Improvements / bugs / smells you noticed but did NOT touch. CLASSIFY each one:>
+<Improvements, bugs, and smells you noticed but did NOT touch. Classify every one:>
 - (one-off) <a detail specific to this task, no wider lesson> — stays in this report only.
-- (pitfall) <a generalizable gotcha about THIS codebase the planner should have known, e.g. "X must be registered before Y or it silently no-ops"> — candidate for CONVENTIONS.md.
+- (pitfall) <a generalizable gotcha about THIS codebase the planner should have known,
+  e.g. "X must be registered before Y or it silently no-ops"> — candidate for CONVENTIONS.md.
 - (bug) <a real defect in existing code> — for the user to schedule via /make_task; not fixed here.
 <Empty if none.>
 
@@ -150,42 +210,76 @@ Produce a structured report:
 <If any. Empty if none.>
 ```
 
-**Write it to disk, then commit — do not wait for acceptance.**
+### TEMPLATE C — the commit message
 
-1. Write the report above verbatim into `ai/tasks/<slug>/result.md`.
-2. Print a copy of it in the chat.
-3. **Commit now, unconditionally** — this is the save point that must never be skipped, and it does not depend on the user's "да". Stage the changed code, any `ARCHITECTURE.md` / `DECISIONS.md` updates from Step 6b, and `result.md`. Make one commit:
-   - Status ✅ → `task: <slug> — <one-line summary>`
-   - Status ⚠️ → `task: <slug> — <one-line summary> (caveats: <one line>)`
-   The caveat rides in the commit message on purpose: `git log --oneline` then shows at a glance which save points were clean and which carried a tail. A committed "⚠️ with caveats" snapshot is an honest, recoverable point — strictly better than an uncommitted one.
-   If the project does not use git, skip the commit silently.
+```
+Status ✅ →  task: <slug> — <one-line summary>
+Status ⚠️ →  task: <slug> — <one-line summary> (caveats: <one line>)
+```
 
-The report is now saved and committed regardless of what happens next. Then ask: **"Принимаем результат?"**
+---
 
-## Step 8 — Interpret the answer; on acceptance, feed the loop
+## NOTES
 
-Wait for the user's response. Distinguish three cases:
+Reasoning behind the steps. Read what you need; none of it is an instruction to act.
 
-- **Execution was imperfect, plan is fine** (a step done wrong, a criterion not met) → iterate from Step 5. The next pass ends in its own Step 7 commit on top; the earlier snapshot stays in history as a fallback. (Re-running Step 7 overwrites `result.md`.)
-- **The plan itself is wrong** (scope changed, approach won't work) → follow the Plan-defect protocol from Step 4: write the task's `blockers.md`, and **delete the now-misleading `result.md`** (this task is not done). `blockers.md` then takes precedence in the queue scan, so the task reads as blocked, not done. Hand to `/revise_task`.
-- **Accepted** (`да`, `yes`, `ok`, `принято`, etc.; anything ambiguous → ask again) → feed the loop, below. **Do NOT archive** — archiving is a separate, user-initiated step (Step 9).
+**N0 — Where authority comes from.** You follow the plan literally because it is explicit,
+self-contained, and mechanically verifiable — **not** because of who or what wrote it. This
+matters at the one moment it ever matters: when something looks off. A capable executor that
+notices the plan is wrong is doing its job by raising a blocker, not by quietly fixing the plan.
+That is why G7 sends a plan/code disagreement to Step 4d instead of to your own judgment.
 
-**Feed the loop (on acceptance).** For each `(pitfall)` in your Out-of-plan observations, propose a single one-line addition to `## Known Pitfalls / Lessons` in `CONVENTIONS.md` and ask the user to approve it (yes / edit / skip). This is how a lesson the executor paid for reaches the next planner — `/make_task` reads that section. `(bug)` items are only listed for the user; do not act on them. `(one-off)` items stay in the report only. Do not let this section grow unreviewed — `/prune` curates it later.
+**N1 — Why read all the context files.** They define the patterns you are told to mirror. A
+pattern you did not read is a pattern you will reinvent, and reinventing it is how a plan that
+was correct produces code that does not fit the codebase.
 
-- If one or more lines are approved → append them to `CONVENTIONS.md`, then **commit** them as their own save point: `task: <slug> — pitfalls to CONVENTIONS`. A separate commit is correct here, not waste: "recorded house-rule lessons" is a distinct act from "executed the task", and commits are additive and free in this workflow.
-- If nothing is approved (or there were no pitfalls) → no commit; say so.
+**N2 — Why not silently merge the user's extra message.** A conflict between the plan and a
+side remark in chat is exactly the kind of ambiguity the planner→executor wall exists to catch.
+Merging it silently produces code that matches neither the plan it is filed under nor what the
+user thought they asked for.
 
-The task now sits in the queue with its `result.md` — finished, awaiting your archive. Tell the user it can be archived now or later, in this chat or a fresh one (Step 9).
+**N3 — Why the staleness check.** A plan can rot while it waits in the queue behind another task
+that changed the same files. The provenance stamp is the snapshot it was written against, so
+comparing it against the code now is what catches a plan that was correct when written and is
+not correct anymore.
 
-## Step 9 — Archive (user-initiated)
+**N4 — Why the plan-defect protocol exists.** It is the one escape hatch that keeps you from
+improvising. Repairing a plan is the planner's job (`/revise_task`); writing code is yours. The
+blockers file exists so the repair does not start from zero — everything you learned before
+stopping is worth more than the time it took to learn.
 
-Run this **only when the user asks to archive** (e.g. "архивируй", "archive it") — never automatically on acceptance. This can happen right after Step 8, or in a later/fresh chat where `/run_task` was invoked with an archive request (see Step 1). The task being archived is the one whose folder holds a `result.md` (name it if several qualify).
+**N5 — Why note bugs instead of fixing them.** A fix outside the plan has no reference scan
+behind it, so nothing has mapped what depends on the code you would touch. Recording it costs
+one line and lets the user schedule it deliberately.
 
-1. Create directory: `ai/archive/<YYYY-MM-DD_HHMM>_<slug>/` using current local time.
-2. Move the whole task folder's contents there: `context.md`, `task.md`, `result.md` (and any leftover `blockers.md`) → `ai/archive/<dir>/`.
-3. Remove the now-empty `ai/tasks/<slug>/` folder.
-4. Verify `ai/tasks/<slug>/` no longer exists; other queued tasks are untouched.
-5. **Commit** the move as a save point: `archive: <slug>`. If the project does not use git, skip silently.
-6. Confirm to user: **"Архивировано в `<full path>`. Осталось в очереди: <список slug или 'пусто'>."**
+**N6 — Why an unprovable criterion is failed.** "Probably fine" in a report becomes "verified"
+in the archive, and `/prune` will later read that archive as ground truth. An honest ✗ is
+recoverable; a false ✓ is not.
 
-If archiving fails at any step, stop and report the error — do not leave the workspace in a half-archived state.
+**N7 — Why the foundation update is not optional.** `ARCHITECTURE.md` and `CONVENTIONS.md` are
+read first by every task in this project (invariant 0.4). If a task changes structure and does
+not update them, the next planner plans against a map that is already wrong. Skipping this is a
+bug, not a shortcut.
+
+**N8 — Why the report is a file, not chat output.** Printing it in chat is a copy, never a
+substitute. A report that lives only in chat is lost the moment the chat closes — and this file
+is what `/orient` reads for recent history and what `/prune` reads later. The `(pitfall)`,
+`(bug)`, and `(one-off)` observations live in this file and nowhere else.
+
+**N9 — Why the commit is unconditional.** It is the save point, and a save point that waits for
+the user's "да" is not a save point. The caveat rides in the commit message on purpose: `git log
+--oneline` then shows at a glance which points were clean and which carried a tail. A committed
+"⚠️ with caveats" snapshot is honest and recoverable — strictly better than an uncommitted one.
+
+**N10 — Why iterating is safe.** The next pass ends in its own Step 8 commit on top, and the
+earlier snapshot stays in history as a fallback. Re-running Step 8 overwrites `result.md`, which
+is correct: the file describes the current state of the task, not its history.
+
+**N11 — Why the pitfalls get their own commit.** "Recorded house-rule lessons" is a distinct act
+from "executed the task", and commits are additive and free here. Separating them keeps
+`git log` readable. This is also the loop that carries a lesson the executor paid for back to
+the planner: `/make_task` reads `## Known Pitfalls / Lessons` before planning.
+
+**N12 — Why archiving is user-initiated.** Acceptance means the work is right; archiving means
+you are done looking at it. Those are different moments, and only the user knows when the second
+one has arrived.
