@@ -12,6 +12,9 @@
 > [SCHEDULING.md](installer/SCHEDULING.md) · [DETERMINISM.md](installer/DETERMINISM.md)
 >
 > Пробелы, найденные по этому чек-листу и отложенные осознанно, — [BACKLOG.md](BACKLOG.md).
+>
+> Последний прогон чек-листа по всем 13 процедурам, вместе с инвентарём детерминированных
+> действий, оставшихся прозой, — [AUDIT-VERBS.md](AUDIT-VERBS.md).
 
 ## Оглавление
 

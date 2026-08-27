@@ -65,6 +65,7 @@ fraim scaffold        # разворачивает фундамент и ai/, н
 Почему механика отдана CLI, а не модели — [installer/DETERMINISM.md](installer/DETERMINISM.md).
 По каким правилам принимаются такие решения — [PRINCIPLES.md](PRINCIPLES.md).
 Что найдено, но отложено — [BACKLOG.md](BACKLOG.md).
+Последний прогон чек-листа по всем процедурам — [AUDIT-VERBS.md](AUDIT-VERBS.md).
 
 ---
 
