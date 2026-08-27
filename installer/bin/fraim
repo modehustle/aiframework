@@ -54,6 +54,8 @@ fraim — эксплуатационный слой для проектов на
   fraim prune-mark          сбросить счётчик дрейфа маркером + коммит
   fraim stack-passport      создать STACK.md из шаблона
   fraim commit ВИД ТЕКСТ ПУТЬ...   точка сохранения ровно по перечисленным путям
+  fraim undo [ХЕШ]          показать точки сохранения системы / отменить одну встречным коммитом
+  fraim restore ПУТЬ...     вернуть перечисленные пути к последней точке сохранения
 
 Прочее
   fraim show ИМЯ            напечатать текст процедуры
@@ -395,6 +397,12 @@ cmd_hotfix_log() {
     verb_hotfix_log "$(verb_root)" "$1" "$2" "${3:-no}"
 }
 
+cmd_undo() {
+    _root=$(pwd -P)
+    if [ $# -ge 1 ]; then verb_undo "$_root" "$1"; else verb_undo_show "$_root"; fi
+}
+cmd_restore() { verb_restore "$(pwd -P)" "$@"; }
+
 # --- dispatch ---------------------------------------------------------------
 [ $# -ge 1 ] || { usage; exit 0; }
 _cmd=$1; shift
@@ -411,6 +419,8 @@ case $_cmd in
     investigate-new)  cmd_investigate_new "$@" ;;
     investigate-seal) cmd_investigate_seal "$@" ;;
     commit)        cmd_commit "$@" ;;
+    undo)          cmd_undo "$@" ;;
+    restore)       cmd_restore "$@" ;;
     hotfix-log)    cmd_hotfix_log "$@" ;;
     prune-mark)    cmd_prune_mark "$@" ;;
     stack-passport) cmd_stack_passport "$@" ;;

@@ -80,12 +80,13 @@ done
 IFS=$OLDIFS
 check "заголовки, которые читают гейты, есть в шаблонах" "${MISSING_HEAD:-none}" "none"
 
-# Ни одна процедура не меняет состояние git руками. Список исключений закрыт и
-# сокращается: investigate.md и onboard.md — открытый вопрос по git, всё остальное
-# обязано ходить через глаголы.
+# Ни одна процедура не меняет состояние git руками — ни одна, без исключений.
+# Список был закрытым и сократился до пустого: репозиторий заводит scaffold, точку
+# сохранения ставит commit, возврат делают undo и restore. Любое совпадение здесь —
+# либо новый глагол, либо ошибка.
 GITHAND=$(grep -lE 'git (commit|add|init|restore|checkout|reset|stash|clean|push)' \
           "$REPO"/procedures/*.md | while read -r f; do basename "$f"; done | sort | tr '\n' ' ')
-check "git руками — только в известных исключениях" "$GITHAND" "investigate.md onboard.md "
+check "процедуры не трогают git руками" "$GITHAND" ""
 
 # ---------------------------------------------------------------- build
 printf '\nfraim build\n'
@@ -240,6 +241,31 @@ git -C "$PROJ2" add -A >/dev/null; git -C "$PROJ2" commit -qm "bootstrap: founda
 "$FRAIM" status "$PROJ2" >/dev/null 2>&1
 check "заполненный фундамент → exit 0" "$?" "0"
 
+# --- git как данность -------------------------------------------------------
+# Каждая точка сохранения здесь — коммит, поэтому проект без репозитория это проект,
+# в котором ничего нельзя вернуть. Репозиторий — часть скелета, а не то, что пользователь
+# обязан завести сам.
+PROJ3="$SANDBOX/proj3"
+mkdir -p "$PROJ3"
+"$FRAIM" scaffold "$PROJ3" >/dev/null 2>&1
+check "scaffold завёл репозиторий там, где его не было" \
+    "$([ -d "$PROJ3/.git" ] && echo yes || echo no)" "yes"
+check "подпись коммитов настроена" \
+    "$(git -C "$PROJ3" config user.email)" "fraim@localhost"
+
+# А внутри чужого репозитория — не заводит: вложенный репозиторий тихо отцепил бы
+# файлы человека от его же истории.
+mkdir -p "$PROJ3/sub"
+"$FRAIM" scaffold "$PROJ3/sub" >/dev/null 2>&1
+check "вложенный репозиторий не заводится" \
+    "$([ -d "$PROJ3/sub/.git" ] && echo yes || echo no)" "no"
+
+PROJ4="$SANDBOX/proj4"
+mkdir -p "$PROJ4/ai/tasks"
+printf '# Arch\n' > "$PROJ4/ARCHITECTURE.md"
+"$FRAIM" status "$PROJ4" 2>/dev/null | grep -q 'нет репозитория'
+check "сторож видит проект без репозитория" "$?" "0"
+
 # ---------------------------------------------------------------- config
 printf '\nfraim config\n'
 
@@ -255,6 +281,7 @@ check "неизвестный ключ отвергнут" "$?" "2"
 # A check turned off must actually stop firing.
 printf -- '--- pruned 2026-01-01 ---\n' > "$PROJ2/ai/hotfix_log.md"
 for i in 1 2 3 4 5; do printf -- '- e — `a` — f — behavior: no\n' >> "$PROJ2/ai/hotfix_log.md"; done
+git -C "$PROJ2" commit -qam "test: hotfix log" >/dev/null 2>&1
 "$FRAIM" status "$PROJ2" >/dev/null 2>&1
 check "дрейф выше порога → exit 1" "$?" "1"
 "$FRAIM" config set check_drift off >/dev/null 2>&1
@@ -467,6 +494,69 @@ check "commit проверяет вид" "$?" "2"
 printf 'x\n' >> "$PROJ2/README.md"
 "$FRAIM" commit task "точка сохранения" README.md >/dev/null 2>&1
 check "commit ставит точку сохранения" "$(git -C "$PROJ2" log --oneline -1 --format=%s)" "task: точка сохранения"
+
+# --- undo / restore ---------------------------------------------------------
+# Обещание «работай смело, точка сохранения есть» пустое, если вернуться к ней можно
+# только через git reset. Отмена — встречный коммит: историю не переписываем.
+printf 'undo-me\n' >> "$PROJ2/README.md"
+"$FRAIM" commit task "правка, которую отменим" README.md >/dev/null 2>&1
+UNDO_REF=$(git -C "$PROJ2" rev-parse --short HEAD)
+"$FRAIM" undo >/dev/null 2>&1
+check "undo без аргумента показывает, а не делает" \
+    "$(git -C "$PROJ2" rev-parse --short HEAD)" "$UNDO_REF"
+check "undo перечисляет наши точки" "$("$FRAIM" undo 2>/dev/null | grep -c "$UNDO_REF")" "1"
+
+"$FRAIM" undo "$UNDO_REF" >/dev/null 2>&1
+check "undo отменил правку" "$(grep -c 'undo-me' "$PROJ2/README.md")" "0"
+check "история не переписана — добавлен встречный коммит" \
+    "$(git -C "$PROJ2" cat-file -e "$UNDO_REF^{commit}" 2>/dev/null; echo $?)" "0"
+
+# Чужой коммит не отменяем никогда — в чужом репозитории это разница между
+# инструментом и происшествием.
+printf 'theirs\n' >> "$PROJ2/main.py"
+git -C "$PROJ2" commit -qam "их собственный коммит" >/dev/null 2>&1
+"$FRAIM" undo "$(git -C "$PROJ2" rev-parse --short HEAD)" >/dev/null 2>&1
+check "чужой коммит не отменяется" "$?" "2"
+
+# Отказ, когда файлы самой точки сейчас правятся: отмену не с чем свести.
+printf 'again\n' >> "$PROJ2/README.md"
+"$FRAIM" commit task "вторая правка" README.md >/dev/null 2>&1
+UNDO_REF2=$(git -C "$PROJ2" rev-parse --short HEAD)
+printf 'dirty\n' >> "$PROJ2/README.md"
+"$FRAIM" undo "$UNDO_REF2" >/dev/null 2>&1
+check "undo отказывается, если файлы точки сейчас изменены" "$?" "2"
+git -C "$PROJ2" checkout -- README.md >/dev/null 2>&1
+"$FRAIM" undo "$UNDO_REF2" >/dev/null 2>&1
+check "после сохранения правок отмена проходит" "$?" "0"
+
+# restore — рабочее дерево, по именованным путям. `git restore .` унёс бы вместе с
+# нашим мусором незаконченную работу человека; именно поэтому /investigate раньше
+# требовал чистого дерева и перекладывал git-задачу на пользователя.
+printf 'mine, unsaved\n' >> "$PROJ2/main.py"
+printf 'scratch\n' > "$PROJ2/scratch-probe.py"
+printf 'CHANGED\n' >> "$PROJ2/README.md"
+"$FRAIM" restore README.md scratch-probe.py >/dev/null 2>&1
+check "restore вернул отслеживаемый файл" "$(grep -c 'CHANGED' "$PROJ2/README.md")" "0"
+check "restore удалил созданное" "$([ -e "$PROJ2/scratch-probe.py" ] && echo yes || echo no)" "no"
+check "restore не тронул чужую незаконченную работу" "$(grep -c 'mine, unsaved' "$PROJ2/main.py")" "1"
+git -C "$PROJ2" checkout -- main.py >/dev/null 2>&1
+
+"$FRAIM" restore >/dev/null 2>&1
+check "restore без путей отказывает" "$?" "2"
+"$FRAIM" restore . >/dev/null 2>&1
+check "restore «всё» отказывает" "$?" "2"
+"$FRAIM" restore ../outside >/dev/null 2>&1
+check "restore за пределы проекта отказывает" "$?" "2"
+
+# Сторож видит несохранённое — но только то, что глаголы сохраняют сами.
+printf 'edited by hand\n' >> "$PROJ2/ARCHITECTURE.md"
+"$FRAIM" status "$PROJ2" 2>/dev/null | grep -q 'после последней точки сохранения'
+check "сторож видит несохранённый фундамент" "$?" "0"
+git -C "$PROJ2" checkout -- ARCHITECTURE.md >/dev/null 2>&1
+printf 'work in progress\n' >> "$PROJ2/main.py"
+"$FRAIM" status "$PROJ2" >/dev/null 2>&1
+check "незакоммиченный код человека тревогу не поднимает" "$?" "0"
+git -C "$PROJ2" checkout -- main.py >/dev/null 2>&1
 
 # commit_verbs = off must actually stop the commits.
 "$FRAIM" config set commit_verbs off >/dev/null 2>&1

@@ -89,7 +89,10 @@ verb_commit() {
         git -C "$_root" add -- "$_p" >/dev/null 2>&1 || true
     done
     git -C "$_root" diff --cached --quiet 2>/dev/null && return 0
-    git -C "$_root" commit -q -m "$_kind: $_text" || return 1
+    # The trailer is what lets `fraim undo` tell our save points from everyone else's,
+    # mechanically, in a repository we may not own. It stays out of the subject line,
+    # so `git log --oneline` reads exactly as before.
+    git -C "$_root" commit -q -m "$_kind: $_text" -m "fraim: $(fraim_version)" || return 1
     ok "коммит: $_kind: $_text"
 }
 
@@ -400,4 +403,98 @@ verb_prune_mark() {
     verb_commit "$_root" prune "reconcile foundation $_date" \
         ai/hotfix_log.md ARCHITECTURE.md CONVENTIONS.md DECISIONS.md ai/archive ||
         warn "коммит не удался"
+}
+
+# --- undo -------------------------------------------------------------------
+# The system tells people to work boldly because there is a save point behind them.
+# That promise is empty if getting back to one requires `git reset --hard HEAD~1` — the
+# person who most needs the way back is the least likely to know it exists.
+#
+# Undo is a REVERT, never a reset: it adds a commit that takes the change back out. History
+# is not rewritten, so this is safe in a repository shared with other people and with a
+# remote — and it is the same rule the system already applies to DECISIONS.md: supersede,
+# never delete. Two steps on purpose (list, then name one): showing is not doing.
+verb_undo_list() {
+    _root=$1
+    git -C "$_root" log -n 8 --grep='^fraim: ' --format='%h%x09%ad%x09%s' --date=short 2>/dev/null
+}
+
+verb_undo_show() {
+    _root=$1
+    _rows=$(verb_undo_list "$_root")
+    [ -n "$_rows" ] && [ -n "$(printf '%s' "$_rows" | tr -d '[:space:]')" ] ||
+        die "нет ни одной точки сохранения, поставленной системой — отменять нечего"
+    say "${C_BLD}Последние точки сохранения${C_OFF}"
+    printf '%s\n' "$_rows" | while IFS='	' read -r _h _d _s; do
+        [ -n "$_h" ] || continue
+        printf '  %s  %s  %s\n' "$_h" "$_d" "$_s"
+    done
+    say ""
+    dim "  отменить одну: fraim undo <хеш>"
+    dim "  отмена — это встречный коммит, а не переписанная история: её саму можно отменить"
+}
+
+verb_undo() {
+    _root=$1; _ref=$2
+    verb_is_git "$_root" || die "здесь нет git — отменять нечего"
+    git -C "$_root" cat-file -e "$_ref^{commit}" 2>/dev/null || die "нет такого коммита: $_ref"
+
+    # Ours or not. We do not undo what we did not do — in someone else's repository that
+    # is the difference between a tool and an accident.
+    git -C "$_root" log -1 --format=%B "$_ref" 2>/dev/null | grep -q '^fraim: ' ||
+        die "этот коммит поставила не система — отменять его не буду. Свои: fraim undo"
+
+    # Only the files this commit touched have to be settled. The rest of the tree is the
+    # human's work in progress, and it is none of our business — the same rule as everywhere:
+    # we look at what we changed, and nothing else.
+    _files=$(git -C "$_root" show --pretty= --name-only "$_ref" 2>/dev/null)
+    if [ -n "$_files" ]; then
+        _busy=$(printf '%s\n' "$_files" | while IFS= read -r _f; do
+                    [ -n "$_f" ] || continue
+                    git -C "$_root" status --porcelain --untracked-files=no -- "$_f" 2>/dev/null
+                done)
+        [ -z "$_busy" ] ||
+            die "файлы этой точки сохранения сейчас изменены и не сохранены — сохрани или откати их, иначе отмену не с чем свести"
+    fi
+
+    _subj=$(git -C "$_root" log -1 --format=%s "$_ref")
+    if git -C "$_root" revert --no-edit "$_ref" >/dev/null 2>&1; then
+        ok "отменено: $_subj"
+        dim "  встречный коммит добавлен; сама отмена тоже отменяема"
+    else
+        git -C "$_root" revert --abort >/dev/null 2>&1 || true
+        die "отменить не удалось: изменения пересеклись с более поздними. Ничего не тронуто."
+    fi
+}
+
+# --- restore ----------------------------------------------------------------
+# The working-tree half of the same need, and the one /investigate lives on: put back
+# exactly the paths named, and nothing else. `git restore .` would take the user's own
+# unfinished work with it — which is why the workflow used to demand a clean tree before
+# it would start, handing a git chore to the person least able to do it.
+verb_restore() {
+    _root=$1
+    shift
+    [ $# -gt 0 ] || die "нужен список путей: fraim restore ПУТЬ... («всё» не бывает)"
+    verb_is_git "$_root" || die "здесь нет git — восстанавливать не из чего"
+    for _p in "$@"; do
+        case $_p in
+            /*|.|..|*..*|"") die "путь должен быть внутри проекта и не «.»: $_p" ;;
+        esac
+    done
+    for _p in "$@"; do
+        if git -C "$_root" ls-files --error-unmatch -- "$_p" >/dev/null 2>&1; then
+            if git -C "$_root" restore --source=HEAD -- "$_p" >/dev/null 2>&1 ||
+               git -C "$_root" checkout HEAD -- "$_p" >/dev/null 2>&1; then
+                ok "восстановлен: $_p"
+            else
+                warn "не удалось восстановить: $_p"
+            fi
+        elif [ -e "$_root/$_p" ]; then
+            rm -rf -- "$_root/$_p" && ok "удалён (его не было в базе): $_p" ||
+                warn "не удалось удалить: $_p"
+        else
+            dim "  $_p — уже нет, пропускаю"
+        fi
+    done
 }

@@ -138,6 +138,17 @@ No placeholders left as placeholders.
 
 > Show all generated files to the human before moving on.
 
+**Then save the point.** `fraim scaffold` made this a repository if it was not one, so there is
+somewhere to save to:
+
+```sh
+fraim commit bootstrap "<project> — foundation" README.md ARCHITECTURE.md CONVENTIONS.md DECISIONS.md .gitignore ai
+```
+
+Name the paths; the verb has no \"everything\" argument, which is what keeps `.env` and data out
+of the history without anyone having to check. From here on every workflow leaves its own save
+point, and `fraim undo` can take any of them back.
+
 ---
 
 ## 3. Phase: scaffold the code skeleton

@@ -173,6 +173,36 @@ wm_check_investigations() {
     done
 }
 
+# 4d. No save points at all. Every save point in this system is a commit, so a project
+#     without a repository is a project where nothing can be undone — and nobody said so.
+wm_check_git() {
+    _root=$1
+    if ! command -v git >/dev/null 2>&1; then
+        wm_add git attention "git не установлен — точек сохранения нет" "установи git"
+        return 0
+    fi
+    wm_is_git "$_root" ||
+        wm_add git attention "нет репозитория — точек сохранения нет" "fraim scaffold"
+    return 0
+}
+
+# 4e. Changed and not saved. Only the artefacts the verbs always commit themselves: if one
+#     of them is modified and uncommitted, a verb was interrupted or bypassed. Code and
+#     settings are the human's business and are deliberately not counted — a watchman that
+#     comments on work in progress stops being read.
+wm_check_dirty() {
+    _root=$1
+    wm_is_git "$_root" || return 0
+    _n=$(git -C "$_root" status --porcelain --untracked-files=no -- \
+            ARCHITECTURE.md CONVENTIONS.md DECISIONS.md README.md STACK.md \
+            ai/tasks ai/archive ai/hotfix_log.md 2>/dev/null | wc -l | tr -d ' ')
+    [ "$_n" -gt 0 ] || return 0
+    wm_add dirty attention \
+        "$_n $(wm_plural "$_n" файл файла файлов) фундамента и ai/ изменены после последней точки сохранения" \
+        "fraim commit"
+    return 0
+}
+
 # 5. Queue depth. Informational — a full queue is normal, an empty one is too.
 wm_check_queue() {
     _root=$1
@@ -253,6 +283,8 @@ wm_run() {
     config_is_on check_plan_version "$_root" && wm_check_plan_version "$_root"
     config_is_on check_unsealed       "$_root" && wm_check_unsealed "$_root"
     config_is_on check_investigations "$_root" && wm_check_investigations "$_root"
+    config_is_on check_git            "$_root" && wm_check_git "$_root"
+    config_is_on check_dirty          "$_root" && wm_check_dirty "$_root"
     wm_check_queue "$_root"
     config_is_on check_foundation   "$_root" && wm_check_foundation "$_root"
     return 0

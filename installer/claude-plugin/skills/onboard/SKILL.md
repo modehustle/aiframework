@@ -102,20 +102,35 @@ Run `fraim stack-passport` — it writes `STACK.md` from the template, including
 
 ---
 
-## Step — Git baseline (the dangerous step — do it carefully)
+## Step — The save point
 
-Onboarding an existing folder is exactly where `git init` is riskiest: the folder is already full of `.env`, `data/`, `__pycache__`, backup tarballs. A blind `git add .` commits secrets and gigabytes of data.
+`fraim scaffold` (Step 0) already made this a repository if it was not one — a project without
+one has no save points at all, and creating it is not a chore to hand to the user. It also wrote
+a `.gitignore`; extend it for what this project actually carries (`data/`, logs, `node_modules`,
+`venv`, `__pycache__`, `*.tar.gz` and other backup archives).
 
-1. **Detect git.** Is there a `.git`? Does `git status` work?
-2. **If NOT in git:** `fraim scaffold` (Step 0) already wrote a `.gitignore`; extend it for what this project actually carries (`data/`, logs, `node_modules`, `venv`, `__pycache__`, `*.tar.gz` and other backup archives). Then run `git init`, and save the baseline with the verb, naming the paths: `fraim commit onboard "baseline" README.md ARCHITECTURE.md CONVENTIONS.md DECISIONS.md .gitignore ai`. The user's existing code is **not** swept in by this — it enters the history later, file by file, as the workflows that change it save what they changed. Show the human what was saved. **This is a stop-signal moment — human eyes before the first save point.**
-3. **If already in git:** save the foundation and nothing else —
-   `fraim commit onboard "foundation derived from existing code" README.md ARCHITECTURE.md CONVENTIONS.md DECISIONS.md .gitignore ai` — and note that the verb saves **only the paths you name**, which is what keeps the user's `.env`, data and unfinished work out of it. If committed cruft already exists (e.g. `__pycache__`, backup archives), note it for the human — purging it from history is out of scope here, but `.gitignore` should at least stop it growing.
+What used to be the dangerous step here — staging the whole folder at once, `.env`, data
+directories, backup tarballs and all — no longer exists. **The verb saves only the paths you name**,
+so save the foundation and nothing else:
+
+```sh
+fraim commit onboard "foundation derived from existing code" \
+    README.md ARCHITECTURE.md CONVENTIONS.md DECISIONS.md .gitignore ai
+```
+
+The project's existing code is **not** swept in by this. It enters the history later, file by
+file, as the workflows that change it save what they changed. Nobody — not you, not the user —
+has to audit what is about to be committed, because nothing goes in that was not named.
+
+If the repository already existed and carries committed cruft (`__pycache__`, backup archives),
+note it for the user: purging it from history is out of scope here, but `.gitignore` should at
+least stop it growing.
 
 ---
 
 ## Step — Present and finish
 
-1. Show the human: the derived foundation files (Section 1), the derived `STACK.md` + deviations list (Section 2), and the git status. Nothing is final until the human approves.
+1. Show the human: the derived foundation files (Section 1), the derived `STACK.md` + deviations list (Section 2), and what has been saved so far. Nothing is final until the human approves.
 2. On approval, apply and save as one point: `fraim commit onboard "<project> — onboarded"` plus the paths you actually wrote. Never \"everything\" — the verb has no such argument on purpose.
 3. Report:
    - What was created (`ARCHITECTURE.md` / `CONVENTIONS.md` / `DECISIONS.md` / `ai/` / `STACK.md`).

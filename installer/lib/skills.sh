@@ -134,6 +134,8 @@ these, run it: the format, the paths, the timestamps and the commit are not your
 | \`fraim prune-mark\` | writing the prune marker by hand |
 | \`fraim stack-passport\` | retyping the STACK.md schema |
 | \`fraim commit KIND TEXT PATH…\` | \`git add\` + \`git commit\` by hand |
+| \`fraim undo [HASH]\` | reaching for \`git reset\` / \`git revert\` |
+| \`fraim restore PATH…\` | \`git restore\` / deleting scratch files by hand |
 
 Three of them are **gates**: \`task-seal\` will not archive a task whose \`result.md\` leaves
 \`## Foundation updated\` empty or unfilled; \`reconcile-seal\` adds a filled
@@ -141,9 +143,14 @@ Three of them are **gates**: \`task-seal\` will not archive a task whose \`resul
 report on the cleanup. A refusal is the check doing its job — fix what it names and run it again.
 Never archive by hand instead.
 
-\`fraim commit\` takes an explicit path list and has no \"everything\" argument on purpose: a
-project folder also holds the user's unfinished work, their \`.env\` and their data. **A verb
-saves what it changed, and nothing else.**
+\`fraim commit\` and \`fraim restore\` take an explicit path list and have no \"everything\"
+argument on purpose: a project folder also holds the user's unfinished work, their \`.env\` and
+their data. **A verb touches what it changed, and nothing else.**
+
+Git is a given here, not a skill the user is expected to have: \`fraim scaffold\` creates the
+repository when there is none (never inside someone else's), the verbs make every save point,
+and \`fraim undo\` takes one back as a counter-commit — history is never rewritten. Never tell
+the user to run a git command; if something cannot be done through a verb, say so.
 
 If \`fraim\` is not installed, **stop and say so** rather than reproducing the effect by hand.
 A deterministic action has exactly one implementation.

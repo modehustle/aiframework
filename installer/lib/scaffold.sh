@@ -82,11 +82,56 @@ scaffold_run() {
         dim "  ai/fraim.conf — уже есть, не трогаю"
     fi
 
+    scaffold_git "$_root"
+
     say ""
     if [ "$_skipped" -eq 0 ]; then
         ok "создано: $_created"
     else
         ok "создано: $_created, оставлено как было: $_skipped"
+    fi
+    return 0
+}
+
+# The repository is part of the skeleton, not a prerequisite the user has to arrange.
+#
+# Every save point in this system is a commit, so a project without a repository has no
+# save points at all — and the person least likely to create one by hand is exactly the
+# person this product is for. So we create it, under one guard: only when there is no
+# repository here OR ANYWHERE ABOVE. A project living inside someone else's checkout
+# gets nothing — a nested repository would quietly detach their files from their history.
+#
+# The identity is the second half of the same problem. On a machine where git has never
+# been configured, every commit fails with a message about setting user.email — a wall
+# for someone who does not know what git is. We set a repository-local identity only when
+# none is resolvable, and say so out loud, so it can be changed by anyone who cares.
+scaffold_git() {
+    _root=$1
+    command -v git >/dev/null 2>&1 || {
+        warn "git не найден — точек сохранения не будет"
+        dim "    установи git: без него глаголы не могут сохранить ни одного изменения"
+        return 0
+    }
+    if git -C "$_root" rev-parse --show-toplevel >/dev/null 2>&1; then
+        _top=$(git -C "$_root" rev-parse --show-toplevel 2>/dev/null)
+        if [ "$_top" = "$_root" ]; then
+            dim "  git — репозиторий уже есть, не трогаю"
+        else
+            dim "  git — проект внутри репозитория $_top, свой не завожу"
+        fi
+    else
+        git -C "$_root" init -q >/dev/null 2>&1 || {
+            warn "не удалось завести репозиторий"
+            return 0
+        }
+        ok "git — репозиторий заведён"
+    fi
+
+    if [ -z "$(git -C "$_root" config user.email 2>/dev/null)" ]; then
+        git -C "$_root" config user.email "fraim@localhost" 2>/dev/null || return 0
+        git -C "$_root" config user.name "${USER:-fraim}" 2>/dev/null || return 0
+        dim "  подписи коммитов не были настроены — поставил локальные для этого проекта"
+        dim "    сменить: git config user.name \"Имя\" && git config user.email \"почта\""
     fi
     return 0
 }
