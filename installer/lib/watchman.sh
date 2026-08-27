@@ -10,8 +10,6 @@
 #   exit 1 — something needs the human
 #   exit 2 — not a project under the system
 
-WM_DEFAULT_HOTFIX_THRESHOLD=5
-
 # Findings accumulate as tab-separated records: id \t severity \t message \t action
 WM_FINDINGS=
 
@@ -27,18 +25,6 @@ wm_now()   { date +%s; }
 wm_days_since() { _t=$1; [ -n "$_t" ] || { printf '0\n'; return; }; printf '%s\n' "$(( ( $(wm_now) - _t ) / 86400 ))"; }
 
 wm_is_git() { git -C "$1" rev-parse --git-dir >/dev/null 2>&1; }
-
-# Per-project overrides. The hotfix threshold is a rule of thumb in the README,
-# not a law, so a project that churns fast can raise it without arguing.
-wm_conf() {
-    _root=$1; _key=$2; _default=$3
-    _f="$_root/ai/fraim.conf"
-    if [ -f "$_f" ]; then
-        _v=$(sed -n "s/^[[:space:]]*$_key[[:space:]]*=[[:space:]]*//p" "$_f" | head -1 | tr -d ' \r')
-        [ -n "$_v" ] && { printf '%s\n' "$_v"; return; }
-    fi
-    printf '%s\n' "$_default"
-}
 
 # Russian plurals: 1 хотфикс, 2 хотфикса, 5 хотфиксов. The verdict is read
 # daily, so getting this wrong is a small papercut repeated forever.
@@ -69,7 +55,7 @@ wm_check_drift() {
     _root=$1
     _log="$_root/ai/hotfix_log.md"
     [ -f "$_log" ] || return 0
-    _threshold=$(wm_conf "$_root" hotfix_threshold "$WM_DEFAULT_HOTFIX_THRESHOLD")
+    _threshold=$(config_get hotfix_threshold "$_root")
 
     # Entries after the LAST `--- pruned <date> ---` marker; an entry is a
     # list item, so blank lines and prose in the log do not inflate the count.
@@ -123,7 +109,8 @@ wm_check_stale_plans() {
         git -C "$_root" cat-file -e "$_ref^{commit}" 2>/dev/null || continue
         _behind=$(git -C "$_root" rev-list --count "$_ref"..HEAD 2>/dev/null) || continue
         [ -n "$_behind" ] || continue
-        if [ "$_behind" -gt 0 ]; then
+        _min=$(config_get stale_plan_commits "$_root")
+        if [ "$_behind" -ge "$_min" ] && [ "$_behind" -gt 0 ]; then
             _w=$(wm_plural "$_behind" коммит коммита коммитов)
             wm_add stale-plan attention "план «$_slug» отстал от HEAD на $_behind $_w" "/revise-task"
         fi
@@ -172,6 +159,20 @@ wm_check_foundation() {
         wm_add foundation attention "нет ARCHITECTURE.md — фундамент не заложен" "/onboard"
         return 0
     fi
+    # A scaffolded file is not a filled one. Without this distinction an empty skeleton
+    # would report the project as healthy, which is worse than having no files at all:
+    # the agent reads ARCHITECTURE.md, finds nothing, and goes back to guessing.
+    _stubs=
+    for _f in README.md ARCHITECTURE.md CONVENTIONS.md DECISIONS.md; do
+        if scaffold_is_stub "$_root/$_f"; then _stubs="$_stubs $_f"; fi
+    done
+    if [ -n "$_stubs" ]; then
+        _n=$(printf '%s' "$_stubs" | wc -w | tr -d ' ')
+        wm_add foundation attention \
+            "скелет развёрнут, но не заполнен: $_n $(wm_plural "$_n" файл файла файлов) —$_stubs" \
+            "/bootstrap или /onboard"
+        return 0
+    fi
     wm_is_git "$_root" || return 0
 
     _arch_t=$(git -C "$_root" log -1 --format=%ct -- ARCHITECTURE.md 2>/dev/null)
@@ -183,7 +184,8 @@ wm_check_foundation() {
     if [ "$_code_t" -gt "$_arch_t" ]; then
         _gap=$(( (_code_t - _arch_t) / 86400 ))
         # A day or two of lag is just the normal order of a commit. Weeks is drift.
-        if [ "$_gap" -ge 14 ]; then
+        _max=$(config_get foundation_lag_days "$_root")
+        if [ "$_gap" -ge "$_max" ]; then
             _w=$(wm_plural "$_gap" день дня дней)
             wm_add foundation attention "ARCHITECTURE.md отстаёт от кода на $_gap $_w" "/prune"
         fi
@@ -206,12 +208,13 @@ wm_managed() {
 wm_run() {
     _root=$1
     WM_FINDINGS=
-    wm_check_drift "$_root"
-    wm_check_blockers "$_root"
-    wm_check_stale_plans "$_root"
-    wm_check_plan_version "$_root"
+    config_is_on check_drift        "$_root" && wm_check_drift "$_root"
+    config_is_on check_blockers     "$_root" && wm_check_blockers "$_root"
+    config_is_on check_stale_plans  "$_root" && wm_check_stale_plans "$_root"
+    config_is_on check_plan_version "$_root" && wm_check_plan_version "$_root"
     wm_check_queue "$_root"
-    wm_check_foundation "$_root"
+    config_is_on check_foundation   "$_root" && wm_check_foundation "$_root"
+    return 0
 }
 
 wm_has_attention() {

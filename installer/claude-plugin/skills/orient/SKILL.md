@@ -3,7 +3,7 @@ name: orient
 description: "Re-enter a project after a break — load the foundation and report current state and the next move"
 metadata:
   tier: any
-  version: 0.1.0
+  version: 0.2.0
   source: fraim
 ---
 # /orient — Re-enter With Context

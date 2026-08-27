@@ -3,7 +3,7 @@ name: bootstrap
 description: "Lay the development foundation of an authored project from a Design Brief: foundation documents plus a minimal running skeleton, so the project can be re-entered weeks later with full context instead of guesswork."
 metadata:
   tier: strong
-  version: 0.1.0
+  version: 0.2.0
   source: fraim
 ---
 # Project Bootstrap Workflow for AI Agents (universal)
@@ -12,6 +12,12 @@ metadata:
 > Sibling to `docker-deploy.md`. That one builds and documents the **box** (the Docker stack). This one establishes the **code foundation** that lives inside the box.
 > Purpose: persistent context for AI development assistants (Windsurf Cascade, etc.).
 > The agent **follows the phases in order** and does not skip the design phase.
+
+> **Детерминированные действия делает `fraim`, не ты.** Где стоит команда `fraim …`,
+> выполняй её, а не воспроизводи результат руками: формат, пути и коммит — не твоя забота.
+> Нет `fraim` — **остановись и скажи об этом**, как `/docker-deploy` останавливается на
+> хостовых действиях. У детерминированного действия ровно одна реализация.
+
 
 ## When to use this file (a human decision, made before attaching)
 
@@ -111,7 +117,17 @@ If nothing was pre-designed, the agent runs the design session here, converging 
 
 ## 2. Phase: lay the foundation files
 
-From the confirmed design, generate the four foundation files + `.gitignore` + `.env.example` + the `ai/` directory. Use the templates in Appendix A. Fill them with the real decisions from Phase 1 — no placeholders left as placeholders.
+**First lay the skeleton — do not hand-build it:**
+
+```sh
+fraim scaffold
+```
+
+That creates the four foundation files, the whole `ai/` tree, a minimal `.gitignore` and `ai/fraim.conf`, all from fixed templates, and registers the project. It never overwrites anything that already exists. The shape of a project is a fixed structure, so it is not yours to re-derive — improvising it is how two projects laid down a month apart end up disagreeing about their own section names.
+
+**Then fill it.** Each scaffolded file carries an `fraim:stub` marker line. Replace the placeholders with the real decisions from Phase 1 and **delete the marker line** from every file you filled — until it is gone, `fraim status` correctly reports the foundation as unfilled. Add `.env.example` yourself: its contents depend on the stack, so no template can guess it.
+
+No placeholders left as placeholders.
 
 - `README.md` — entry point: what it is, how to run it (dev), pointer to `STACK.md` for deploy, pointer to `ARCHITECTURE.md` and the `ai/` loop.
 - `ARCHITECTURE.md` — purpose/scope, stack, components, data model, data flow, interfaces. Carries the read-first/update-last directive.
@@ -306,15 +322,3 @@ ai/
 > One **folder per task** (named by a slug). The queue may hold several tasks, but only the one being executed is \"in flight\". A task with a `blockers.md` is paused awaiting `/revise-task`. Done tasks move whole to `ai/archive/`.
 
 > `ai/` and its contents are NOT secrets — they are tracked in git, so the decision and task trail travels with the repo.
-
-## Final step — register the project
-
-The project is now under the system, so add it to the fleet registry:
-
-```sh
-fraim init      # registers this project and refreshes the installed procedures
-```
-
-If the `fraim` CLI is not installed, skip this silently — the registry is what lets one
-scheduled sweep notice which of a dozen projects has drifted; it is a convenience, never a
-requirement for any procedure here.

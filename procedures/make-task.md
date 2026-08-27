@@ -67,7 +67,10 @@ shape of both files you write.
 1.7 This task touches files another queued task also touches → they are not independent.
     Either state the ordering inside this plan (\"assumes `<other-slug>` has NOT yet landed\"),
     or tell the user the two should be merged. (why: N5)
-1.8 Create the folder `ai/tasks/<slug>/`.
+1.8 Run `fraim task-new <slug>`. It creates `ai/tasks/<slug>/` and stamps `## Plan provenance`
+    with today's date, the current git ref and the system version. Do not write that block
+    by hand — those three values are what `/run-task` later uses to detect a stale plan,
+    and they are exactly the kind of thing that gets forgotten. (why: N12)
 
 ### Step 1b — Reference scan
 
@@ -128,9 +131,8 @@ Verify each line against the files you just wrote. Any failure → fix the file 
 
 ## Plan provenance
 - Planned: <YYYY-MM-DD>
-- Based on: <git ref, e.g. `HEAD a1b2c3d`> — OR, if not using git: <list of the files this plan
-  assumes the current state of>
-- System: fraim <version — the output of `fraim version`; omit the line if the CLI is absent>
+- Planned / Based on / System: **already written by `fraim task-new`** — leave them alone.
+  Without git, replace `Based on` with the list of files this plan assumes the state of.
 <This is the snapshot the plan was written against. The executor re-checks it before running,
 so it can detect a plan that went stale while sitting in the queue behind another task.>
 <The System line snapshots the workflow system itself, not the code. Under a global install

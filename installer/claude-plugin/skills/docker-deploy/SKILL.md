@@ -3,7 +3,7 @@ name: docker-deploy
 description: "Deploy a Docker stack on a Linux server securely and architecturally correctly, phase by phase, and write the STACK.md passport. Host-level actions stop and hand back to the human."
 metadata:
   tier: capable
-  version: 0.1.0
+  version: 0.2.0
   source: fraim
 ---
 # Docker Deploy Workflow for AI Agents (universal)

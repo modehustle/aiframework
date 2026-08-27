@@ -42,7 +42,27 @@ payments-api
   · 2 задачи в очереди                               → /run-task
 ```
 
+Завести проект под систему:
+
+```sh
+cd ~/projects/payments-api
+fraim scaffold        # разворачивает фундамент и ai/, ничего не перезаписывая
+```
+
+Дальше `/bootstrap` (новый проект) или `/onboard` (код, написанный до системы) заполняют
+развёрнутые файлы. Пока они не заполнены, сторож честно говорит «скелет развёрнут, но не
+заполнен» — пустой фундамент никогда не изображает здоровье.
+
+Настройки — на двух уровнях, `fraim config` показывает не файл, а что действует и откуда:
+
+```
+  hotfix_threshold       3      ← ai/fraim.conf
+  foundation_lag_days    30     ← ~/.fraim/config
+  stale_plan_commits     1      ← по умолчанию
+```
+
 Подробности установки и устройство — [installer/README.md](installer/README.md).
+Почему механика отдана CLI, а не модели — [installer/DETERMINISM.md](installer/DETERMINISM.md).
 
 ---
 

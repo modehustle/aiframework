@@ -3,7 +3,7 @@ name: run-task
 description: "Pick a task from the ai/tasks/ queue, execute it literally, then archive on user approval"
 metadata:
   tier: cheap
-  version: 0.1.0
+  version: 0.2.0
   source: fraim
 ---
 # /run-task — Execute Prepared Task
@@ -154,13 +154,11 @@ Enter here from 1.14, 2.2, 4.8, 9.3, or gate G6/G7.
 Enter here only when the user asks to archive — never automatically on acceptance. (why: N12)
 
 10.1 Identify the task: the folder holding a `result.md`. Several qualify → name them and ask which.
-10.2 Create `ai/archive/<YYYY-MM-DD_HHMM>_<slug>/` using current local time.
-10.3 Move `context.md`, `task.md`, `result.md`, and any leftover `blockers.md` into that directory.
-10.4 Delete the now-empty `ai/tasks/<slug>/` folder.
-10.5 Confirm `ai/tasks/<slug>/` no longer exists and the other queued tasks are untouched.
-10.6 Commit: `archive: <slug>`. No git → skip silently.
-10.7 Tell the user: *\"Архивировано в `<full path>`. Осталось в очереди: <slug list, or 'пусто'>.\"*
-10.8 Any step from 9.2–9.6 failed → STOP and report the error. Do not leave a half-archived folder.
+10.2 Run `fraim task-seal <slug>`. It timestamps the archive directory, moves the folder whole,
+     commits `archive: <slug>`, and reports what is left in the queue. (why: N13)
+10.3 It refused → it named a precondition that is not met. Fix that, then run it again.
+     Do **not** archive by hand instead: the refusal is the check, not an obstacle. (why: N13)
+10.4 Report its output to the user verbatim.
 
 ---
 
@@ -286,6 +284,13 @@ the user's \"да\" is not a save point. The caveat rides in the commit message 
 **N10 — Why iterating is safe.** The next pass ends in its own Step 8 commit on top, and the
 earlier snapshot stays in history as a fallback. Re-running Step 8 overwrites `result.md`, which
 is correct: the file describes the current state of the task, not its history.
+
+**N13 — Why archiving goes through a gate.** `task-seal` refuses to archive unless `result.md`
+carries a filled-in `## Foundation updated` section and no `blockers.md` is present. Invariant 0.4
+used to be a request the executor self-reported on; a plan can be executed perfectly and the
+foundation left to rot, and nothing catches it until `/prune` weeks later. Making the *exit* from
+a task conditional turns the request into a precondition. You may legitimately have changed
+nothing — then say so in that section. What you cannot do is stay silent.
 
 **N11 — Why the pitfalls get their own commit.** \"Recorded house-rule lessons\" is a distinct act
 from \"executed the task\", and commits are additive and free here. Separating them keeps

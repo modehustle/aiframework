@@ -3,7 +3,7 @@ name: hotfix
 description: "Apply a surgical micro-fix directly, bypassing the full make→run→archive cycle, within a strict mechanical ceiling"
 metadata:
   tier: capable
-  version: 0.1.0
+  version: 0.2.0
   source: fraim
 ---
 # /hotfix — Surgical Micro-Fix
@@ -56,16 +56,17 @@ Two outcomes, and they decide whether `DECISIONS.md` is touched:
 
 ## Step 4 — Log the hotfix (always)
 
-Append one line to `ai/hotfix_log.md` (create it if absent) — **every** hotfix, including pure typos. This is the count `/orient` watches and `/prune` resets; it is how the system knows when foundation drift has built up enough to need gardening.
+Run whatever quick check is relevant first (the file still parses / the obvious command still works). Then log the fix — **every** hotfix, including pure typos:
 
-```markdown
-- <YYYY-MM-DD HH:MM> — `<file>` — <one-line description> — behavior: <yes|no>
+```sh
+fraim hotfix-log <file> "<one-line description>" <yes|no>
 ```
 
-## Step 5 — Verify and commit
+The last argument is whether behavior changed. The command appends the line in the exact format the drift counter reads, tells you how close you are to the pruning threshold, and commits the edited file together with the log and any `DECISIONS.md` line.
 
-- Run whatever quick check is relevant (the file still parses / the obvious command still works). Capture it briefly.
-- **Commit** the change so it is a recoverable save point: stage the edited file, `ai/hotfix_log.md`, and the `DECISIONS.md` line if any, and make one commit (e.g. `hotfix: <one-line>`). If the project does not use git, skip this silently.
+Do not write that line by hand. The watchman counts these entries and `/prune` resets them with a marker; an improvised format silently breaks the drift counter, and nobody notices until the foundation has already rotted.
+
+## Step 5 — Report
 - Report to the user in 2–4 lines: what file, what changed, behavior yes/no, log + DECISIONS updated, committed. No task folder, no archive — this path is intentionally lightweight.
 
 > If the fix later turns out to have been bigger than a hotfix should have been, that is a signal to tighten how you judge the ceiling — and a hint that `/prune` is due.

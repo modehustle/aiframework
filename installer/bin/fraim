@@ -21,20 +21,34 @@ _libdir=$(cd -- "$(dirname -- "$_self")/../lib" 2>/dev/null && pwd -P) || {
 . "$_libdir/harness.sh"
 . "$_libdir/registry.sh"
 . "$_libdir/context.sh"
+. "$_libdir/config.sh"
+. "$_libdir/scaffold.sh"
+. "$_libdir/verbs.sh"
 . "$_libdir/watchman.sh"
 
 usage() {
     cat <<'USAGE'
 fraim — эксплуатационный слой для проектов на агентах
 
+Установка и состояние
   fraim init                установить / обновить / подхватить новый харнес
   fraim status [ПУТЬ]       вердикт сторожа по проекту (--json для машины)
-  fraim projects            показать реестр проектов
-  fraim projects add ПУТЬ   добавить проект в реестр
-  fraim projects rm ПУТЬ    убрать проект из реестра
   fraim doctor              что и куда установлено, что разошлось
+  fraim projects            реестр проектов (add ПУТЬ / rm ПУТЬ)
+  fraim config              что действует и откуда (set КЛЮЧ ЗНАЧЕНИЕ)
+
+Проект
+  fraim scaffold [ПУТЬ]     развернуть скелет фундамента и ai/
+
+Детерминированные глаголы — их зовут процедуры вместо ручной работы
+  fraim task-new СЛАГ       папка задачи + штамп provenance
+  fraim task-seal СЛАГ      проверить и заархивировать исполненную задачу
+  fraim hotfix-log ФАЙЛ ОПИСАНИЕ [yes|no]   строка в журнал хотфиксов + коммит
+  fraim prune-mark          сбросить счётчик дрейфа маркером + коммит
+
+Прочее
   fraim show ИМЯ            напечатать текст процедуры
-  fraim build               пересобрать артефакты репозитория (плагин, манифест)
+  fraim build               пересобрать артефакты репозитория
   fraim version             версия
 
 Сторож детерминированный: файлы, git log и mtime. Ни модели, ни сети, ничего
@@ -269,11 +283,91 @@ cmd_build() {
     ok "манифест: procedures/manifest.json"
 }
 
+
+# --- scaffold ---------------------------------------------------------------
+cmd_scaffold() {
+    _path=${1:-$(pwd -P)}
+    _root=$(cd -- "$_path" 2>/dev/null && pwd -P) || die "нет такого каталога: $_path"
+    say "Скелет фундамента в $_root"
+    say ""
+    scaffold_run "$_root" || die "не удалось развернуть скелет"
+    registry_init
+    registry_add "$_root" >/dev/null 2>&1 && dim "  проект зарегистрирован в реестре"
+    say ""
+    say "Дальше: ${C_BLD}/bootstrap${C_OFF} для нового проекта, ${C_BLD}/onboard${C_OFF} для существующего кода."
+    dim "Файлы помечены маркером fraim:stub — сторож считает их незаполненными, пока он на месте."
+}
+
+# --- config -----------------------------------------------------------------
+cmd_config() {
+    case ${1:-show} in
+        show|"")
+            _root=$(pwd -P)
+            project_is_managed "$_root" || _root=
+            say "${C_BLD}Действующие настройки${C_OFF}"
+            [ -n "$_root" ] && dim "  проект: $_root" || dim "  вне проекта — показаны машинные и умолчания"
+            say ""
+            config_table | while IFS='|' read -r _k _def _desc; do
+                [ -n "$_k" ] || continue
+                _v=$(config_get "$_k" "$_root")
+                _s=$(config_source "$_k" "$_root")
+                printf '  %s %s %s← %s%s\n' "$(wm_pad "$_k" 22)" "$(wm_pad "$_v" 6)" "$C_DIM" "$_s" "$C_OFF"
+                printf '    %s%s%s\n' "$C_DIM" "$_desc" "$C_OFF"
+            done
+            say ""
+            dim "  fraim config set КЛЮЧ ЗНАЧЕНИЕ          — в проект (ai/fraim.conf)"
+            dim "  fraim config set --machine КЛЮЧ ЗНАЧЕНИЕ — на машину (~/.fraim/config)"
+            ;;
+        set)
+            shift
+            _scope=project
+            if [ "${1:-}" = --machine ]; then _scope=machine; shift; fi
+            [ $# -ge 2 ] || die "нужно: fraim config set КЛЮЧ ЗНАЧЕНИЕ"
+            _k=$1; _v=$2
+            config_known "$_k" || die "неизвестный ключ: $_k (список — fraim config)"
+            if [ "$_scope" = machine ]; then
+                config_set_file "$(config_machine_file)" "$_k" "$_v" || die "не удалось записать"
+                ok "$_k = $_v → ~/.fraim/config"
+            else
+                _root=$(pwd -P)
+                project_is_managed "$_root" ||
+                    die "здесь нет ai/ — это не проект под системой. Для машинной настройки: --machine"
+                config_set_file "$(config_project_file "$_root")" "$_k" "$_v" || die "не удалось записать"
+                ok "$_k = $_v → ai/fraim.conf"
+            fi
+            ;;
+        *) die "неизвестная подкоманда: $1" ;;
+    esac
+}
+
+# --- deterministic verbs ----------------------------------------------------
+# Each one replaces a block of prose that used to ask the model to perform a
+# mechanical action by hand. See installer/DETERMINISM.md.
+verb_root() {
+    _root=$(pwd -P)
+    [ -d "$_root/ai" ] || die "здесь нет ai/ — это не проект под системой (fraim scaffold)"
+    printf '%s\n' "$_root"
+}
+
+cmd_task_new()  { [ $# -ge 1 ] || die "нужен слаг задачи"; verb_task_new  "$(verb_root)" "$1"; }
+cmd_task_seal() { [ $# -ge 1 ] || die "нужен слаг задачи"; verb_task_seal "$(verb_root)" "$1"; }
+cmd_prune_mark() { verb_prune_mark "$(verb_root)"; }
+cmd_hotfix_log() {
+    [ $# -ge 2 ] || die "нужно: fraim hotfix-log ФАЙЛ ОПИСАНИЕ [yes|no]"
+    verb_hotfix_log "$(verb_root)" "$1" "$2" "${3:-no}"
+}
+
 # --- dispatch ---------------------------------------------------------------
 [ $# -ge 1 ] || { usage; exit 0; }
 _cmd=$1; shift
 case $_cmd in
     init|update)   cmd_init "$@" ;;
+    scaffold)      cmd_scaffold "$@" ;;
+    config)        cmd_config "$@" ;;
+    task-new)      cmd_task_new "$@" ;;
+    task-seal)     cmd_task_seal "$@" ;;
+    hotfix-log)    cmd_hotfix_log "$@" ;;
+    prune-mark)    cmd_prune_mark "$@" ;;
     status)        cmd_status "$@" ;;
     projects)      cmd_projects "$@" ;;
     doctor)        cmd_doctor "$@" ;;

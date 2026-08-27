@@ -2,7 +2,7 @@
 name: fraim
 description: Control panel for the fraim workflow system. Use when the user asks where a project stands, what needs attention, what to do next, which projects have drifted, or how to install and update the workflow procedures. Routes to the right procedure and reads the deterministic project watchman.
 metadata:
-  version: 0.1.0
+  version: 0.2.0
   source: fraim
 ---
 # fraim — control panel
@@ -51,11 +51,32 @@ by design.
 The procedures are separate skills — invoke them by name. This skill does not
 contain their text and must not paraphrase it.
 
+## Deterministic verbs — call them, do not reproduce them
+
+Mechanical, repeating actions belong to the CLI, not to you. Where a procedure names one of
+these, run it: the format, the paths, the timestamps and the commit are not your business.
+
+| Command | Replaces |
+|---|---|
+| `fraim scaffold` | hand-building the foundation files and `ai/` |
+| `fraim task-new SLUG` | creating a task folder and writing its provenance stamp |
+| `fraim task-seal SLUG` | archiving a finished task — **it can refuse** |
+| `fraim hotfix-log FILE DESC yes\|no` | appending to the drift log by hand |
+| `fraim prune-mark` | writing the prune marker by hand |
+
+`task-seal` is a gate: it will not archive a task whose `result.md` leaves
+`## Foundation updated` empty or unfilled. A refusal is the check doing its job — fix what
+it names and run it again. Never archive by hand instead.
+
+If `fraim` is not installed, **stop and say so** rather than reproducing the effect by hand.
+A deterministic action has exactly one implementation.
+
 ## Other commands
 
 | Command | What it does |
 |---|---|
 | `fraim init` | install / update / pick up a newly installed harness |
+| `fraim config` | what settings are in effect and where each came from |
 | `fraim projects` | list, add or remove projects in the registry |
 | `fraim doctor` | what is installed where, which version, what diverged |
 | `fraim show NAME` | print a procedure's text (for environments without skills) |

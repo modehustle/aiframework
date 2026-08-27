@@ -19,6 +19,11 @@ The shape is **reverse bootstrap / reverse deploy**: greenfield goes design → 
 
 > Paths are **repo-relative to the project root** (the folder Cascade has open). Never hardcode an absolute project path.
 
+> **Детерминированные действия делает `fraim`, не ты.** Где стоит команда `fraim …`,
+> выполняй её, а не воспроизводи результат руками: формат, пути и коммит — не твоя забота.
+> Нет `fraim` — **остановись и скажи об этом**, как `/docker-deploy` останавливается на
+> хостовых действиях. У детерминированного действия ровно одна реализация.
+
 This is a **one-time** act per project. Afterward the project is a normal citizen: `/make-task`, `/run-task`, `/hotfix`, `/prune` work on it identically, and `/prune` maintains the foundation from there. Think of `/onboard` as the manual first `/prune` that also stands up `ai/` and the git baseline.
 
 ## Which sections to run (same routing question as the design session)
@@ -99,14 +104,12 @@ Onboarding an existing folder is exactly where `git init` is riskiest: the folde
 
 > Onboarding **documents and ratifies the present**; it does not redesign, reorganize, or remediate. Anything that changes code or the running stack is normal work afterward, never done here.
 
-## Final step — register the project
-
-The project is now under the system, so add it to the fleet registry:
+## Before you derive anything — lay the skeleton
 
 ```sh
-fraim init      # registers this project and refreshes the installed procedures
+fraim scaffold
 ```
 
-If the `fraim` CLI is not installed, skip this silently — the registry is what lets one
-scheduled sweep notice which of a dozen projects has drifted; it is a convenience, never a
-requirement for any procedure here.
+It creates the foundation files, the `ai/` tree and `ai/fraim.conf` from fixed templates, and registers the project. **It never overwrites**, so running it on a project that already has some of these files is safe — that is the normal onboarding case.
+
+Now you are not inventing structure, you are filling it: read reality, propose the content of each section to the human, write it in, and **delete the `fraim:stub` marker line** from every file you filled. Until that line is gone, `fraim status` reports the foundation as a scaffold rather than a foundation — which is exactly right, and is why an empty skeleton can never masquerade as a healthy project.

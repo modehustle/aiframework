@@ -68,11 +68,12 @@ There is no wrong time to garden, but those are the triggers that catch drift be
 2. Apply only what the user approves:
    - Edit `ARCHITECTURE.md` / `CONVENTIONS.md` / `STACK.md` per approved diffs.
    - Move approved `DECISIONS.md` entries to `ai/archive/decisions_log.md` (append there, newest on top), leaving pointers in `DECISIONS.md`.
-3. **Reset the drift counter:** append a marker line to `ai/hotfix_log.md` so `/orient`'s count restarts from here:
-   ```markdown
-   --- pruned <YYYY-MM-DD> ---
+3. **Reset the drift counter and commit** — one command does both:
+   ```sh
+   fraim prune-mark
    ```
-4. **Commit** the gardening as one save point (e.g. `prune: reconcile foundation <YYYY-MM-DD>`). If the project does not use git, skip silently.
+   It appends the `--- pruned <date> ---` marker the watchman counts from, and commits the
+   gardening as one save point together with the foundation files and the decision archive.
 5. Report: which files changed, how many `DECISIONS` entries were archived, and any **forks left for the user** (doc-vs-code contradictions that may be bugs needing `/make-task`).
 
 > You changed documentation and the decision archive only. You did not touch `src/` or the running stack. Anything that needs a code or infra change is handed to the user as a task, never done here.
