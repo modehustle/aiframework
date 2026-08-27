@@ -114,6 +114,20 @@ by design.
 The procedures are separate skills — invoke them by name. This skill does not
 contain their text and must not paraphrase it.
 
+## Working without a procedure
+
+Most sessions are not a planned task — a question, a small fix, a look around, a change
+whose shape appeared while doing it. **That is legitimate.** Do not force it into
+\`/make-task\`, and do not announce a procedure you are not running. What still holds:
+
+- invariant 0.4 — read the foundation first, fix it if the change made it wrong;
+- **save as you go**: when a coherent piece is done, not at the end of the session,
+  \`fraim commit fix \"<what changed>\" <path> <path>\`. Those commits are the record of
+  reactive work; there is no second log to keep.
+
+It stopped being a fix and became a story → \`/make-task\`. You are about to change
+something you do not understand → \`/investigate\`.
+
 ## Deterministic verbs — call them, do not reproduce them
 
 Mechanical, repeating actions belong to the CLI, not to you. Where a procedure names one of

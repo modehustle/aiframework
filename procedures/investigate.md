@@ -151,7 +151,8 @@ Naming each restored thing out loud is what makes a silent skip visible — to y
   - DIAGNOSIS → surgical: *\"Причина найдена, правка хирургическая — `/hotfix` (если влезает в потолок).\"*
   - DEAD-END: *\"Зашёл в тупик — записал, что исключено и где встал. Реши, что дальше: сузить вопрос, дать мне доступ/данные, или отложить.\"*
 
-Do not fix the thing yourself. Do not archive here — archiving a finished investigation (a folder whose `findings.md` has been acted on) is a user-initiated move, same as a task. When the user asks:
+Do not fix the thing yourself. Then **seal the investigation — it is finished, and finished is
+not a state it should sit in:**
 
 ```sh
 fraim investigate-seal <slug>
@@ -161,8 +162,17 @@ It is a gate. It refuses unless **exactly one** outcome branch is filled — non
 investigation was abandoned, both mean it was never landed — and unless `## Restored to baseline`
 says what happened on **both** axes. That second check is the one this workflow could least
 afford to leave to good intentions: the cleanup is the only part whose absence nobody notices
-until a stray row or an unreleased lease bites weeks later. Until it is sealed, `fraim status`
-reports the investigation as finished-and-unarchived.
+until a stray row or an unreleased lease bites weeks later.
+
+`findings.md` is not lost by this: it moves whole into `ai/archive/<timestamp>_investigate_<slug>/`
+and reads exactly the same, including when the very next thing you do is `/make-task` from it.
+Sealing here — rather than leaving it for the user to ask — is deliberate: an investigation that
+has landed on an outcome has delivered everything it was going to deliver, and its ratification
+already happened one step earlier, at the *\"Baseline?\"* question. Folders left \"for later\" are
+never collected later; they just accumulate until nobody trusts the queue.
+
+If `fraim status` ever reports an investigation as finished-and-unarchived, that means this step
+was skipped — the bypass being visible is the point.
 
 ## Stop signals (the agent stops and asks the human)
 

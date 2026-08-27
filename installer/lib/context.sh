@@ -13,8 +13,9 @@ context_block() {
     cat <<'BLKEOF'
 ## Workflow procedures (fraim)
 
-This machine runs the **fraim** workflow system. Work moves through explicit
-procedures, invoked as skills, instead of improvisation.
+This machine runs the **fraim** workflow system. Where the work has a shape worth
+planning, it moves through an explicit procedure, invoked as a skill. Not all work
+has that shape — see *Working without a procedure* below.
 
 **Invariant 0.4 — the golden rule.** In a project that has them, `ARCHITECTURE.md`
 and `CONVENTIONS.md` are read FIRST before any task and updated LAST after it,
@@ -34,6 +35,23 @@ without being asked. `DECISIONS.md` is append-only. A stale foundation is a bug.
 | the documents drifted from the code | `/prune` |
 | returning to a project after a break | `/orient` |
 | a project that existed before this system | `/onboard` |
+
+### Working without a procedure
+
+Most sessions are not a planned task: a question, a small fix, a look around, a change
+whose shape only appeared while doing it. **That is legitimate** — do not force it into
+`/make-task`, and do not announce a procedure you are not running. Two things still hold:
+
+- **Invariant 0.4 applies anyway.** Read the foundation first; if the change made it
+  wrong, fix it before you finish.
+- **Save as you go.** When a coherent piece is done — not at the end of the session, a
+  session can die — put down a save point naming the paths you changed:
+  `fraim commit fix "<what changed>" <path> <path>`. Those commits **are** the record of
+  reactive work; there is no separate log to keep.
+
+Turn back into the system when the shape appears: it stopped being a fix and became a
+story → `/make-task`. You are about to change something you do not understand →
+`/investigate`.
 
 `fraim status` gives a deterministic verdict on the current project — drift count,
 blockers, stale plans, foundation freshness. It reads files only and costs nothing.
