@@ -26,6 +26,16 @@ wm_days_since() { _t=$1; [ -n "$_t" ] || { printf '0\n'; return; }; printf '%s\n
 
 wm_is_git() { git -C "$1" rev-parse --git-dir >/dev/null 2>&1; }
 
+# Commits touching anything but markdown, since a given commit (or all of them).
+wm_code_commits_since() {
+    _root=$1; _from=$2
+    if [ -n "$_from" ]; then
+        git -C "$_root" rev-list --count "$_from..HEAD" -- ':!*.md' 2>/dev/null
+    else
+        git -C "$_root" rev-list --count HEAD -- ':!*.md' 2>/dev/null
+    fi
+}
+
 # Russian plurals: 1 хотфикс, 2 хотфикса, 5 хотфиксов. The verdict is read
 # daily, so getting this wrong is a small papercut repeated forever.
 wm_plural() {
@@ -244,20 +254,29 @@ wm_check_foundation() {
     fi
     wm_is_git "$_root" || return 0
 
-    _arch_t=$(git -C "$_root" log -1 --format=%ct -- ARCHITECTURE.md 2>/dev/null)
-    [ -n "$_arch_t" ] || _arch_t=$(wm_mtime "$_arch")
-    _code_t=$(git -C "$_root" log -1 --format=%ct -- ':!*.md' 2>/dev/null)
-    [ -n "$_code_t" ] || return 0
-    [ -n "$_arch_t" ] || return 0
+    # How much has changed since the map last did — measured in CHANGE, not in time.
+    #
+    # This used to be the number of days between the last code commit and the last
+    # ARCHITECTURE.md commit, and that was the wrong quantity. Time is a decent proxy
+    # only in the task loop, where one task is one sitting and the gate updates the map
+    # at the end of it. In reactive work — the most frequent mode, and the one with no
+    # gate at all — it inverts: a hundred commits inside a fortnight stayed silent while
+    # a single commit a fortnight later raised the alarm. The denser the work, the less
+    # likely the watchman was to notice. Counting commits measures the thing itself.
+    # Two anchors reset the count, and the nearer one wins: the map itself moving, and
+    # /prune having run. A prune that honestly found nothing to change still commits
+    # nothing to ARCHITECTURE.md — without the second anchor the verdict would keep
+    # asking for a gardening that just happened.
+    _n=$(wm_code_commits_since "$_root" "$(git -C "$_root" log -1 --format=%H -- ARCHITECTURE.md 2>/dev/null)")
+    _np=$(wm_code_commits_since "$_root" "$(git -C "$_root" log -1 --format=%H --grep='^prune: ' 2>/dev/null)")
+    [ -n "$_n" ] || _n=0
+    [ -n "$_np" ] || _np=0
+    [ "$_np" -lt "$_n" ] && _n=$_np
 
-    if [ "$_code_t" -gt "$_arch_t" ]; then
-        _gap=$(( (_code_t - _arch_t) / 86400 ))
-        # A day or two of lag is just the normal order of a commit. Weeks is drift.
-        _max=$(config_get foundation_lag_days "$_root")
-        if [ "$_gap" -ge "$_max" ]; then
-            _w=$(wm_plural "$_gap" день дня дней)
-            wm_add foundation attention "ARCHITECTURE.md отстаёт от кода на $_gap $_w" "/prune"
-        fi
+    _max=$(config_get foundation_lag_commits "$_root")
+    if [ "$_n" -ge "$_max" ]; then
+        _w=$(wm_plural "$_n" коммит коммита коммитов)
+        wm_add foundation attention "$_n $_w кода с последнего обновления ARCHITECTURE.md" "/prune"
     fi
     return 0
 }

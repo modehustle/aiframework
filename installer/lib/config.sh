@@ -16,7 +16,7 @@
 config_table() {
     cat <<'TBL'
 hotfix_threshold|5|Сколько хотфиксов с последнего прунинга считать дрейфом
-foundation_lag_days|14|Через сколько дней отставания ARCHITECTURE.md от кода бить тревогу
+foundation_lag_commits|10|Сколько коммитов кода без обновления ARCHITECTURE.md считать дрейфом
 stale_plan_commits|1|Сколько коммитов вперёд делают план протухшим
 check_drift|on|Проверять накопленный дрейф
 check_blockers|on|Проверять заблокированные задачи

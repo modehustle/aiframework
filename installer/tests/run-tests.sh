@@ -241,6 +241,57 @@ git -C "$PROJ2" add -A >/dev/null; git -C "$PROJ2" commit -qm "bootstrap: founda
 "$FRAIM" status "$PROJ2" >/dev/null 2>&1
 check "заполненный фундамент → exit 0" "$?" "0"
 
+# --- фундамент: считаем изменения, а не время ------------------------------
+# Раньше мерилось время между последним коммитом кода и последним коммитом карты.
+# В цикле задач это работало, а в реактивном режиме — самом частом — инвертировалось:
+# сто коммитов за две недели молчали, один коммит через две недели поднимал тревогу.
+PROJ5="$SANDBOX/proj5"
+mkdir -p "$PROJ5/ai/tasks"
+git -C "$PROJ5" init -q
+git -C "$PROJ5" config user.email t@t; git -C "$PROJ5" config user.name t
+printf '# Arch\n' > "$PROJ5/ARCHITECTURE.md"
+printf 'x\n' > "$PROJ5/main.py"
+git -C "$PROJ5" add -A >/dev/null; git -C "$PROJ5" commit -qm "init" >/dev/null
+
+i=1; while [ $i -le 9 ]; do
+    printf 'l%s\n' "$i" >> "$PROJ5/main.py"
+    git -C "$PROJ5" commit -qam "fix $i" >/dev/null
+    i=$((i+1))
+done
+"$FRAIM" status "$PROJ5" >/dev/null 2>&1
+check "9 коммитов кода — ниже порога" "$?" "0"
+
+printf 'l10\n' >> "$PROJ5/main.py"; git -C "$PROJ5" commit -qam "fix 10" >/dev/null
+"$FRAIM" status "$PROJ5" >/dev/null 2>&1
+check "10 коммитов кода без карты → exit 1" "$?" "1"
+"$FRAIM" status "$PROJ5" 2>/dev/null | grep -q 'с последнего обновления ARCHITECTURE.md'
+check "вердикт называет отставание карты" "$?" "0"
+
+# Все десять уместились в один день — по старой метрике это было бы «отставание 0 дней».
+SPAN=$(git -C "$PROJ5" log -1 --format=%ct)
+FIRST=$(git -C "$PROJ5" log --format=%ct -- ARCHITECTURE.md | tail -1)
+check "и всё это в пределах одного дня" "$(( (SPAN - FIRST) / 86400 ))" "0"
+
+printf 'updated\n' >> "$PROJ5/ARCHITECTURE.md"
+git -C "$PROJ5" commit -qam "task: карта обновлена" >/dev/null
+"$FRAIM" status "$PROJ5" >/dev/null 2>&1
+check "обновление карты сбрасывает счётчик" "$?" "0"
+
+# Прунинг, который честно ничего не изменил в карте, тоже обнуляет: иначе вердикт
+# просил бы сделать прополку, которая только что прошла.
+i=1; while [ $i -le 10 ]; do
+    printf 'r%s\n' "$i" >> "$PROJ5/main.py"
+    git -C "$PROJ5" commit -qam "fix r$i" >/dev/null
+    i=$((i+1))
+done
+"$FRAIM" status "$PROJ5" >/dev/null 2>&1
+check "снова накопилось → exit 1" "$?" "1"
+printf '# Hotfix log\n' > "$PROJ5/ai/hotfix_log.md"
+git -C "$PROJ5" add -A >/dev/null
+git -C "$PROJ5" commit -qm "prune: reconcile foundation" >/dev/null
+"$FRAIM" status "$PROJ5" >/dev/null 2>&1
+check "прошедший /prune сбрасывает счётчик" "$?" "0"
+
 # --- git как данность -------------------------------------------------------
 # Каждая точка сохранения здесь — коммит, поэтому проект без репозитория это проект,
 # в котором ничего нельзя вернуть. Репозиторий — часть скелета, а не то, что пользователь

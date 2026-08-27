@@ -70,7 +70,7 @@ fraim undo a1b2c3d    # отменяет одну — встречным ком�
 
 ```
   hotfix_threshold       3      ← ai/fraim.conf
-  foundation_lag_days    30     ← ~/.fraim/config
+  foundation_lag_commits 20     ← ~/.fraim/config
   stale_plan_commits     1      ← по умолчанию
 ```
 
