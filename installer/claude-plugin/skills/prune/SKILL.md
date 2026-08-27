@@ -16,14 +16,14 @@ This is the deferred verification the rest of the system skips. On each task the
 >
 > Run this on a **strong model** — re-deriving architecture from code is `/make-task`-grade reasoning, not work for a cheap executor.
 
-> Paths are **repo-relative to the project root** (the folder Cascade has open). Never hardcode an absolute project path.
+> Paths are **repo-relative to the project root** (the folder the agent has open). Never hardcode an absolute project path.
 
 ## The one principle: truth is the code, not the documents
 
 If you re-read `ARCHITECTURE.md` and rewrite it prettier, you have laundered stale information into confident stale information. **Build your understanding from the source first, then diff the documents against it.** Direction of reconciliation is always source → document.
 
 - For the code foundation, the source of truth is `src/` (the actual code).
-- For the stack passport, the source of truth is `docker-compose.yml` + `.env` + the running stack (`sudo docker ps`, `sudo ss -tlnp`).
+- For the stack passport, the source of truth is `docker-compose.yml` + `.env` + the running stack (`docker ps`, `ss -tlnp`).
 
 ## When to run
 
@@ -56,7 +56,7 @@ There is no wrong time to garden, but those are the triggers that catch drift be
 
 > Do this only if the project has a `STACK.md` (i.e. it has been boxed by `docker-deploy.md`). The truth source here is the infrastructure, NOT `src/` — keep the two audits distinct.
 
-1. **Read the real infra.** `docker-compose.yml`, `.env` (mask secrets), and the live state: `sudo docker compose ps`, `sudo docker ps`, `sudo ss -tlnp` (these are read-only — never restart, rebuild, or prune containers here).
+1. **Read the real infra.** `docker-compose.yml`, `.env` (mask secrets), and the live state: `docker compose ps`, `docker ps`, `ss -tlnp` (these are read-only — never restart, rebuild, or prune containers here).
 2. **Diff against `STACK.md`:** image/tag, container name, network, what is exposed and where (ports, reverse-proxy), data dirs/volumes, env keys, and any recorded deviations — does each still match reality?
 3. **Propose a diff** for the stale facts. Keep the AGENT DIRECTIVE block at the top of `STACK.md` verbatim.
 4. Same fork rule: if reality contradicts the passport in a way that looks like a misconfiguration rather than a doc lag, flag it for the user — do not change the running stack from here (that is `docker-deploy.md`, with its own stop signals).

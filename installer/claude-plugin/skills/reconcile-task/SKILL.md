@@ -16,7 +16,7 @@ You are the **executor**, closing a `/run-task` that did not stay on rails. The 
 > - `/revise-task` repairs a *defective plan so it can be re-run* — mid-flight. `/reconcile-task` closes a session where the plan was *already executed but drifted* — end-of-flight. (When the drift is structural, the gate below sends you to `/revise-task`.)
 > - `/prune` reconciles the *whole foundation* against the *whole codebase*, periodically, proposing diffs. `/reconcile-task` reconciles *one task's record* against the code it just produced, now, and writes that record itself.
 
-> Paths are **repo-relative to the project root** (the folder Cascade has open). Never hardcode an absolute project path.
+> Paths are **repo-relative to the project root** (the folder the agent has open). Never hardcode an absolute project path.
 
 ## The gate — check it FIRST, before reconciling anything
 

@@ -15,7 +15,7 @@ You are the **scout**, not the builder. The rest of the family assumes you alrea
 
 > Run this on a **strong model** — forming and eliminating hypotheses against real code is `/make-task`/`/prune`-grade reasoning, not work for a cheap executor.
 
-> Paths are **repo-relative to the project root** (the folder Cascade has open). Never hardcode an absolute project path.
+> Paths are **repo-relative to the project root** (the folder the agent has open). Never hardcode an absolute project path.
 
 ## The two honest outcomes — internalize this first
 

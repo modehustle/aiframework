@@ -9,7 +9,7 @@ metadata:
 
 > A step-by-step playbook for laying the **development foundation** of an **authored** project — one that contains your own source code that you will keep changing — so that you and the AI agent can re-enter it weeks later with full context instead of guessing.
 > Sibling to `docker-deploy.md`. That one builds and documents the **box** (the Docker stack). This one establishes the **code foundation** that lives inside the box.
-> Purpose: persistent context for AI development assistants (Windsurf Cascade, etc.).
+> Purpose: persistent context for AI coding agents.
 > The agent **follows the phases in order** and does not skip the design phase.
 
 > **Детерминированные действия делает `fraim`, не ты.** Где стоит команда `fraim …`,
@@ -42,7 +42,7 @@ Two complementary layers, never duplicates:
 
 Canonical order for an authored project from scratch:
 
-1. Create the folder `/data/apps/<project>/`, open it in Windsurf over SSH.
+1. Create the project folder wherever this operator keeps projects, and open it in your agent.
 2. **Design session** with the human (`design-session.md`) → the agreed architecture, captured as a Design Brief. This is the authored-project equivalent of a per-stack prompt, but it is a *design artifact*, not a one-line deploy instruction.
 3. This workflow (Phases 2–3) → foundation files + a minimal runnable code skeleton.
 4. `docker-deploy.md` (when there is something to run) → the box + `STACK.md`.
@@ -50,10 +50,10 @@ Canonical order for an authored project from scratch:
 
 ## Standard layout (environment invariant)
 
-Same as the deploy workflow: the project is **its own folder under `/data/apps/<project>/`**, opened as the Cascade root (`.`). The foundation files and `ai/` live in that root, alongside `docker-compose.yml`, `.env`, and the source code.
+Same as the deploy workflow: the project is **its own folder**, and that folder is the root the agent has open (`.`). Where it lives on disk is the operator's choice. The foundation files and `ai/` live in that root, alongside `docker-compose.yml`, `.env`, and the source code.
 
 ```
-/data/apps/<project>/
+<project>/                     # the folder the agent has open
 ├── README.md          # entry point (this workflow)
 ├── ARCHITECTURE.md    # the map + the design (this workflow)
 ├── CONVENTIONS.md     # how we work here / agent rules (this workflow)
@@ -180,7 +180,7 @@ Bootstrap is a **one-time** act — it puts up the shelf. Keeping context curren
 
 ### Making it stick without you having to remember
 
-The same approach as the deploy passport: the directives live *inside* the files the agent reads anyway. For zero-attachment safety, register one **persistent Windsurf workspace/global rule** per project: *\"Treat `ARCHITECTURE.md` and `CONVENTIONS.md` as authoritative, read them at session start, keep them current.\"* Then the discipline loads every session regardless of what you attach.
+The same approach as the deploy passport: the directives live *inside* the files the agent reads anyway. For zero-attachment safety, also register the rule wherever your agent auto-loads context — `AGENTS.md`, `CLAUDE.md`, a workspace rule: *\"Treat `ARCHITECTURE.md` and `CONVENTIONS.md` as authoritative, read them at session start, keep them current.\"* `fraim init` writes exactly such a block for every harness it finds.
 
 ---
 
@@ -258,7 +258,7 @@ Access mode: <A | B | C>. Box + wiring: see `STACK.md`.
 # CONVENTIONS — <project>
 
 > **AGENT DIRECTIVE — load every session, follow it.**
-> Register this as the Windsurf workspace rule so it auto-loads.
+> Register this wherever your agent auto-loads context so it comes in every session.
 
 - Language: code, comments, docs in English. Chat may be in another language.
 - Workflow: planner→executor→reviser. Task queue in `ai/tasks/<slug>/`; archive to `ai/archive/`.

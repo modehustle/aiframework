@@ -63,6 +63,7 @@ fraim scaffold        # разворачивает фундамент и ai/, н
 
 Подробности установки и устройство — [installer/README.md](installer/README.md).
 Почему механика отдана CLI, а не модели — [installer/DETERMINISM.md](installer/DETERMINISM.md).
+По каким правилам принимаются такие решения — [PRINCIPLES.md](PRINCIPLES.md).
 
 ---
 

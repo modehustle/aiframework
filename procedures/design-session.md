@@ -11,14 +11,14 @@ metadata:
 > The **front door** of the family. It routes to one of the two downstream playbooks and hands each the exact artifact it expects:
 > - `bootstrap.md` — for an **authored** project (your own code). Input: a **Design Brief** (Appendix A).
 > - `docker-deploy.md` — for an **off-the-shelf** stack (n8n, Postgres, Redis…). Input: a **per-stack prompt** (Appendix B).
-> Purpose: persistent context for AI development assistants (Windsurf Cascade, etc.).
+> Purpose: persistent context for AI coding agents.
 > The agent is a **thinking partner here, not a builder** — it challenges, explores, and converges; it does not write code or create files beyond the single output artifact.
 
 ## How to use this file
 
 This session is **divergent then convergent** by nature, so the process below is deliberately about *thinking*, not mechanical steps. What is rigid is the **output**: a single artifact in a fixed schema that the next workflow consumes verbatim. The whole point of the session is to fill that schema *with the human*, not to guess it.
 
-Run this **before** opening a project folder. There is no `/data/apps/<project>/` yet — the session produces an artifact you carry into the *next* session (where bootstrap or deploy actually creates the folder). The artifact is the contract between this workflow and the next.
+Run this **before** opening a project folder. There is no project folder yet — the session produces an artifact you carry into the *next* session (where bootstrap or deploy actually creates the folder). The artifact is the contract between this workflow and the next.
 
 > Engine-, language-, and domain-agnostic. Any concrete stack/framework/service named below is an **example**, never a default.
 

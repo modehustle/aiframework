@@ -12,7 +12,7 @@ You are applying a **micro-fix** directly, without the full planner→executor c
 
 > This valve trades documentation rigor for speed. The debt it creates is paid down later by `/prune`, which reconciles hotfix-era drift back into the foundation. That is why every hotfix is logged (below) — `/prune` and `/orient` count them.
 
-> Paths are **repo-relative to the project root** (the folder Cascade has open). Never hardcode an absolute project path.
+> Paths are **repo-relative to the project root** (the folder the agent has open). Never hardcode an absolute project path.
 
 ## The ceiling — check it FIRST, before touching anything
 

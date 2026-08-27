@@ -9,7 +9,7 @@ metadata:
 
 > A step-by-step playbook for securely and architecturally-correctly deploying **any** Docker stack on a Linux server.
 > Source of rules: \"Docker Security & Deployment Blueprint\".
-> Purpose: persistent context for AI development assistants (Cursor, Windsurf Cascade, etc.).
+> Purpose: persistent context for AI coding agents.
 > The agent **follows the phases in order** and does not skip checklists.
 
 ## How to use this file
@@ -20,12 +20,21 @@ This file is an **engine-agnostic playbook**. The specifics of the stack being d
 
 > **Two artifacts persist in the stack folder after a deploy and are how anyone re-enters it later:** `docker-compose.yml` / `.env` (*what runs*) and **`STACK.md`** — the passport (*what it is, how it is wired, how to change it safely*; Phase 10). For a one-off change weeks later, attaching `STACK.md` to the prompt is usually enough to orient the agent — and the passport instructs the agent to keep itself current, so you do not have to remember to ask.
 
-## Standard layout (environment invariant)
+## Standard layout
 
-- Each stack is **its own folder under `/data/apps/<project>/`** (on this server `/data` is the RAID array). Inside: `docker-compose.yml`, `.env`, `conf/`, `data/`.
-- The human opens this folder in Windsurf over SSH, **so Cascade sees it as the root (`.`)**.
-- Therefore **all bind paths in compose are relative** (`./data/<service>`, `./conf/...`). They automatically land under `/data/apps/<project>/` on the RAID — nothing extra to mount or relocate.
-- It is **forbidden** to split config and data across different locations or to hardcode absolute paths \"somewhere else\". The data source is always `./data/...` relative to the stack root. (This eliminates the class of errors where the agent \"picks a path on its own\".)
+**The stack root is the folder you have open.** Where that folder lives on the host, on which
+filesystem, and through which editor you reached it are the operator's choices, not this
+workflow's business.
+
+- One stack — one folder. Inside: `docker-compose.yml`, `.env`, `conf/`, `data/`.
+- **All bind paths in compose are relative** (`./data/<service>`, `./conf/…`). They then land
+  next to the compose file wherever the operator put it, and the stack stays movable.
+- It is **forbidden** to split config and data across locations, or to hardcode an absolute
+  path \"somewhere else\". The data source is always `./data/…` relative to the stack root.
+  This eliminates the class of errors where the agent picks a path of its own.
+
+> The rule that matters is *relative paths*, not any particular directory. A workflow that
+> named one is describing its author's machine, not a property of a good deployment.
 
 ---
 
@@ -33,40 +42,54 @@ This file is an **engine-agnostic playbook**. The specifics of the stack being d
 
 Checked ALWAYS, regardless of the task:
 
-1. **All docker commands run via `sudo` only.** The user is not in the `docker` group (which equals root).
-2. **No host passwords.** If `sudo` asks for a password, the agent stops and asks the human to type it. Do not bypass, guess, or disable `NOPASSWD`.
+1. **Invoke docker the way this machine does it.** Detect it in Phase 1 — rootless daemon, a
+   user in the `docker` group, `sudo docker`, or `podman` behind the same CLI. Prefix every
+   command below accordingly. How docker is invoked is machine configuration, not a property
+   of a safe deployment; do not \"correct\" the operator's setup and do not report it as a fault.
+2. **Never weaken host access to make a command work.** Adding a user to the `docker` group,
+   enabling `NOPASSWD`, or relaxing file modes to get past an error is out of scope — report
+   the obstacle instead. (Executing a privileged command you were given access to is not
+   weakening anything; running it is fine.)
 3. **Production containers never run on the default `bridge` network.** Only a named project network.
 4. **Storage services (DBs, caches, queues — Postgres, MySQL, Redis, ClickHouse, etc.) do not publish a port to the internet.** Access is via the service's internal DNS name within the project network. If such a service must be reachable by **other machines** — only via a private network (mode C, Phase 2), never a public port.
 5. **Publishing a port on `0.0.0.0`/a public IP is forbidden**, except 80/443 of the system reverse-proxy. Any other port mapping goes to **loopback (`127.0.0.1`)** or a **private interface** (VPN/private network).
 6. **Processes inside the container run as non-root** (`user:` with a specific UID) wherever possible.
 7. **`chown` is targeted, to the specific service UID.** Recursive `chown` on the whole stack root folder is forbidden.
-8. **Every stack carries a `STACK.md` passport in its root (Phase 10).** On any task touching this stack: read it first if it exists; create it if it does not; and if the change alters anything it records (image/tag, container name, network, exposure, data layout, env, deviations) — **update it as the final step, unprompted.** A stale passport is treated as a bug, not cosmetics.
+8. **Secrets live in `.env`, never inline in compose.** Plaintext credentials in a tracked
+   file are a defect regardless of who has permission to write it.
+9. **The host root and system paths are never bind-mounted into a container** (`-v /:/…`,
+   `/etc`, `/var/run` beyond an explicitly justified docker socket).
+10. **Data-destroying commands are named to the human before they run** — `prune --volumes`,
+   `docker volume rm`, `rm -rf` on a data directory. Not because they need permission, but
+   because they are irreversible and the human may know something you do not.
+11. **Every stack carries a `STACK.md` passport in its root (Phase 10).** On any task touching this stack: read it first if it exists; create it if it does not; and if the change alters anything it records (image/tag, container name, network, exposure, data layout, env, deviations) — **update it as the final step, unprompted.** A stale passport is treated as a bug, not cosmetics.
 
 ---
 
 ## 1. Pre-flight checklist (before generating any config)
 
+**Establish how docker is invoked here** (invariant 1). Take the first that works and use that
+prefix for every command in this workflow — write the answer into `STACK.md` at Phase 10:
+
 ```bash
-# Working directory is the stack folder under /data/apps/<project>/ (opened as root in Cascade)
-pwd                                  # expect /data/apps/<project>
-findmnt -no SOURCE,FSTYPE,SIZE /data # confirm the intended (RAID) volume
-df -h /data                          # enough space for the stack's data?
-
-# User must NOT be in the docker group
-groups | tr ' ' '\\n' | grep -x docker && echo \"WARNING: user is in the docker group\" || echo \"OK\"
-
-# sudo requires a password (no NOPASSWD) — this is expected
-sudo -n true 2>/dev/null && echo \"WARNING: passwordless sudo\" || echo \"OK: sudo is password-protected\"
-
-# Docker and Compose v2
-sudo docker version
-sudo docker compose version
-
-# Current networks (the new network name must not be taken)
-sudo docker network ls
+docker version          # works bare: rootless daemon, or user in the docker group
+sudo docker version     # otherwise
 ```
 
-If the working folder is **not** under `/data/apps/`, the user is in the `docker` group, or `sudo` is passwordless — **tell the human**, do not fix it yourself.
+Every `docker …` command below is written bare. Prefix it as this probe determined.
+
+**Then read the ground you are standing on:**
+
+```bash
+pwd                     # the stack root is this folder; note it, do not relocate it
+df -h .                 # enough space for this stack's data?
+docker compose version  # Compose v2 required (the `docker compose` subcommand, not docker-compose)
+docker network ls       # the new network name must not be taken
+```
+
+> None of this is a conformance test. You are learning the environment, not grading it: a
+> passwordless sudo, a rootless daemon and a user in the `docker` group are all normal setups.
+> Report only what actually blocks the deploy — no space, no Compose v2, a name collision.
 
 ---
 
@@ -84,7 +107,7 @@ This is the key architectural decision. For each published service, pick **exact
 - **Hetzner private network** — if all participants are in the same Hetzner project.
 - **VPN mesh (Tailscale/WireGuard)** — if some clients roam (a laptop from home/on the road): each device gets a stable private IP (`100.x` with Tailscale) that travels with it → no manual IP whitelist needed, access controlled by network membership.
 - The port is published on the server's private IP; in `.env` this is `PRIVATE_IP=<address>`. Firewall (Phase 6) is defense-in-depth.
-- Installing the VPN/private network is host-level (apt, `systemctl`, interactive auth) → **stop signal**, the human does it.
+- Installing the VPN/private network needs interactive auth (`tailscale up` prints a login URL) — run it and hand the human the URL to complete in a browser.
 
 > Mode C is a controlled deviation from invariants 4/5: it is compensated by the port not being visible from the internet. State this explicitly in the per-stack prompt.
 
@@ -103,7 +126,7 @@ For a self-contained stack, do **not** create the network manually. The `network
 Needed **only** when several independent stacks must see each other (e.g. a shared reverse-proxy + apps in separate compose files):
 
 ```bash
-sudo docker network create <project>-shared-network
+docker network create <project>-shared-network
 ```
 
 And in compose the network is declared external (below), otherwise Compose creates its own `<folder>_<net>` and the manually-created one stays empty.
@@ -149,7 +172,7 @@ services:
     image: <image:tag>
     container_name: <project>-<service>
     restart: unless-stopped
-    user: \"<uid>:<gid>\"            # non-root. Find UID: sudo docker run --rm <image> id <user>
+    user: \"<uid>:<gid>\"            # non-root. Find UID: docker run --rm <image> id <user>
     networks:
       - <project>-net
 
@@ -163,7 +186,7 @@ services:
     environment:
       - <KEY>=${<KEY>}             # secrets from .env, not hardcoded
     volumes:
-      - ./data/<service>:<data path inside the image>      # relative → lands under /data/apps/<project>/
+      - ./data/<service>:<data path inside the image>      # relative → lands next to the compose file
       - ./conf/<service>.conf:<config path inside the image>:ro   # if a custom config is needed
     security_opt:
       - no-new-privileges:true
@@ -212,10 +235,10 @@ Targeted `chown` to the specific process UID. **Never** recursive on the whole s
 
 ```bash
 # 1. Find the process UID in the image (don't guess):
-sudo docker run --rm <image:tag> id <user>
+docker run --rm <image:tag> id <user>
 
-# 2. chown ONLY this service's data dir (path is relative to the stack root = /data/apps/<project>/):
-sudo chown -R <uid>:<gid> ./data/<service>
+# 2. chown ONLY this service's data dir (path is relative to the stack root):
+chown -R <uid>:<gid> ./data/<service>
 ```
 
 > Typical UIDs (still verify live): postgres alpine = 70, postgres debian = 999, mysql/mariadb = 999, redis = 999, node images = 1000.
@@ -227,35 +250,35 @@ sudo chown -R <uid>:<gid> ./data/<service>
 Install `ufw-docker` so Docker does not bypass UFW via iptables (needed for modes B and C):
 
 ```bash
-sudo wget -O /usr/local/bin/ufw-docker \\
+wget -O /usr/local/bin/ufw-docker \\
   https://github.com/chaifeng/ufw-docker/raw/master/ufw-docker
-sudo chmod +x /usr/local/bin/ufw-docker
-sudo ufw-docker install
-sudo systemctl restart ufw
+chmod +x /usr/local/bin/ufw-docker
+ufw-docker install
+systemctl restart ufw
 ```
 
-> Verify the script source. Running an external script as root is a stop signal — the human confirms.
+> Untrusted code: show the human what this script is and where it comes from before running it. That is a judgement about trust, not a permission question.
 
 - **Mode A:** no ports exposed → nothing to open (UFW defaults to deny incoming).
 - **Mode B:** open only 80/443 for the reverse-proxy (see Phase 9). The internal port on `127.0.0.1` is unreachable from outside by design.
-- **Mode C:** the port listens on a private interface. Do NOT open it to the internet. Defense-in-depth (agent outputs — human applies):
+- **Mode C:** the port listens on a private interface. Do NOT open it to the internet. Defense-in-depth:
   ```bash
-  sudo ufw deny <port>                                                # on the public interface
-  sudo ufw route allow proto tcp from <private_subnet> to any port <port>   # e.g. 100.64.0.0/10 for Tailscale
-  sudo ufw reload
-  sudo ss -tlnp | grep <port>     # expect a listener ONLY on the private IP
+  ufw deny <port>                                                # on the public interface
+  ufw route allow proto tcp from <private_subnet> to any port <port>   # e.g. 100.64.0.0/10 for Tailscale
+  ufw reload
+  ss -tlnp | grep <port>     # expect a listener ONLY on the private IP
   ```
 
 ---
 
 ## 7. Phase: launching the stack
 
-From the stack root (`/data/apps/<project>/`, where `docker-compose.yml` lives):
+From the stack root (the folder where `docker-compose.yml` lives):
 
 ```bash
-sudo docker compose up -d
+docker compose up -d
 # Forced rebuild:
-sudo docker compose up -d --build --force-recreate
+docker compose up -d --build --force-recreate
 ```
 
 > Before `up`, always show the human the final `docker-compose.yml` and `.env` (mask secret values) and get confirmation — especially if there is a `ports:` block (opening a port = stop signal).
@@ -265,14 +288,14 @@ sudo docker compose up -d --build --force-recreate
 ## 8. Phase: post-deploy checks
 
 ```bash
-sudo docker compose ps                  # healthy?
-sudo docker compose logs -f <service>   # started without permission errors
-sudo docker stats                       # resources within limits
+docker compose ps                  # healthy?
+docker compose logs -f <service>   # started without permission errors
+docker stats                       # resources within limits
 
 # SECURITY CHECK: nothing extra should be exposed.
 # Allowed: 127.0.0.1:*, the private IP (mode C), 80/443 reverse-proxy.
-sudo docker compose ps --format '{{.Service}} -> {{.Ports}}'
-sudo ss -tlnp | grep -v '127.0.0.1'
+docker compose ps --format '{{.Service}} -> {{.Ports}}'
+ss -tlnp | grep -v '127.0.0.1'
 ```
 
 ---
@@ -281,7 +304,7 @@ sudo ss -tlnp | grep -v '127.0.0.1'
 
 Runs **after** the container is up and listening on `127.0.0.1:PORT` (verified in Phase 8). Goal: route a domain from the internet to the local port, terminating SSL on the system Nginx.
 
-**Roles:** the agent generates the config and commands; the **human** applies them on the host (writing to `/etc/nginx`, issuing the certificate, `reload`) — host-level via `sudo` → stop signal.
+**Roles:** you generate the config, apply it, and report. Writing to `/etc/nginx`, issuing the certificate and reloading are ordinary privileged commands — your agent's gate decides whether you may run them (§12). The human's part is the two things only they can supply: the domain, and certbot's email and ToS consent.
 
 ### Step 1. Preconditions (agent, read-only)
 
@@ -289,14 +312,14 @@ Runs **after** the container is up and listening on `127.0.0.1:PORT` (verified i
 dig +short <domain> A        # domain points to this server's IP
 nginx -v
 certbot --version
-sudo ufw status | grep -E '80|443'
+ufw status | grep -E '80|443'
 ```
 
-Opening the ports (the human does it):
+Open the ports:
 
 ```bash
-sudo ufw allow 80/tcp
-sudo ufw allow 443/tcp
+ufw allow 80/tcp
+ufw allow 443/tcp
 ```
 
 ### Step 2. Agent generates the HTTP config (port 80)
@@ -328,26 +351,26 @@ server {
 }
 ```
 
-### Step 3. Human applies the config
+### Step 3. Apply the config
 
 ```bash
-sudo cp ./deploy/nginx/<domain>.conf /etc/nginx/sites-available/<domain>.conf
-sudo ln -s /etc/nginx/sites-available/<domain>.conf /etc/nginx/sites-enabled/
-sudo nginx -t                 # syntax (read-only)
-sudo systemctl reload nginx
+cp ./deploy/nginx/<domain>.conf /etc/nginx/sites-available/<domain>.conf
+ln -s /etc/nginx/sites-available/<domain>.conf /etc/nginx/sites-enabled/
+nginx -t                 # syntax (read-only)
+systemctl reload nginx
 ```
 
 ### Step 4. SSL certificate (Let's Encrypt)
 
-`--nginx` will add the 443 block and the 80→443 redirect itself. The human runs:
+`--nginx` will add the 443 block and the 80→443 redirect itself:
 
 ```bash
-sudo certbot --nginx -d <domain>     # multiple: -d <domain> -d www.<domain>
+certbot --nginx -d <domain>     # multiple: -d <domain> -d www.<domain>
 ```
 
-Certbot interactively asks for an email and ToS consent — that is human input, the agent does not do it.
+Certbot asks interactively for an email address and ToS consent. Those are the human's to answer — pass them non-interactively only with values the human gave you (`-m <email> --agree-tos`), never invented ones.
 
-> Full control over the config: `sudo certbot certonly --nginx -d <domain>` issues only the certificate; the 443 block is written manually with paths `/etc/letsencrypt/live/<domain>/{fullchain,privkey}.pem`.
+> Full control over the config: `certbot certonly --nginx -d <domain>` issues only the certificate; the 443 block is written manually with paths `/etc/letsencrypt/live/<domain>/{fullchain,privkey}.pem`.
 
 ### Step 5. Verification and auto-renewal
 
@@ -355,7 +378,7 @@ Certbot interactively asks for an email and ToS consent — that is human input,
 curl -I http://<domain>      # expect 301 → https
 curl -I https://<domain>     # expect the app's response
 systemctl status certbot.timer
-sudo certbot renew --dry-run # dry run, changes nothing
+certbot renew --dry-run # dry run, changes nothing
 ```
 
 ---
@@ -373,7 +396,7 @@ The deploy is not \"done\" until the stack has a `STACK.md` in its root. This is
 - The **passport itself** carries the directive. Since `STACK.md` is the natural file you attach to a one-off change prompt to give the agent context, the update rule rides along with the context you were attaching anyway.
 - This **workflow** carries invariant 0.8. Whenever the workflow is attached for a deploy or change, the same rule applies.
 
-> Strongest option (zero attachment): register the rule once as a persistent Windsurf workspace/global rule — \"in any `/data/apps/*` stack, treat `STACK.md` as authoritative and update it on any change\". Then the discipline loads every session no matter what you attach or forget to attach.
+> Strongest option (zero attachment): register the rule wherever your agent auto-loads context — \"in any stack folder, treat `STACK.md` as authoritative and update it on any change\". Then the discipline loads every session no matter what you attach or forget to attach.
 
 ### Generating it
 
@@ -384,32 +407,45 @@ Fill the Appendix C template from the facts established during this deploy: acce
 ## 11. Phase: maintenance
 
 ```bash
-sudo docker compose restart        # soft restart
-sudo docker compose down           # stop + remove the network (data in ./data is preserved)
+docker compose restart        # soft restart
+docker compose down           # stop + remove the network (data in ./data is preserved)
 ```
 
 ### ⚠️ Disk cleanup — with care
 
 ```bash
-sudo docker system prune -a              # safe: unused images/containers/build cache
-# sudo docker system prune -a --volumes  # DANGEROUS: removes unused VOLUMES; only with human confirmation
+docker system prune -a              # safe: unused images/containers/build cache
+# docker system prune -a --volumes  # IRREVERSIBLE: removes unused VOLUMES. Name what it will delete first.
 ```
 
 > After any change to the stack (a plain restart aside), update `STACK.md` (Phase 10, invariant 0.8) before reporting done.
 
 ---
 
-## 12. Stop signals (the agent stops and asks the human)
+## 12. What still stops, and what does not
 
-- A **host password** prompt (`sudo`).
-- Mounting the host root (`-v /:/...`) or system paths.
-- Adding the user to the `docker` group / enabling `NOPASSWD`.
-- Commands that **delete data**: `prune --volumes`, `rm -rf` on a volume, `docker volume rm`.
-- **Opening a port to the outside** (any `ports:` not on `127.0.0.1`; including a mode-C private IP — show it before `up`).
-- Installing a VPN/private network, `tailscale up`, and other interactive auth.
-- Writing to system paths (`/etc/nginx`, `/etc/letsencrypt`), `systemctl reload/restart` of system services, running `certbot`.
-- Running a script/image from an **untrusted source** as root.
-- **Secrets in plaintext** in the config instead of `.env`.
+Your agent already has a permission system: it decides what you are allowed to execute, and it
+asks when it needs to. This workflow does **not** add a second one on top — you run privileged
+commands and report what you did. If running one was not allowed, that gate fires; it exists
+for exactly this.
+
+So none of these stop you any more: a `sudo` password prompt, writing to `/etc/nginx`,
+`systemctl reload`, `certbot`, `ufw`, installing a private network. Run them and report.
+
+**Three things still stop, and none of them is about permission:**
+
+- **Architecture that violates an invariant** — publishing a service on `0.0.0.0` outside the
+  80/443 reverse-proxy, exposing a datastore, bind-mounting the host root. The gate would let
+  you; invariants 3–9 do not. Bring it to the human as a design question.
+- **Irreversibility** — `prune --volumes`, `docker volume rm`, `rm -rf` on a data directory.
+  Name the command and what it destroys before running it. Not for permission: because the
+  human may know that volume still matters.
+- **Untrusted code** — a script or image from a source you cannot verify. Show what it is and
+  where it came from; that is a judgement about trust, and it is the human's to make.
+
+> The distinction is worth holding on to: *may I press this* belongs to the agent's gate,
+> *should this be pressed* belongs to the human. Asking the first question twice only trains
+> people to click through.
 
 ---
 
@@ -477,7 +513,7 @@ Drop this in the stack root and fill it from the facts of the deploy. Half a pag
 
 ## Data & state
 - <./data/<svc>> → <what it holds>
-- Stateful: <yes | no>. If yes → backup: central Borgmatic at /data/apps/backup — registered: <yes | no>
+- Stateful: <yes | no>. If yes → backup: <how this stack's data is backed up> — registered: <yes | no>
 
 ## How it was built
 - Per-stack prompt: <path or link>

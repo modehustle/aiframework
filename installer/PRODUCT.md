@@ -5,7 +5,10 @@
 > продукт и почему граница между частями проходит именно там.
 >
 > Детализация в соседних документах: [HARNESS_TARGETS.md](HARNESS_TARGETS.md) —
-> куда встраиваться, [SCHEDULING.md](SCHEDULING.md) — как напоминать о себе.
+> куда встраиваться, [SCHEDULING.md](SCHEDULING.md) — как напоминать о себе,
+> [DETERMINISM.md](DETERMINISM.md) — глаголы и гейты.
+>
+> Правила, по которым всё это выбиралось, вынесены в [PRINCIPLES.md](../PRINCIPLES.md).
 
 ## Оглавление
 

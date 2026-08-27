@@ -17,7 +17,7 @@ The shape is **reverse bootstrap / reverse deploy**: greenfield goes design → 
 >
 > Run this on a **strong model** — recovering architecture from existing code is `/make-task`/`/prune`-grade reasoning.
 
-> Paths are **repo-relative to the project root** (the folder Cascade has open). Never hardcode an absolute project path.
+> Paths are **repo-relative to the project root** (the folder the agent has open). Never hardcode an absolute project path.
 
 > **Детерминированные действия делает `fraim`, не ты.** Где стоит команда `fraim …`,
 > выполняй её, а не воспроизводи результат руками: формат, пути и коммит — не твоя забота.
@@ -72,7 +72,7 @@ Show the drafts; the human corrects what the code could not tell you. On confirm
 
 ### Step 1 — Read the live reality (read-only — never restart/rebuild/prune)
 
-`docker-compose.yml` if it exists, `.env` (mask secrets), and the live state: `sudo docker ps`, `sudo docker compose ps`, `sudo ss -tlnp`. If there is **no compose file** (the container was started by hand with `docker run`), reconstruct the intended config from `sudo docker inspect` and record honestly: *\"no compose file — reconstructed from running state; formalize later via docker-deploy.\"*
+`docker-compose.yml` if it exists, `.env` (mask secrets), and the live state: `docker ps`, `docker compose ps`, `ss -tlnp`. If there is **no compose file** (the container was started by hand with `docker run`), reconstruct the intended config from `docker inspect` and record honestly: *\"no compose file — reconstructed from running state; formalize later via docker-deploy.\"*
 
 ### Step 2 — Derive `STACK.md` and flag legacy deviations
 
