@@ -152,6 +152,22 @@ verb_hotfix_log() {
         warn "коммит не удался"
 }
 
+# --- stack-passport ---------------------------------------------------------
+# STACK.md has a fixed schema and a standing directive that must survive verbatim —
+# an LLM retyping it from prose drops a section every few projects. The shape is
+# the template's; only the facts are the workflow's.
+verb_stack_passport() {
+    _root=$1
+    _dst="$_root/STACK.md"
+    [ -e "$_dst" ] && die "STACK.md уже есть — заполняй его, шаблон не перезаписываю"
+    _r=$(fraim_root) || die "не найдены шаблоны — установка повреждена"
+    _tpl="$_r/installer/templates/stack/STACK.md"
+    [ -f "$_tpl" ] || die "не найден шаблон: $_tpl"
+    sed "s/{{PROJECT}}/$(basename -- "$_root")/g" "$_tpl" > "$_dst" || die "не удалось записать STACK.md"
+    ok "STACK.md создан из шаблона"
+    dim "  заполни разделы и удали строку fraim:stub — пока она на месте, паспорт считается незаполненным"
+}
+
 # --- prune-mark -------------------------------------------------------------
 verb_prune_mark() {
     _root=$1

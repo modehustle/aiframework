@@ -25,6 +25,7 @@ without being asked. `DECISIONS.md` is append-only. A stale foundation is a bug.
 | deciding what to build, before any code exists | `/design-session` |
 | new authored project, foundation not laid yet | `/bootstrap` |
 | packaging a stack into Docker | `/docker-deploy` |
+| making a running service reachable from outside | `/expose` |
 | a feature or a notable change was just agreed | `/make-task`, then `/run-task` |
 | the executor reported the plan is defective | `/revise-task` |
 | the run drifted into live debugging and is done | `/reconcile-task` |

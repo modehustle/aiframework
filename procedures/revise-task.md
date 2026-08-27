@@ -3,7 +3,7 @@ name: revise-task
 description: "Repair a task plan the executor found defective, in place, without losing what was learned"
 metadata:
   tier: strong
-  order: 6
+  order: 7
 ---
 # /revise-task — Repair a Defective Plan
 

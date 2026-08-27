@@ -45,6 +45,7 @@ fraim — эксплуатационный слой для проектов на
   fraim task-seal СЛАГ      проверить и заархивировать исполненную задачу
   fraim hotfix-log ФАЙЛ ОПИСАНИЕ [yes|no]   строка в журнал хотфиксов + коммит
   fraim prune-mark          сбросить счётчик дрейфа маркером + коммит
+  fraim stack-passport      создать STACK.md из шаблона
 
 Прочее
   fraim show ИМЯ            напечатать текст процедуры
@@ -65,7 +66,7 @@ cmd_init() {
 
     _build=$(skills_build)
     _n=$(find "$_build" -name SKILL.md | wc -l | tr -d ' ')
-    ok "собрано скиллов: $_n (12 процедур + мастер-скилл)"
+    ok "собрано скиллов: $_n (процедуры + мастер-скилл)"
 
     registry_init
 
@@ -352,6 +353,7 @@ verb_root() {
 cmd_task_new()  { [ $# -ge 1 ] || die "нужен слаг задачи"; verb_task_new  "$(verb_root)" "$1"; }
 cmd_task_seal() { [ $# -ge 1 ] || die "нужен слаг задачи"; verb_task_seal "$(verb_root)" "$1"; }
 cmd_prune_mark() { verb_prune_mark "$(verb_root)"; }
+cmd_stack_passport() { verb_stack_passport "$(pwd -P)"; }
 cmd_hotfix_log() {
     [ $# -ge 2 ] || die "нужно: fraim hotfix-log ФАЙЛ ОПИСАНИЕ [yes|no]"
     verb_hotfix_log "$(verb_root)" "$1" "$2" "${3:-no}"
@@ -368,6 +370,7 @@ case $_cmd in
     task-seal)     cmd_task_seal "$@" ;;
     hotfix-log)    cmd_hotfix_log "$@" ;;
     prune-mark)    cmd_prune_mark "$@" ;;
+    stack-passport) cmd_stack_passport "$@" ;;
     status)        cmd_status "$@" ;;
     projects)      cmd_projects "$@" ;;
     doctor)        cmd_doctor "$@" ;;

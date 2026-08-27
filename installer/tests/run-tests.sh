@@ -24,7 +24,7 @@ mkdir -p "$HOME"
 printf '\nprocedures/\n'
 
 N=$(ls "$REPO"/procedures/*.md | grep -v manifest | wc -l | tr -d ' ')
-check "12 процедур на диске" "$N" "12"
+check "13 процедур на диске" "$N" "13"
 
 BADFM=""
 for f in "$REPO"/procedures/*.md; do
@@ -49,7 +49,7 @@ printf '\nfraim build\n'
 check "build завершился успешно" "$?" "0"
 
 PLUG="$REPO/installer/claude-plugin/skills"
-check "плагин: 13 скиллов" "$(find "$PLUG" -name SKILL.md | wc -l | tr -d ' ')" "13"
+check "плагин: 14 скиллов" "$(find "$PLUG" -name SKILL.md | wc -l | tr -d ' ')" "14"
 
 # The single-file rule is a compatibility constraint, not tidiness:
 # Hermes fetches only SKILL.md when installing from a URL, and omp discovers
@@ -268,6 +268,13 @@ check "hotfix-log закоммитил" "$(git -C "$PROJ2" log --oneline -1 --fo
 "$FRAIM" hotfix-log src/a.py "bad" maybe >/dev/null 2>&1
 check "hotfix-log отвергает неверный behavior" "$?" "2"
 
+"$FRAIM" stack-passport >/dev/null 2>&1
+check "stack-passport создал STACK.md" "$([ -f "$PROJ2/STACK.md" ] && echo yes || echo no)" "yes"
+check "имя проекта подставлено в паспорт" "$(grep -c 'STACK PASSPORT — proj2' "$PROJ2/STACK.md")" "1"
+check "паспорт помечен как незаполненный" "$(grep -c 'fraim:stub' "$PROJ2/STACK.md")" "1"
+"$FRAIM" stack-passport >/dev/null 2>&1
+check "stack-passport не перезаписывает" "$?" "2"
+
 "$FRAIM" prune-mark >/dev/null 2>&1
 check "prune-mark поставил маркер" "$(grep -c '^--- pruned 20' "$PROJ2/ai/hotfix_log.md")" "1"
 "$FRAIM" status "$PROJ2" >/dev/null 2>&1
@@ -298,8 +305,8 @@ mkdir -p "$HOME/.codex" "$HOME/.claude"     # pretend two harnesses are installe
 cd "$PROJ" || exit 1
 "$FRAIM" init >/dev/null 2>&1
 check "init завершился успешно" "$?" "0"
-check "Codex: 13 скиллов" "$(find "$HOME/.codex/skills" -name SKILL.md 2>/dev/null | wc -l | tr -d ' ')" "13"
-check "Claude Code: 13 скиллов" "$(find "$HOME/.claude/skills" -name SKILL.md 2>/dev/null | wc -l | tr -d ' ')" "13"
+check "Codex: 14 скиллов" "$(find "$HOME/.codex/skills" -name SKILL.md 2>/dev/null | wc -l | tr -d ' ')" "14"
+check "Claude Code: 14 скиллов" "$(find "$HOME/.claude/skills" -name SKILL.md 2>/dev/null | wc -l | tr -d ' ')" "14"
 check "контекстный блок в ~/.codex/AGENTS.md" "$(grep -c 'fraim:begin' "$HOME/.codex/AGENTS.md" 2>/dev/null)" "1"
 check "проект зарегистрирован" "$("$FRAIM" projects 2>/dev/null | grep -cx "  $PROJ")" "1"
 check "разрешение Bash(fraim:*) прописано" "$(grep -c 'Bash(fraim' "$HOME/.claude/settings.json" 2>/dev/null)" "1"

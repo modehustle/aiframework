@@ -2,7 +2,7 @@
 name: fraim
 description: Control panel for the fraim workflow system. Use when the user asks where a project stands, what needs attention, what to do next, which projects have drifted, or how to install and update the workflow procedures. Routes to the right procedure and reads the deterministic project watchman.
 metadata:
-  version: 0.2.0
+  version: 0.3.0
   source: fraim
 ---
 # fraim — control panel
@@ -38,6 +38,7 @@ by design.
 | decide what to build, before any code exists | `/design-session` | strong |
 | lay the foundation of a new authored project | `/bootstrap` | strong |
 | box a stack in Docker and write its passport | `/docker-deploy` | capable |
+| make a running service reachable from outside | `/expose` | capable |
 | plan an agreed feature for a fresh-chat executor | `/make-task` | strong |
 | execute a prepared plan from the queue | `/run-task` | cheap |
 | repair a plan the executor called defective | `/revise-task` | strong |
@@ -63,6 +64,7 @@ these, run it: the format, the paths, the timestamps and the commit are not your
 | `fraim task-seal SLUG` | archiving a finished task — **it can refuse** |
 | `fraim hotfix-log FILE DESC yes\|no` | appending to the drift log by hand |
 | `fraim prune-mark` | writing the prune marker by hand |
+| `fraim stack-passport` | retyping the STACK.md schema |
 
 `task-seal` is a gate: it will not archive a task whose `result.md` leaves
 `## Foundation updated` empty or unfilled. A refusal is the check doing its job — fix what

@@ -3,7 +3,7 @@ name: prune
 description: "Reconcile the foundation files against ground truth (code + running stack), proposing diffs for human approval — never an autonomous rewrite"
 metadata:
   tier: strong
-  order: 10
+  order: 11
 ---
 # /prune — Garden the Foundation
 

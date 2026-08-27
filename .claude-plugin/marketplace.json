@@ -3,14 +3,14 @@
   "owner": { "name": "modehustle", "url": "https://github.com/modehustle" },
   "metadata": {
     "description": "The fraim workflow system as a Claude Code plugin.",
-    "version": "0.2.0"
+    "version": "0.3.0"
   },
   "plugins": [
     {
       "name": "fraim",
       "source": "./installer/claude-plugin",
       "description": "12 workflow procedures plus the fraim control panel. Planner/executor separation, deterministic drift accounting, and the second half of a project's lifecycle.",
-      "version": "0.2.0",
+      "version": "0.3.0",
       "category": "workflow"
     }
   ]

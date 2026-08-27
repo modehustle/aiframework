@@ -3,7 +3,7 @@ name: run-task
 description: "Pick a task from the ai/tasks/ queue, execute it literally, then archive on user approval"
 metadata:
   tier: cheap
-  order: 5
+  order: 6
 ---
 # /run-task — Execute Prepared Task
 

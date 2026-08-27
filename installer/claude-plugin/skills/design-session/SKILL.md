@@ -3,7 +3,7 @@ name: design-session
 description: "Run the thinking session that comes first: decide WHAT you are about to build and WHY, before any folder, code, or container exists. Converge with the human and produce one artifact for the next workflow (a Design Brief, or a per-stack prompt) — never code."
 metadata:
   tier: strong
-  version: 0.2.0
+  version: 0.3.0
   source: fraim
 ---
 # Design Session Workflow for AI Agents (universal)

@@ -3,7 +3,7 @@ name: make-task
 description: "Capture the agreed plan into a new task folder under ai/tasks/ for handoff to a fresh-chat executor model"
 metadata:
   tier: strong
-  order: 4
+  order: 5
 ---
 # /make-task — Plan Handoff
 

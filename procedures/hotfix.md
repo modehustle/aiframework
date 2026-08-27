@@ -3,7 +3,7 @@ name: hotfix
 description: "Apply a surgical micro-fix directly, bypassing the full make→run→archive cycle, within a strict mechanical ceiling"
 metadata:
   tier: capable
-  order: 8
+  order: 9
 ---
 # /hotfix — Surgical Micro-Fix
 

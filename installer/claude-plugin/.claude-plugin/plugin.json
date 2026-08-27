@@ -1,7 +1,7 @@
 {
   "name": "fraim",
   "description": "Workflow procedures for agent-driven development: plan/execute separation, drift accounting, and the operational half of a project's life — onboarding legacy code, hotfixes, pruning, and re-entry after a break.",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "author": { "name": "modehustle" },
   "homepage": "https://github.com/modehustle/aiframework",
   "license": "MIT",

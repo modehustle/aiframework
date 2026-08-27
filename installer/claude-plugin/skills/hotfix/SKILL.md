@@ -3,7 +3,7 @@ name: hotfix
 description: "Apply a surgical micro-fix directly, bypassing the full make→run→archive cycle, within a strict mechanical ceiling"
 metadata:
   tier: capable
-  version: 0.2.0
+  version: 0.3.0
   source: fraim
 ---
 # /hotfix — Surgical Micro-Fix
