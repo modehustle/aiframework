@@ -84,6 +84,12 @@ scaffold_run() {
 
     scaffold_git "$_root"
 
+    # The skeleton is only a save point if it is committed — an uncommitted skeleton
+    # leaves `fraim undo` with nothing to show and the invariant "every save point is a
+    # commit" false on the very first command a project runs.
+    verb_commit "$_root" scaffold "разворачиваю фундамент" \
+        README.md ARCHITECTURE.md CONVENTIONS.md DECISIONS.md .gitignore ai
+
     say ""
     if [ "$_skipped" -eq 0 ]; then
         ok "создано: $_created"

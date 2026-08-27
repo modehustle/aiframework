@@ -10,6 +10,16 @@
 set -eu
 
 _self=$0
+# install.sh always installs fraim as a symlink into ~/.local/bin, so $0 is
+# the link, not the file — resolve the chain before deriving lib/ from it,
+# or every installed command breaks with "no such file".
+while [ -L "$_self" ]; do
+    _link=$(readlink -- "$_self")
+    case $_link in
+        /*) _self=$_link ;;
+        *)  _self=$(dirname -- "$_self")/$_link ;;
+    esac
+done
 _libdir=$(cd -- "$(dirname -- "$_self")/../lib" 2>/dev/null && pwd -P) || {
     printf 'fraim: не найден каталог lib/ рядом с исполняемым файлом\n' >&2
     exit 2
