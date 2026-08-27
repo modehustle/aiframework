@@ -1,7 +1,14 @@
+---
+name: docker-deploy
+description: "Deploy a Docker stack on a Linux server securely and architecturally correctly, phase by phase, and write the STACK.md passport. Host-level actions stop and hand back to the human."
+metadata:
+  tier: capable
+  order: 3
+---
 # Docker Deploy Workflow for AI Agents (universal)
 
 > A step-by-step playbook for securely and architecturally-correctly deploying **any** Docker stack on a Linux server.
-> Source of rules: "Docker Security & Deployment Blueprint".
+> Source of rules: \"Docker Security & Deployment Blueprint\".
 > Purpose: persistent context for AI development assistants (Cursor, Windsurf Cascade, etc.).
 > The agent **follows the phases in order** and does not skip checklists.
 
@@ -9,7 +16,7 @@
 
 This file is an **engine-agnostic playbook**. The specifics of the stack being deployed (image, name, resources, volumes, ports, healthcheck, engine quirks) are supplied by the human as a **separate per-stack prompt** attached to this file. A checklist of what belongs in the per-stack prompt is in Appendix A.
 
-> The playbook is not tied to any specific engine. Postgres/MySQL/Redis below appear only as **examples**, never as a "default service".
+> The playbook is not tied to any specific engine. Postgres/MySQL/Redis below appear only as **examples**, never as a \"default service\".
 
 > **Two artifacts persist in the stack folder after a deploy and are how anyone re-enters it later:** `docker-compose.yml` / `.env` (*what runs*) and **`STACK.md`** — the passport (*what it is, how it is wired, how to change it safely*; Phase 10). For a one-off change weeks later, attaching `STACK.md` to the prompt is usually enough to orient the agent — and the passport instructs the agent to keep itself current, so you do not have to remember to ask.
 
@@ -18,7 +25,7 @@ This file is an **engine-agnostic playbook**. The specifics of the stack being d
 - Each stack is **its own folder under `/data/apps/<project>/`** (on this server `/data` is the RAID array). Inside: `docker-compose.yml`, `.env`, `conf/`, `data/`.
 - The human opens this folder in Windsurf over SSH, **so Cascade sees it as the root (`.`)**.
 - Therefore **all bind paths in compose are relative** (`./data/<service>`, `./conf/...`). They automatically land under `/data/apps/<project>/` on the RAID — nothing extra to mount or relocate.
-- It is **forbidden** to split config and data across different locations or to hardcode absolute paths "somewhere else". The data source is always `./data/...` relative to the stack root. (This eliminates the class of errors where the agent "picks a path on its own".)
+- It is **forbidden** to split config and data across different locations or to hardcode absolute paths \"somewhere else\". The data source is always `./data/...` relative to the stack root. (This eliminates the class of errors where the agent \"picks a path on its own\".)
 
 ---
 
@@ -46,10 +53,10 @@ findmnt -no SOURCE,FSTYPE,SIZE /data # confirm the intended (RAID) volume
 df -h /data                          # enough space for the stack's data?
 
 # User must NOT be in the docker group
-groups | tr ' ' '\n' | grep -x docker && echo "WARNING: user is in the docker group" || echo "OK"
+groups | tr ' ' '\\n' | grep -x docker && echo \"WARNING: user is in the docker group\" || echo \"OK\"
 
 # sudo requires a password (no NOPASSWD) — this is expected
-sudo -n true 2>/dev/null && echo "WARNING: passwordless sudo" || echo "OK: sudo is password-protected"
+sudo -n true 2>/dev/null && echo \"WARNING: passwordless sudo\" || echo \"OK: sudo is password-protected\"
 
 # Docker and Compose v2
 sudo docker version
@@ -118,7 +125,7 @@ networks:
 
 - [ ] Attached to the named project network, not `bridge`.
 - [ ] Access mode chosen per Phase 2 (A/B/C); `ports:` matches it.
-- [ ] `user: "<uid>:<gid>"` (non-root), where the image allows.
+- [ ] `user: \"<uid>:<gid>\"` (non-root), where the image allows.
 - [ ] `security_opt: [no-new-privileges:true]` and `cap_drop: [ALL]`.
 - [ ] Resource limits (`mem_limit`, `cpus`).
 - [ ] Log rotation (`logging`).
@@ -142,16 +149,16 @@ services:
     image: <image:tag>
     container_name: <project>-<service>
     restart: unless-stopped
-    user: "<uid>:<gid>"            # non-root. Find UID: sudo docker run --rm <image> id <user>
+    user: \"<uid>:<gid>\"            # non-root. Find UID: sudo docker run --rm <image> id <user>
     networks:
       - <project>-net
 
     # --- PICK ONE mode from Phase 2 ---
     # A) internal: NO ports block.
     # B) HTTP to internet:
-    #   ports: ["127.0.0.1:<port>:<port>"]
+    #   ports: [\"127.0.0.1:<port>:<port>\"]
     # C) non-HTTP for other machines (private interface):
-    #   ports: ["${PRIVATE_IP}:<port>:<port>"]   # NOT 0.0.0.0, NOT a public IP
+    #   ports: [\"${PRIVATE_IP}:<port>:<port>\"]   # NOT 0.0.0.0, NOT a public IP
 
     environment:
       - <KEY>=${<KEY>}             # secrets from .env, not hardcoded
@@ -167,8 +174,8 @@ services:
     logging:
       driver: json-file
       options:
-        max-size: "10m"
-        max-file: "3"
+        max-size: \"10m\"
+        max-file: \"3\"
     healthcheck:
       test: <readiness command for this image>   # examples — Appendix B
       interval: 15s
@@ -194,7 +201,7 @@ cap_add: [NET_BIND_SERVICE]   # example: only if a port < 1024 is truly needed
 
 Many official DB images (mysql, postgres) start as root, `chown` the data, and step down to their UID via `gosu`. With `cap_drop: [ALL]` this breaks. Two clean paths:
 
-- **Run directly as the data UID** (`user: "<uid>:<gid>"`) + **pre-`chown` the data dir** (Phase 5). Then the entrypoint does no chown/gosu, and `cap_drop: [ALL]` works with no `cap_add`. **Preferred.**
+- **Run directly as the data UID** (`user: \"<uid>:<gid>\"`) + **pre-`chown` the data dir** (Phase 5). Then the entrypoint does no chown/gosu, and `cap_drop: [ALL]` works with no `cap_add`. **Preferred.**
 - Or keep the root entrypoint and add the capabilities back: `cap_add: [CHOWN, SETGID, SETUID, DAC_OVERRIDE]`.
 
 ---
@@ -220,7 +227,7 @@ sudo chown -R <uid>:<gid> ./data/<service>
 Install `ufw-docker` so Docker does not bypass UFW via iptables (needed for modes B and C):
 
 ```bash
-sudo wget -O /usr/local/bin/ufw-docker \
+sudo wget -O /usr/local/bin/ufw-docker \\
   https://github.com/chaifeng/ufw-docker/raw/master/ufw-docker
 sudo chmod +x /usr/local/bin/ufw-docker
 sudo ufw-docker install
@@ -314,7 +321,7 @@ server {
 
         # WebSocket (if the app needs it)
         proxy_set_header Upgrade    $http_upgrade;
-        proxy_set_header Connection "upgrade";
+        proxy_set_header Connection \"upgrade\";
 
         proxy_read_timeout 60s;
     }
@@ -355,18 +362,18 @@ sudo certbot renew --dry-run # dry run, changes nothing
 
 ## 10. Phase: project passport (`STACK.md`) — required final artifact
 
-The deploy is not "done" until the stack has a `STACK.md` in its root. This is the **re-entry document**: the single file a human or an agent reads weeks later to understand what this stack is, how it is wired, and how to change it safely — instead of reverse-engineering `docker-compose.yml` and `.env` from scratch every time.
+The deploy is not \"done\" until the stack has a `STACK.md` in its root. This is the **re-entry document**: the single file a human or an agent reads weeks later to understand what this stack is, how it is wired, and how to change it safely — instead of reverse-engineering `docker-compose.yml` and `.env` from scratch every time.
 
 **Why it belongs to deploy, not to bootstrap.** Every box gets a passport, including a pure off-the-shelf service (n8n, Redis) that contains none of your own code. For such a service the passport *is* the whole re-entry story. A project that also contains your own source code gets an additional, richer foundation from the separate bootstrap workflow — but that is about the *code*; `STACK.md` here is only about the *box* (image, network, exposure, data). The two are complementary layers, never duplicates.
 
-### Self-maintenance (this is the part that solves "I'll forget to update it")
+### Self-maintenance (this is the part that solves \"I'll forget to update it\")
 
 `STACK.md` opens with a standing directive to any agent that reads it (template in Appendix C). The rule: **whoever changes the stack updates the passport in the same task, unprompted.** Currency does not depend on the human remembering. Two independent triggers enforce it, so one forgotten attachment never silently rots the passport:
 
 - The **passport itself** carries the directive. Since `STACK.md` is the natural file you attach to a one-off change prompt to give the agent context, the update rule rides along with the context you were attaching anyway.
 - This **workflow** carries invariant 0.8. Whenever the workflow is attached for a deploy or change, the same rule applies.
 
-> Strongest option (zero attachment): register the rule once as a persistent Windsurf workspace/global rule — "in any `/data/apps/*` stack, treat `STACK.md` as authoritative and update it on any change". Then the discipline loads every session no matter what you attach or forget to attach.
+> Strongest option (zero attachment): register the rule once as a persistent Windsurf workspace/global rule — \"in any `/data/apps/*` stack, treat `STACK.md` as authoritative and update it on any change\". Then the discipline loads every session no matter what you attach or forget to attach.
 
 ### Generating it
 
@@ -426,19 +433,19 @@ The minimum the human specifies for a concrete stack:
 
 ```yaml
 # Postgres
-test: ["CMD-SHELL", "pg_isready -U ${DB_USER} -d ${DB_NAME}"]
+test: [\"CMD-SHELL\", \"pg_isready -U ${DB_USER} -d ${DB_NAME}\"]
 
 # MySQL / MariaDB  ( -h localhost = socket; $$ keeps the password out of docker inspect )
-test: ["CMD-SHELL", "mysqladmin ping -h localhost -u root -p\"$$MYSQL_ROOT_PASSWORD\" --silent"]
+test: [\"CMD-SHELL\", \"mysqladmin ping -h localhost -u root -p\\\"$$MYSQL_ROOT_PASSWORD\\\" --silent\"]
 
 # Redis
-test: ["CMD", "redis-cli", "ping"]
+test: [\"CMD\", \"redis-cli\", \"ping\"]
 
 # HTTP service (has a health endpoint)
-test: ["CMD-SHELL", "curl -fsS http://localhost:<port>/health || exit 1"]
+test: [\"CMD-SHELL\", \"curl -fsS http://localhost:<port>/health || exit 1\"]
 
 # HTTP service without curl in the image (common in alpine)
-test: ["CMD-SHELL", "wget -qO- http://localhost:<port>/ >/dev/null 2>&1 || exit 1"]
+test: [\"CMD-SHELL\", \"wget -qO- http://localhost:<port>/ >/dev/null 2>&1 || exit 1\"]
 ```
 
 ## Appendix C. `STACK.md` passport template
@@ -466,7 +473,7 @@ Drop this in the stack root and fill it from the facts of the deploy. Half a pag
 ## Network & exposure
 - Network: <name> (<compose-managed | external>)
 - Exposed: <none | 127.0.0.1:<port> → reverse-proxy https://<domain> | <private-ip>:<port> (mode C)>
-- Reachability gotchas: <e.g. "public at https://<domain> via system nginx, even though compose binds only 127.0.0.1"> | none
+- Reachability gotchas: <e.g. \"public at https://<domain> via system nginx, even though compose binds only 127.0.0.1\"> | none
 
 ## Data & state
 - <./data/<svc>> → <what it holds>
@@ -481,7 +488,7 @@ Drop this in the stack root and fill it from the facts of the deploy. Half a pag
 - To add <thing you anticipate>: <short pointer>
 
 ## Deviations / legacy risks
-<Both kinds live here: a deliberate deviation from the docker_deploy standard taken during this
+<Both kinds live here: a deliberate deviation from the docker-deploy standard taken during this
 deploy, and a pre-existing violation found when an already-running box was onboarded.>
 - <deviation from the standard + reason> | none
 - <legacy risk found at onboarding + reason> — <accepted | should be remediated> | none

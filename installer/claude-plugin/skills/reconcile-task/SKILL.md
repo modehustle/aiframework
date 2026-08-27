@@ -1,24 +1,28 @@
 ---
-description: Close a /run_task session that drifted into live debugging — fold the unplanned changes back into the record and archive truthfully; but STOP and hand to /revise_task if the drift was structural, not surgical
+name: reconcile-task
+description: "Close a /run-task session that drifted into live debugging — fold the unplanned changes back into the record and archive truthfully; but STOP and hand to /revise-task if the drift was structural, not surgical"
+metadata:
+  tier: capable
+  version: 0.1.0
+  source: fraim
 ---
+# /reconcile-task — Seal a Drifted Execution Session
 
-# /reconcile_task — Seal a Drifted Execution Session
+You are the **executor**, closing a `/run-task` that did not stay on rails. The plan was executed, but somewhere the task turned into **live debugging**: the operator fed in discoveries the plan never anticipated, edits landed that `task.md` did not authorize, and the code now diverges from the plan it is filed under. The operator has verified the result works. Your job is **not** to re-plan and **not** to build — it is to make the archive tell the truth, or to refuse and hand the task back if the drift was too big to seal this way.
 
-You are the **executor**, closing a `/run_task` that did not stay on rails. The plan was executed, but somewhere the task turned into **live debugging**: the operator fed in discoveries the plan never anticipated, edits landed that `task.md` did not authorize, and the code now diverges from the plan it is filed under. The operator has verified the result works. Your job is **not** to re-plan and **not** to build — it is to make the archive tell the truth, or to refuse and hand the task back if the drift was too big to seal this way.
+> **The principle the family already holds: debug freely, but the archive must tell the truth.** A plan that says \"do NOT change X\" archived next to code that changed X is a silent lie unless the divergence is recorded. This workflow records it — or stops you from filing it at all.
 
-> **The principle the family already holds: debug freely, but the archive must tell the truth.** A plan that says "do NOT change X" archived next to code that changed X is a silent lie unless the divergence is recorded. This workflow records it — or stops you from filing it at all.
-
-> **This is not `/revise_task` and not `/prune`.**
-> - `/revise_task` repairs a *defective plan so it can be re-run* — mid-flight. `/reconcile_task` closes a session where the plan was *already executed but drifted* — end-of-flight. (When the drift is structural, the gate below sends you to `/revise_task`.)
-> - `/prune` reconciles the *whole foundation* against the *whole codebase*, periodically, proposing diffs. `/reconcile_task` reconciles *one task's record* against the code it just produced, now, and writes that record itself.
+> **This is not `/revise-task` and not `/prune`.**
+> - `/revise-task` repairs a *defective plan so it can be re-run* — mid-flight. `/reconcile-task` closes a session where the plan was *already executed but drifted* — end-of-flight. (When the drift is structural, the gate below sends you to `/revise-task`.)
+> - `/prune` reconciles the *whole foundation* against the *whole codebase*, periodically, proposing diffs. `/reconcile-task` reconciles *one task's record* against the code it just produced, now, and writes that record itself.
 
 > Paths are **repo-relative to the project root** (the folder Cascade has open). Never hardcode an absolute project path.
 
 ## The gate — check it FIRST, before reconciling anything
 
-You may seal-and-archive **only** if the drift was **surgical** — the live edits fixed *details the plan got wrong*, leaving the plan's shape and approach intact. If the drift was **structural** — it changed the shape — you do **not** archive; you hand the task to `/revise_task` (Section A).
+You may seal-and-archive **only** if the drift was **surgical** — the live edits fixed *details the plan got wrong*, leaving the plan's shape and approach intact. If the drift was **structural** — it changed the shape — you do **not** archive; you hand the task to `/revise-task` (Section A).
 
-> Like the `/hotfix` ceiling, this gate measures the **shape of the drift, not whether it works.** "The operator confirmed it works" is **not** a pass. A structural change can work perfectly and still be the wrong thing to seal here, because it skipped the reference scan (blast-radius map) that `/make_task` and `/revise_task` exist to perform.
+> Like the `/hotfix` ceiling, this gate measures the **shape of the drift, not whether it works.** \"The operator confirmed it works\" is **not** a pass. A structural change can work perfectly and still be the wrong thing to seal here, because it skipped the reference scan (blast-radius map) that `/make-task` and `/revise-task` exist to perform.
 
 Apply the gate to the **delta from the plan** — only the edits that were NOT in `task.md`'s `## Files to Change`, or that broke a stated constraint (`Do NOT`, `Must preserve`). The drift is **surgical** only if EVERY one of these holds:
 
@@ -35,7 +39,7 @@ Apply the gate to the **delta from the plan** — only the edits that were NOT i
 
 ---
 
-## Section A — Structural drift: STOP and hand to `/revise_task`
+## Section A — Structural drift: STOP and hand to `/revise-task`
 
 The drift broke the gate. Reconciling now would **launder a structural change into the record as a minor divergence** — exactly the silent drift the system is built to prevent.
 
@@ -53,9 +57,9 @@ The drift broke the gate. Reconciling now would **launder a structural change in
    - <state plainly>
    ```
 3. **STOP** and tell the operator:
-   > *"Дрейф структурный, не хирургический — это `/revise_task`, а не reconcile. То, что оно работает, не отменяет того, что изменение прошло мимо reference scan. Записал `blockers.md`. Запусти `/revise_task`, чтобы привести план к новому подходу (с reference scan'ом задетых зависимостей), затем `/run_task` — он проверит код против выправленного плана."*
+   > *\"Дрейф структурный, не хирургический — это `/revise-task`, а не reconcile. То, что оно работает, не отменяет того, что изменение прошло мимо reference scan. Записал `blockers.md`. Запусти `/revise-task`, чтобы привести план к новому подходу (с reference scan'ом задетых зависимостей), затем `/run-task` — он проверит код против выправленного плана.\"*
 
-> **Why bounce to `/revise_task` when the code already works:** a structural change made in the executor seat **skipped the blast-radius map**. `/revise_task` re-runs the reference scan and realigns the plan to the new approach, so plan and code agree again — and the re-run confirms nothing downstream was silently broken. That scan, not the typing, is what the wall protects.
+> **Why bounce to `/revise-task` when the code already works:** a structural change made in the executor seat **skipped the blast-radius map**. `/revise-task` re-runs the reference scan and realigns the plan to the new approach, so plan and code agree again — and the re-run confirms nothing downstream was silently broken. That scan, not the typing, is what the wall protects.
 
 ---
 
@@ -81,12 +85,12 @@ Add an explicit section recording, **as-is, without smoothing**:
 From the deltas, lift the **generalizable** gotchas — the ones a future task in this codebase will hit again — one line each. **Exclude** one-off details specific to this task. This is the loop feed; do not let it become a dumping ground.
 
 ### Step 5 — `ARCHITECTURE.md` (conditional)
-Surgical drift should not change structure. But if a corrected detail touched a fact recorded here (e.g. an external-interface endpoint or version), update that line. Otherwise state "no structural change".
+Surgical drift should not change structure. But if a corrected detail touched a fact recorded here (e.g. an external-interface endpoint or version), update that line. Otherwise state \"no structural change\".
 
 ### Step 6 — Leave bugs alone
-Any `(bug)` flagged for the operator stays a `/make_task` candidate. Do not fix it here.
+Any `(bug)` flagged for the operator stays a `/make-task` candidate. Do not fix it here.
 
-### Step 7 — Archive (the standard `/run_task` close)
+### Step 7 — Archive (the standard `/run-task` close)
 1. Create `ai/archive/<YYYY-MM-DD_HHMM>_<slug>/` using current local time.
 2. Move the task folder's contents there (`context.md`, `task.md`, any leftover `blockers.md`); write the final report into `result.md`.
 3. Remove the now-empty `ai/tasks/<slug>/`; confirm other queued tasks are untouched.
@@ -95,13 +99,13 @@ Any `(bug)` flagged for the operator stays a `/make_task` candidate. Do not fix 
 ### Step 8 — Self-check before declaring done
 - [ ] Every behavioral delta is in `DECISIONS.md`; every reversal supersedes (not deletes).
 - [ ] The divergence section names the overridden constraints and why — not smoothed.
-- [ ] The gate was actually re-confirmed surgical — no structural delta slipped through as "minor".
+- [ ] The gate was actually re-confirmed surgical — no structural delta slipped through as \"minor\".
 - [ ] Generalizable gotchas proposed to `CONVENTIONS.md`; one-offs excluded.
-- [ ] `(bug)` items left for `/make_task`, not fixed.
+- [ ] `(bug)` items left for `/make-task`, not fixed.
 
 ### Step 9 — Report
-> *"Сессия сведена и заархивирована в `<full path>`. Расхождений с планом: <N> (залогированы в DECISIONS / описаны в result.md). В Known Pitfalls добавлено: <N>. Осталось в очереди: <список slug или 'пусто'>."*
+> *\"Сессия сведена и заархивирована в `<full path>`. Расхождений с планом: <N> (залогированы в DECISIONS / описаны в result.md). В Known Pitfalls добавлено: <N>. Осталось в очереди: <список slug или 'пусто'>.\"*
 
 ---
 
-> You reconciled the record and archived. You did **not** re-plan and you did **not** do structural work — if the drift had broken the gate, you would have stopped and handed it to `/revise_task`. The wall holds: structural change is deliberate and reference-scanned, never emergent from live debugging.
+> You reconciled the record and archived. You did **not** re-plan and you did **not** do structural work — if the drift had broken the gate, you would have stopped and handed it to `/revise-task`. The wall holds: structural change is deliberate and reference-scanned, never emergent from live debugging.

@@ -1,0 +1,17 @@
+{
+  "version": "0.1.0",
+  "procedures": [
+    { "name": "design-session", "file": "procedures/design-session.md", "tier": "strong", "order": 1, "description": "Run the thinking session that comes first: decide WHAT you are about to build and WHY, before any folder, code, or container exists. Converge with the human and produce one artifact for the next workflow (a Design Brief, or a per-stack prompt) — never code." },
+    { "name": "bootstrap", "file": "procedures/bootstrap.md", "tier": "strong", "order": 2, "description": "Lay the development foundation of an authored project from a Design Brief: foundation documents plus a minimal running skeleton, so the project can be re-entered weeks later with full context instead of guesswork." },
+    { "name": "docker-deploy", "file": "procedures/docker-deploy.md", "tier": "capable", "order": 3, "description": "Deploy a Docker stack on a Linux server securely and architecturally correctly, phase by phase, and write the STACK.md passport. Host-level actions stop and hand back to the human." },
+    { "name": "make-task", "file": "procedures/make-task.md", "tier": "strong", "order": 4, "description": "Capture the agreed plan into a new task folder under ai/tasks/ for handoff to a fresh-chat executor model" },
+    { "name": "run-task", "file": "procedures/run-task.md", "tier": "cheap", "order": 5, "description": "Pick a task from the ai/tasks/ queue, execute it literally, then archive on user approval" },
+    { "name": "revise-task", "file": "procedures/revise-task.md", "tier": "strong", "order": 6, "description": "Repair a task plan the executor found defective, in place, without losing what was learned" },
+    { "name": "reconcile-task", "file": "procedures/reconcile-task.md", "tier": "capable", "order": 7, "description": "Close a /run-task session that drifted into live debugging — fold the unplanned changes back into the record and archive truthfully; but STOP and hand to /revise-task if the drift was structural, not surgical" },
+    { "name": "hotfix", "file": "procedures/hotfix.md", "tier": "capable", "order": 8, "description": "Apply a surgical micro-fix directly, bypassing the full make→run→archive cycle, within a strict mechanical ceiling" },
+    { "name": "investigate", "file": "procedures/investigate.md", "tier": "strong", "order": 9, "description": "Investigate one unclear thing (a bug, a mechanism, a feasibility question) read-only under a strict hypothesis discipline — produce a durable finding for /make-task, never fix code here" },
+    { "name": "prune", "file": "procedures/prune.md", "tier": "strong", "order": 10, "description": "Reconcile the foundation files against ground truth (code + running stack), proposing diffs for human approval — never an autonomous rewrite" },
+    { "name": "orient", "file": "procedures/orient.md", "tier": "any", "order": 11, "description": "Re-enter a project after a break — load the foundation and report current state and the next move" },
+    { "name": "onboard", "file": "procedures/onboard.md", "tier": "strong", "order": 12, "description": "Bring an EXISTING project or a STACK already running under the system — derive the foundation from reality, ratify it with the human, never redesign or reorganize" }
+  ]
+}

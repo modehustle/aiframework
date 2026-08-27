@@ -1,9 +1,16 @@
+---
+name: design-session
+description: "Run the thinking session that comes first: decide WHAT you are about to build and WHY, before any folder, code, or container exists. Converge with the human and produce one artifact for the next workflow (a Design Brief, or a per-stack prompt) — never code."
+metadata:
+  tier: strong
+  order: 1
+---
 # Design Session Workflow for AI Agents (universal)
 
 > A step-by-step playbook for the **thinking session that comes first** — deciding *what* you are about to stand up and *why*, before any folder, code, or container exists.
 > The **front door** of the family. It routes to one of the two downstream playbooks and hands each the exact artifact it expects:
 > - `bootstrap.md` — for an **authored** project (your own code). Input: a **Design Brief** (Appendix A).
-> - `docker_deploy.md` — for an **off-the-shelf** stack (n8n, Postgres, Redis…). Input: a **per-stack prompt** (Appendix B).
+> - `docker-deploy.md` — for an **off-the-shelf** stack (n8n, Postgres, Redis…). Input: a **per-stack prompt** (Appendix B).
 > Purpose: persistent context for AI development assistants (Windsurf Cascade, etc.).
 > The agent is a **thinking partner here, not a builder** — it challenges, explores, and converges; it does not write code or create files beyond the single output artifact.
 
@@ -23,13 +30,13 @@ Three layers, one direction of flow:
 |---|---|---|---|
 | **Decide** (this) | this one | a Design Brief **or** a per-stack prompt | *What are we standing up, and why; which path does it take* |
 | **Foundation** (authored only) | `bootstrap.md` | foundation files + code skeleton | *How is the code organized, why, how do we work on it* |
-| **Box** (infra) | `docker_deploy.md` | secure stack + `STACK.md` passport | *What image/network/ports/data, how is it deployed* |
+| **Box** (infra) | `docker-deploy.md` | secure stack + `STACK.md` passport | *What image/network/ports/data, how is it deployed* |
 
 Canonical flow from a cold start:
 
 1. **This session** with the human → the routing decision + the matching artifact.
 2a. **Authored** → `bootstrap.md` Phase 1 **Path A** validates the Design Brief, then lays the foundation and skeleton; deploy boxes it later.
-2b. **Off-the-shelf** → `docker_deploy.md` consumes the per-stack prompt directly.
+2b. **Off-the-shelf** → `docker-deploy.md` consumes the per-stack prompt directly.
 
 ---
 
@@ -38,10 +45,10 @@ Canonical flow from a cold start:
 Checked ALWAYS, regardless of the topic:
 
 1. **No building in this session.** No code, no scaffolding, no folder creation, no commands that change the system. The only output is one design artifact. (Building is the next workflow's job.)
-2. **Decide WITH the human, never FOR them.** The agent proposes and challenges; the human chooses. A design is not "done" until the human says so explicitly.
-3. **Challenge vagueness — do not paper over it.** Ambiguous or hand-wavy requirements are surfaced as open questions, not silently resolved with a guess. "I don't know yet" is a reason to *keep thinking*, not to pick something arbitrary.
-4. **Every decision carries a rationale and the rejected alternatives.** This is what later seeds `DECISIONS.md`. A choice without "why" and "why not the others" is incomplete.
-5. **Scope is bounded explicitly.** v1 / out-of-scope / later are separated on purpose. Over-planning is a failure mode; park future ideas in "later", do not fold them into v1.
+2. **Decide WITH the human, never FOR them.** The agent proposes and challenges; the human chooses. A design is not \"done\" until the human says so explicitly.
+3. **Challenge vagueness — do not paper over it.** Ambiguous or hand-wavy requirements are surfaced as open questions, not silently resolved with a guess. \"I don't know yet\" is a reason to *keep thinking*, not to pick something arbitrary.
+4. **Every decision carries a rationale and the rejected alternatives.** This is what later seeds `DECISIONS.md`. A choice without \"why\" and \"why not the others\" is incomplete.
+5. **Scope is bounded explicitly.** v1 / out-of-scope / later are separated on purpose. Over-planning is a failure mode; park future ideas in \"later\", do not fold them into v1.
 6. **The output schema is a contract.** The artifact matches the consuming workflow's input exactly — Appendix A mirrors bootstrap's Phase 1 checklist; Appendix B mirrors deploy's per-stack prompt. Do not invent extra fields or drop required ones.
 7. **All artifacts in English** (the brief, the prompt). Chat with the human may be in another language.
 8. **The artifact stays lean.** Half a page to a page; decisions and rationale, not a spec novel. The downstream workflow expands it into files — this session only fixes the shape.
@@ -52,7 +59,7 @@ Checked ALWAYS, regardless of the topic:
 
 Resist jumping to a stack. First establish, with the human:
 
-- **The problem / goal** — what need does this serve, for whom, and what does "it works" look like.
+- **The problem / goal** — what need does this serve, for whom, and what does \"it works\" look like.
 - **Constraints** — hard limits (existing infra, budget, languages the team knows, latency, data residency, deadlines).
 - **Knowns vs unknowns** — write the unknowns down explicitly; they drive the questions in the next phases.
 
@@ -67,7 +74,7 @@ Ask the one question that sends the work down the right pipe:
 > **Will this stack contain my own code that I will keep developing?**
 
 - **Yes** → **authored project**. The session targets the **Design Brief** (Appendix A) → feeds `bootstrap.md`.
-- **No** → **off-the-shelf** service run as-is. The session targets the **per-stack prompt** (Appendix B) → feeds `docker_deploy.md` directly. The remaining phases shrink to "pick the image and the access mode"; there is no architecture to design.
+- **No** → **off-the-shelf** service run as-is. The session targets the **per-stack prompt** (Appendix B) → feeds `docker-deploy.md` directly. The remaining phases shrink to \"pick the image and the access mode\"; there is no architecture to design.
 
 > If it is a mix (your code + bundled off-the-shelf services), it is **authored** — the off-the-shelf parts become components in the Design Brief.
 
@@ -115,7 +122,7 @@ Split the work explicitly:
 
 Assemble the decisions into the artifact for the chosen path — **Appendix A** (authored) or **Appendix B** (off-the-shelf) — and hand it to the next session.
 
-> **STOP — human confirms before the session ends.** Show the full artifact as a short summary and wait for an explicit "yes". Then state the next step plainly: *"Open the project folder and run `bootstrap.md` with this brief attached"* (or `docker_deploy.md` with this per-stack prompt). The artifact is the only thing that leaves this session.
+> **STOP — human confirms before the session ends.** Show the full artifact as a short summary and wait for an explicit \"yes\". Then state the next step plainly: *\"Open the project folder and run `bootstrap.md` with this brief attached\"* (or `docker-deploy.md` with this per-stack prompt). The artifact is the only thing that leaves this session.
 
 ---
 
@@ -169,9 +176,9 @@ Access mode: <A internal | B HTTP-to-internet | C non-HTTP-to-other-machines>.
 
 ---
 
-## Appendix B. Per-stack prompt (off-the-shelf → `docker_deploy.md`)
+## Appendix B. Per-stack prompt (off-the-shelf → `docker-deploy.md`)
 
-When the routing decision is "off-the-shelf", the session's output is the per-stack prompt that `docker_deploy.md` consumes (its Appendix A). The minimum to specify:
+When the routing decision is \"off-the-shelf\", the session's output is the per-stack prompt that `docker-deploy.md` consumes (its Appendix A). The minimum to specify:
 
 - **Image and tag** (`<image:tag>`), project/container name.
 - **Access mode** (A/B/C) and port(s).

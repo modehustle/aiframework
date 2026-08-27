@@ -3,7 +3,8 @@ name: investigate
 description: "Investigate one unclear thing (a bug, a mechanism, a feasibility question) read-only under a strict hypothesis discipline — produce a durable finding for /make-task, never fix code here"
 metadata:
   tier: strong
-  order: 9
+  version: 0.1.0
+  source: fraim
 ---
 # /investigate — Reconnaissance & Debugging
 

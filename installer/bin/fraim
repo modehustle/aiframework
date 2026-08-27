@@ -1,0 +1,285 @@
+#!/bin/sh
+# fraim — the operational layer for agent-driven projects.
+#
+# Owns state and lifecycle: what is installed where, which projects exist,
+# how much drift each has accumulated. It does NOT serve procedure text —
+# the agent reads that from the skill files on disk, because a 20 KB
+# procedure through stdout gets truncated by some harnesses, and because in
+# CI or a web session the CLI may not be installed while the file still is.
+
+set -eu
+
+_self=$0
+_libdir=$(cd -- "$(dirname -- "$_self")/../lib" 2>/dev/null && pwd -P) || {
+    printf 'fraim: не найден каталог lib/ рядом с исполняемым файлом\n' >&2
+    exit 2
+}
+
+# shellcheck source=../lib/core.sh
+. "$_libdir/core.sh"
+. "$_libdir/skills.sh"
+. "$_libdir/harness.sh"
+. "$_libdir/registry.sh"
+. "$_libdir/context.sh"
+. "$_libdir/watchman.sh"
+
+usage() {
+    cat <<'USAGE'
+fraim — эксплуатационный слой для проектов на агентах
+
+  fraim init                установить / обновить / подхватить новый харнес
+  fraim status [ПУТЬ]       вердикт сторожа по проекту (--json для машины)
+  fraim projects            показать реестр проектов
+  fraim projects add ПУТЬ   добавить проект в реестр
+  fraim projects rm ПУТЬ    убрать проект из реестра
+  fraim doctor              что и куда установлено, что разошлось
+  fraim show ИМЯ            напечатать текст процедуры
+  fraim build               пересобрать артефакты репозитория (плагин, манифест)
+  fraim version             версия
+
+Сторож детерминированный: файлы, git log и mtime. Ни модели, ни сети, ничего
+не пишет. Он замечает — решает человек.
+USAGE
+}
+
+# --- init -------------------------------------------------------------------
+cmd_init() {
+    _root=$(fraim_root) || die "не найден каталог procedures/ — установка повреждена"
+    _ver=$(fraim_version)
+    say "fraim $_ver · источник: $_root"
+    say ""
+
+    _build=$(skills_build)
+    _n=$(find "$_build" -name SKILL.md | wc -l | tr -d ' ')
+    ok "собрано скиллов: $_n (12 процедур + мастер-скилл)"
+
+    registry_init
+
+    harness_detect | while IFS='	' read -r _key _label _skills _instr; do
+        [ -n "$_key" ] || continue
+        _count=$(harness_install "$_label" "$_skills" "$_build") || {
+            warn "$_label: установка не удалась"
+            continue
+        }
+        ok "$_label → $_skills ($_count)"
+        if [ -n "$_instr" ]; then
+            if context_install "$_instr"; then
+                dim "    контекстный блок → $_instr"
+            else
+                warn "$_label: не удалось обновить $_instr"
+            fi
+        fi
+    done
+    _found=$(harness_detect | wc -l | tr -d ' ')
+
+    if [ "$_found" -eq 0 ]; then
+        say ""
+        warn "ни один харнес не найден"
+        dim "    скиллы собраны в $_build — скопируй их в каталог своего агента вручную,"
+        dim "    или установи харнес и запусти 'fraim init' ещё раз (команда идемпотентна)."
+    fi
+
+    # Register the current project if it is under the system. bootstrap and
+    # onboard both end here too, so the registry fills itself as projects
+    # come under the system rather than by hand.
+    _cwd=$(pwd -P)
+    if project_is_managed "$_cwd"; then
+        registry_add "$_cwd" && ok "проект зарегистрирован: $_cwd"
+        if context_install "$_cwd/AGENTS.md"; then
+            dim "    контекстный блок → $_cwd/AGENTS.md"
+        fi
+    fi
+
+    claude_permission_hint
+    say ""
+    say "Готово. Проверить: ${C_BLD}fraim doctor${C_OFF}"
+}
+
+# Claude Code gates shell calls, so without a standing permission the control
+# panel hits an approval prompt on every status check. We only touch settings
+# when a JSON-safe editor is available; otherwise we print the line and let
+# the human add it, per the system's own rule about host-level config.
+claude_permission_hint() {
+    _settings="$HOME/.claude/settings.json"
+    [ -d "$HOME/.claude" ] || return 0
+    if command -v python3 >/dev/null 2>&1; then
+        python3 - "$_settings" <<'PY' && return 0
+import json, os, sys
+path = sys.argv[1]
+try:
+    with open(path) as f:
+        data = json.load(f)
+except FileNotFoundError:
+    data = {}
+except (json.JSONDecodeError, OSError):
+    sys.exit(1)
+if not isinstance(data, dict):
+    sys.exit(1)
+perms = data.setdefault("permissions", {})
+allow = perms.setdefault("allow", [])
+rule = "Bash(fraim:*)"
+if rule in allow:
+    sys.exit(0)
+allow.append(rule)
+os.makedirs(os.path.dirname(path), exist_ok=True)
+tmp = path + ".fraim.tmp"
+with open(tmp, "w") as f:
+    json.dump(data, f, indent=2)
+    f.write("\n")
+os.replace(tmp, path)
+print("  разрешение Bash(fraim:*) добавлено в ~/.claude/settings.json")
+PY
+    fi
+    dim "    Claude Code: добавь \"Bash(fraim:*)\" в permissions.allow в ~/.claude/settings.json"
+    return 0
+}
+
+# --- status -----------------------------------------------------------------
+cmd_status() {
+    _json=0; _path=
+    for _a in "$@"; do
+        case $_a in
+            --json) _json=1 ;;
+            -*) die "неизвестный флаг: $_a" ;;
+            *) _path=$_a ;;
+        esac
+    done
+    [ -n "$_path" ] || _path=$(pwd -P)
+    _root=$(cd -- "$_path" 2>/dev/null && pwd -P) || die "нет такого каталога: $_path"
+
+    if ! wm_managed "$_root"; then
+        if [ "$_json" = 1 ]; then
+            printf '{ "project": "%s", "status": "unmanaged", "findings": [] }\n' "$_root"
+        else
+            warn "$_root не под системой: нет ни ai/, ни ARCHITECTURE.md"
+            dim "    завести существующий проект — /onboard; новый — /design-session → /bootstrap"
+        fi
+        exit 2
+    fi
+
+    wm_run "$_root"
+    if [ "$_json" = 1 ]; then wm_report_json "$_root"; else wm_report_human "$_root"; fi
+    if wm_has_attention; then exit 1; fi
+    exit 0
+}
+
+# --- projects ---------------------------------------------------------------
+cmd_projects() {
+    registry_init
+    case ${1:-list} in
+        list|"")
+            _any=0
+            registry_list | while read -r _p; do
+                [ -n "$_p" ] || continue
+                if [ -d "$_p" ]; then say "  $_p"; else printf '  %s%s  (нет каталога)%s\n' "$C_DIM" "$_p" "$C_OFF"; fi
+            done
+            _any=$(registry_list | wc -l | tr -d ' ')
+            if [ "$_any" -eq 0 ]; then
+                dim "  реестр пуст — 'fraim projects add ПУТЬ' или запусти 'fraim init' в проекте"
+            fi
+            ;;
+        add) [ $# -ge 2 ] || die "укажи путь"; registry_add "$2" && ok "добавлено: $2" ;;
+        rm)  [ $# -ge 2 ] || die "укажи путь"; registry_rm "$2" && ok "убрано: $2" ;;
+        *)   die "неизвестная подкоманда: $1" ;;
+    esac
+}
+
+# --- doctor -----------------------------------------------------------------
+cmd_doctor() {
+    _ver=$(fraim_version)
+    _root=$(fraim_root) || die "не найден каталог procedures/"
+    say "${C_BLD}fraim $_ver${C_OFF}"
+    say "  источник:  $_root"
+    say "  состояние: $FRAIM_HOME"
+    say ""
+
+    say "${C_BLD}Процедуры${C_OFF}"
+    fraim_procedures | while read -r _n; do
+        _f=$(fraim_procedure_file "$_n")
+        printf '  %-16s %-8s %s\n' "$_n" "$(fm_get "$_f" tier)" "procedures/$_n.md"
+    done
+    say ""
+
+    say "${C_BLD}Харнесы${C_OFF}"
+    _n_found=0
+    harness_table | while IFS='	' read -r _key _label _probe _skills _instr; do
+        [ -n "$_key" ] || continue
+        _skills=$(harness_expand "$_skills")
+        if harness_present "$_probe" "$_skills"; then
+            _installed=$(grep -rl '^  source: fraim$' "$_skills" 2>/dev/null | wc -l | tr -d ' ')
+            _vers=$(grep -rh '^  version: ' "$_skills" 2>/dev/null | sed 's/^  version: //' | sort -u | tr '\n' ' ')
+            if [ "$_installed" -gt 0 ]; then
+                if [ "$(printf '%s' "$_vers" | tr -d ' ')" = "$_ver" ]; then
+                    printf '  %s✓%s %-14s %s скиллов, версия %s\n' "$C_GRN" "$C_OFF" "$_label" "$_installed" "$_ver"
+                else
+                    printf '  %s!%s %-14s %s скиллов, версии: %s(установлена %s — нужен fraim init)\n' \
+                        "$C_YEL" "$C_OFF" "$_label" "$_installed" "$_vers" "$_ver"
+                fi
+            else
+                printf '  %s!%s %-14s найден, скиллы не установлены — запусти fraim init\n' "$C_YEL" "$C_OFF" "$_label"
+            fi
+        else
+            printf '  %s·%s %-14s не найден\n' "$C_DIM" "$C_OFF" "$_label"
+        fi
+    done
+    say ""
+
+    say "${C_BLD}Реестр проектов${C_OFF}"
+    registry_init
+    _total=$(registry_list | wc -l | tr -d ' ')
+    if [ "$_total" -eq 0 ]; then
+        dim "  пуст"
+    else
+        say "  проектов: $_total"
+        registry_stale | while read -r _p; do
+            [ -n "$_p" ] || continue
+            warn "  каталог пропал: $_p  ('fraim projects rm' чтобы убрать)"
+        done
+    fi
+}
+
+# --- show -------------------------------------------------------------------
+cmd_show() {
+    [ $# -ge 1 ] || die "укажи имя процедуры: $(fraim_procedures | tr '\n' ' ')"
+    _f=$(fraim_procedure_file "$1") || die "нет такой процедуры: $1"
+    cat "$_f"
+}
+
+# --- build ------------------------------------------------------------------
+# Regenerates the artifacts that live IN the repository (as opposed to on the
+# machine): the Claude Code plugin payload and the manifest. Both are generated
+# from procedures/ and committed, because a marketplace install clones the repo
+# and never runs our CLI.
+cmd_build() {
+    _root=$(fraim_root) || die "не найден каталог procedures/"
+    _build=$(skills_build)
+
+    _plugin="$_root/installer/claude-plugin"
+    rm -rf "$_plugin/skills"
+    mkdir -p "$_plugin/skills"
+    for _s in "$_build"/*/; do
+        [ -d "$_s" ] || continue
+        _n=$(basename -- "$_s")
+        mkdir -p "$_plugin/skills/$_n"
+        cp "$_s/SKILL.md" "$_plugin/skills/$_n/SKILL.md"
+    done
+    ok "плагин Claude Code: $(find "$_plugin/skills" -name SKILL.md | wc -l | tr -d ' ') скиллов"
+
+    manifest_render > "$_root/procedures/manifest.json"
+    ok "манифест: procedures/manifest.json"
+}
+
+# --- dispatch ---------------------------------------------------------------
+[ $# -ge 1 ] || { usage; exit 0; }
+_cmd=$1; shift
+case $_cmd in
+    init|update)   cmd_init "$@" ;;
+    status)        cmd_status "$@" ;;
+    projects)      cmd_projects "$@" ;;
+    doctor)        cmd_doctor "$@" ;;
+    show)          cmd_show "$@" ;;
+    build)         cmd_build "$@" ;;
+    version|--version|-v) fraim_version ;;
+    help|--help|-h) usage ;;
+    *) printf 'fraim: неизвестная команда: %s\n\n' "$_cmd" >&2; usage >&2; exit 2 ;;
+esac
