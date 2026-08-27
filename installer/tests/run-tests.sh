@@ -42,6 +42,51 @@ for f in "$REPO"/procedures/*.md; do
 done
 check "фронтматтер всех процедур корректен" "${BADFM:-clean}" "clean"
 
+# --- рельсы -----------------------------------------------------------------
+# `fraim commit` прожил в двух процедурах несколько релизов, потому что ничто не
+# сверяло текст процедур с диспетчером. Эти три проверки ловят класс, а не случай.
+
+DISPATCH=$(awk '/^case \$_cmd in/,/^esac$/' "$REPO/installer/bin/fraim" |
+           sed -n 's/^[[:space:]]*\([a-z|_-]*\)).*/\1/p' | tr '|' '\n' |
+           grep -E '^[a-z][a-z-]*$' | sort -u)
+# Только команды в коде — с бэктиком или в начале строки блока. Иначе английская
+# проза «a fraim project» читается как команда.
+USED=$(grep -ohE '(^|`)fraim [a-z][a-z-]*' "$REPO"/procedures/*.md |
+       sed 's/^`//; s/^fraim //' | sort -u)
+
+UNKNOWN=""
+for v in $USED; do
+    printf '%s\n' "$DISPATCH" | grep -qx "$v" || UNKNOWN="$UNKNOWN $v"
+done
+check "каждая команда fraim из процедур есть в CLI" "${UNKNOWN:-none}" "none"
+
+UNDOC=""
+HELP=$("$REPO/installer/bin/fraim" help 2>/dev/null)
+for v in $DISPATCH; do
+    printf '%s\n' "$HELP" | grep -qw -- "$v" || UNDOC="$UNDOC $v"
+done
+check "каждая команда CLI описана в fraim help" "$(printf '%s' "${UNDOC:-none}" | tr -s ' ')" "none"
+
+# Гейты парсят заголовки, которые печатает шаблон. Тест берёт литерал из кода гейта
+# и ищет его в шаблонах — а не в собственной копии формата.
+MISSING_HEAD=""
+HEADS=$(grep -oE "verb_section_filled [^ ]+ '[^']+'" "$REPO/installer/lib/verbs.sh" |
+        sed "s/.*'\(.*\)'/\1/" | sort -u)
+OLDIFS=$IFS; IFS='
+'
+for h in $HEADS; do
+    grep -rqF "$h" "$REPO/installer/templates" || MISSING_HEAD="$MISSING_HEAD [$h]"
+done
+IFS=$OLDIFS
+check "заголовки, которые читают гейты, есть в шаблонах" "${MISSING_HEAD:-none}" "none"
+
+# Ни одна процедура не меняет состояние git руками. Список исключений закрыт и
+# сокращается: investigate.md и onboard.md — открытый вопрос по git, всё остальное
+# обязано ходить через глаголы.
+GITHAND=$(grep -lE 'git (commit|add|init|restore|checkout|reset|stash|clean|push)' \
+          "$REPO"/procedures/*.md | while read -r f; do basename "$f"; done | sort | tr '\n' ' ')
+check "git руками — только в известных исключениях" "$GITHAND" "investigate.md onboard.md "
+
 # ---------------------------------------------------------------- build
 printf '\nfraim build\n'
 
@@ -279,6 +324,149 @@ check "stack-passport не перезаписывает" "$?" "2"
 check "prune-mark поставил маркер" "$(grep -c '^--- pruned 20' "$PROJ2/ai/hotfix_log.md")" "1"
 "$FRAIM" status "$PROJ2" >/dev/null 2>&1
 check "маркер сбросил счётчик дрейфа" "$?" "0"
+
+# --- task-block / task-revise ----------------------------------------------
+"$FRAIM" task-new fix-cache >/dev/null 2>&1
+"$FRAIM" task-block fix-cache >/dev/null 2>&1
+check "task-block завёл blockers.md" "$(grep -c 'fraim:stub' "$PROJ2/ai/tasks/fix-cache/blockers.md")" "1"
+"$FRAIM" task-seal fix-cache >/dev/null 2>&1
+check "гейт: заблокированную задачу не запечатать" "$?" "2"
+
+"$FRAIM" task-revise fix-cache "wrong path in step 3" "path realigned with the code" >/dev/null 2>&1
+check "task-revise отработал" "$?" "0"
+check "task-revise снял блокер" "$([ -f "$PROJ2/ai/tasks/fix-cache/blockers.md" ] && echo yes || echo no)" "no"
+check "task-revise записал ревизию" "$(grep -c '^## Revision 1 — 20' "$PROJ2/ai/tasks/fix-cache/task.md")" "1"
+check "task-revise записал дефект" "$(grep -c 'Defect: wrong path in step 3' "$PROJ2/ai/tasks/fix-cache/task.md")" "1"
+check "провенанс не задвоился" "$(grep -c '^- Planned: ' "$PROJ2/ai/tasks/fix-cache/context.md")" "1"
+check "task-revise закоммитил" "$(git -C "$PROJ2" log --oneline -1 --format=%s)" "revise: fix-cache — wrong path in step 3"
+"$FRAIM" task-revise fix-cache "again" "again" >/dev/null 2>&1
+check "task-revise без блокера отказывает" "$?" "2"
+
+# --- task-result ------------------------------------------------------------
+"$FRAIM" task-result fix-cache >/dev/null 2>&1
+check "task-result завёл отчёт" "$(grep -c '^## Foundation updated$' "$PROJ2/ai/tasks/fix-cache/result.md")" "1"
+"$FRAIM" task-seal fix-cache >/dev/null 2>&1
+check "гейт: незаполненную заготовку не архивирует" "$?" "2"
+
+fill_result() {
+    python3 - "$1" <<'PY2'
+import pathlib, re, sys
+p = pathlib.Path(sys.argv[1]); t = p.read_text()
+t = "\n".join(l for l in t.splitlines() if "fraim:stub" not in l) + "\n"
+t = re.sub(r"(## Foundation updated\n)(?:- .*\n)+",
+           "\\1- `ARCHITECTURE.md`: no structural change\n", t)
+t = re.sub(r"(## Divergence from plan\n)<[^>]*>\n(?:- .*\n)+",
+           "\\1- Plan assumed a sync call; it is async.\n", t)
+t = re.sub(r"^(- \(one-off\)|- \(pitfall\)|- \(bug\)|- \[x/|- `path/to|<verbatim|<If any|✅ complete).*$",
+           "none", t, flags=re.M)
+p.write_text(t)
+PY2
+}
+fill_result "$PROJ2/ai/tasks/fix-cache/result.md"
+"$FRAIM" task-seal fix-cache >/dev/null 2>&1
+check "гейт: заполненный отчёт пропускается" "$?" "0"
+
+"$FRAIM" task-new stale-plan >/dev/null 2>&1
+"$FRAIM" task-result stale-plan >/dev/null 2>&1
+"$FRAIM" task-result stale-plan --reset >/dev/null 2>&1
+check "task-result --reset снял отчёт" "$([ -f "$PROJ2/ai/tasks/stale-plan/result.md" ] && echo yes || echo no)" "no"
+
+# --- reconcile-seal (вторая дверь) ------------------------------------------
+"$FRAIM" task-result stale-plan --reconcile >/dev/null 2>&1
+check "task-result --reconcile завёл раздел расхождений" \
+    "$(grep -c '^## Divergence from plan$' "$PROJ2/ai/tasks/stale-plan/result.md")" "1"
+"$FRAIM" reconcile-seal stale-plan >/dev/null 2>&1
+check "гейт: незаполненную заготовку не сводит" "$?" "2"
+fill_result "$PROJ2/ai/tasks/stale-plan/result.md"
+python3 - "$PROJ2/ai/tasks/stale-plan/result.md" <<'PY2'
+import pathlib, sys
+p = pathlib.Path(sys.argv[1])
+t = p.read_text().replace("- Plan assumed a sync call; it is async.\n", "")
+p.write_text(t)
+PY2
+"$FRAIM" reconcile-seal stale-plan >/dev/null 2>&1
+check "гейт: пустой раздел расхождений не проходит" "$?" "2"
+printf -- '- Plan assumed a sync call; it is async.\n' >> "$PROJ2/ai/tasks/stale-plan/result.md"
+"$FRAIM" reconcile-seal stale-plan >/dev/null 2>&1
+check "reconcile-seal сводит и архивирует" "$?" "0"
+check "дрейфнувшая сессия в архиве" "$(find "$PROJ2/ai/archive" -maxdepth 1 -name '*_stale-plan' | wc -l | tr -d ' ')" "1"
+check "reconcile-seal закоммитил своим видом" \
+    "$(git -C "$PROJ2" log --oneline -1 --format=%s)" "reconcile: stale-plan — sealed drifted session"
+
+# --- investigate-new / investigate-seal -------------------------------------
+"$FRAIM" investigate-new selector-flicker >/dev/null 2>&1
+check "investigate-new завёл расследование" \
+    "$([ -f "$PROJ2/ai/investigations/selector-flicker/findings.md" ] && echo yes || echo no)" "yes"
+check "провенанс расследования проставлен" \
+    "$(grep -c '^- Based on: HEAD ' "$PROJ2/ai/investigations/selector-flicker/findings.md")" "1"
+check "слаг подставлен" \
+    "$(grep -c 'INVESTIGATION — selector-flicker' "$PROJ2/ai/investigations/selector-flicker/findings.md")" "1"
+"$FRAIM" investigate-seal selector-flicker >/dev/null 2>&1
+check "гейт: заготовку расследования не архивирует" "$?" "2"
+
+FIND="$PROJ2/ai/investigations/selector-flicker/findings.md"
+python3 - "$FIND" <<'PY2'
+import pathlib, sys
+p = pathlib.Path(sys.argv[1])
+t = "\n".join(l for l in p.read_text().splitlines() if "fraim:stub" not in l)
+p.write_text(t + "\n")
+PY2
+"$FRAIM" investigate-seal selector-flicker >/dev/null 2>&1
+check "гейт: без исхода не архивирует" "$?" "2"
+
+python3 - "$FIND" <<'PY2'
+import pathlib, re, sys
+p = pathlib.Path(sys.argv[1]); t = p.read_text()
+t = t.replace("<root cause, plainly. Route: /hotfix (surgical) | /make-task (structural) | /revise-task | /prune.>",
+              "The selector is rebuilt on every render; the observer attaches to the old node.")
+p.write_text(t)
+PY2
+"$FRAIM" investigate-seal selector-flicker >/dev/null 2>&1
+check "гейт: без отчёта об уборке не архивирует" "$?" "2"
+
+python3 - "$FIND" <<'PY2'
+import pathlib, sys
+p = pathlib.Path(sys.argv[1]); t = p.read_text()
+t = t.replace("<repo: what `git status` shows — and world: what was undone, counted against the baseline above>",
+              "Repo: git status clean. World: 12 seeded rows deleted, lease released.")
+t = t.replace("<what was ruled out, where exactly you got stuck, what the human must decide or provide.>", "")
+t = t.replace("<every repo file created or modified during the investigation — this is the cleanup list>", "none")
+t = t.replace("<baseline first: what the slice looked like before — row count, leases, worker state>", "none")
+t = t.replace("<then every world-state mutation with its undo command, written live, the moment you mutate>", "")
+t = t.replace("<the ONE unclear thing, as a question that can be answered>", "why does the selector flicker")
+t = t.replace("| 1 | <hypothesis> | open / confirmed / excluded | <what was observed> |",
+              "| 1 | stale node | confirmed | observer attached to detached node |")
+t = t.replace("- <what was run or instrumented, and what it showed>", "- instrumented the observer")
+p.write_text(t)
+PY2
+"$FRAIM" investigate-seal selector-flicker >/dev/null 2>&1
+check "investigate-seal архивирует расследование с исходом" "$?" "0"
+check "расследование в архиве" \
+    "$(find "$PROJ2/ai/archive" -maxdepth 1 -name '*_investigate_selector-flicker' | wc -l | tr -d ' ')" "1"
+check "архивация расследования закоммичена" \
+    "$(git -C "$PROJ2" log --oneline -1 --format=%s)" "archive: investigate selector-flicker"
+
+# --- сторож видит незапечатанное -------------------------------------------
+"$FRAIM" task-new unsealed-one >/dev/null 2>&1
+"$FRAIM" task-result unsealed-one >/dev/null 2>&1
+"$FRAIM" status "$PROJ2" >/dev/null 2>&1
+check "сторож замечает незапечатанную задачу" "$?" "1"
+check "вердикт зовёт task-seal" "$("$FRAIM" status "$PROJ2" 2>/dev/null | grep -c 'не запечатана')" "1"
+rm -rf "$PROJ2/ai/tasks/unsealed-one"
+
+"$FRAIM" investigate-new open-one >/dev/null 2>&1
+"$FRAIM" status "$PROJ2" >/dev/null 2>&1
+check "расследование в работе не поднимает тревогу" "$?" "0"
+rm -rf "$PROJ2/ai/investigations/open-one"
+
+# --- fraim commit -----------------------------------------------------------
+"$FRAIM" commit test "нет путей" >/dev/null 2>&1
+check "commit без путей отказывает" "$?" "2"
+"$FRAIM" commit BAD "вид не тот" README.md >/dev/null 2>&1
+check "commit проверяет вид" "$?" "2"
+printf 'x\n' >> "$PROJ2/README.md"
+"$FRAIM" commit task "точка сохранения" README.md >/dev/null 2>&1
+check "commit ставит точку сохранения" "$(git -C "$PROJ2" log --oneline -1 --format=%s)" "task: точка сохранения"
 
 # commit_verbs = off must actually stop the commits.
 "$FRAIM" config set commit_verbs off >/dev/null 2>&1

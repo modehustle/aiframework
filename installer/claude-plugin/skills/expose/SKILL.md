@@ -3,7 +3,7 @@ name: expose
 description: "Decide and implement how a running service is reachable from outside — internal only, HTTP on the internet behind a reverse proxy with TLS, or non-HTTP over a private network — then apply the edge and firewall for whichever tooling this host actually uses."
 metadata:
   tier: capable
-  version: 0.3.0
+  version: 0.4.0
   source: fraim
 ---
 # /expose — Reach a Service From Outside
@@ -125,8 +125,9 @@ command -v ufw firewall-cmd nft iptables 2>/dev/null
     and on which interface, and any controlled deviation from Step 4.5.
 6.2 No `STACK.md` yet → `fraim stack-passport` creates it from the template; fill the
     `## Network & exposure` section.
-6.3 Commit: `fraim commit deploy "expose <service> — mode <A|B|C>"`, or plain git if the stack
-    is not in a fraim project.
+6.3 Save the point, naming the paths: `fraim commit deploy "expose <service> — mode <A|B|C>"
+    STACK.md docker-compose.yml`. Host-level files (`/etc/...`) are not in the repository and are
+    not saved by this — that is what the passport records instead.
 
 ---
 

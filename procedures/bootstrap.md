@@ -133,7 +133,7 @@ No placeholders left as placeholders.
 - `CONVENTIONS.md` — how we work here; the agent rules; the Known Pitfalls store; carries the load-every-session directive.
 - `DECISIONS.md` — append-only log, seeded with the founding decisions from Phase 1 (stack choice, key trade-offs).
 - `.gitignore`, `.env.example` — per invariant 0.8.
-- `ai/` — the planner→executor structure (Appendix B).
+- `ai/` — the planner→executor structure (Appendix A).
 
 > Show all generated files to the human before moving on.
 
@@ -171,7 +171,7 @@ Bootstrap is a **one-time** act — it puts up the shelf. Keeping context curren
 - `/make-task` (planner) writes a new task folder `ai/tasks/<slug>/`; `/run-task` (executor) picks a task from the queue, executes it, and archives the folder to `ai/archive/`; `/revise-task` (planner) repairs a plan the executor found defective; `/orient` re-loads context when you return after a break.
 - `/hotfix` is the **pressure-relief valve**: for a true micro-fix (typo, flipped operator, wrong constant) within a strict mechanical ceiling — single file, no new abstractions/signatures/imports/branching — the agent edits directly, logs to `ai/hotfix_log.md`, and (if behavior changed) appends one line to `DECISIONS.md`. Anything over the ceiling escalates to `/make-task`.
 - `/reconcile-task` is the **drift valve at the close of execution**: when a `/run-task` session turned into live debugging and the code diverged from the plan, it folds the unplanned changes back into the record (a `DECISIONS` entry per behavioral delta, a divergence note in the task's `result.md`, generalizable gotchas into `CONVENTIONS`) and archives truthfully — but **only if the drift was surgical** (details the plan got wrong: a constant, URL, endpoint version, payload field, header). If the live edits were **structural** (changed approach, contracts, signatures, or component boundaries), it STOPS and hands the task to `/revise-task`, because a structural change made in the executor seat skipped the reference scan. The principle: *debug freely, but the archive must tell the truth.*
-- `/prune` is the **gardener**: run every 2–4 weeks or after ~5 hotfixes, it reconciles the foundation against ground truth (code for `ARCHITECTURE`/`CONVENTIONS`/`DECISIONS`; infra for `STACK.md`), proposing diffs the human approves. It relocates superseded `DECISIONS` entries to `ai/archive/decisions_log.md` (append-only is preserved — relocate, never delete) and curates the Known Pitfalls store.
+- `/prune` is the **gardener**: run every 2–4 weeks, or when the watchman reports the drift threshold reached (`fraim config` shows it), it reconciles the foundation against ground truth (code for `ARCHITECTURE`/`CONVENTIONS`/`DECISIONS`; infra for `STACK.md`), proposing diffs the human approves. It relocates superseded `DECISIONS` entries to `ai/archive/decisions_log.md` (append-only is preserved — relocate, never delete) and curates the Known Pitfalls store.
 - **Every task reads `ARCHITECTURE.md` + `CONVENTIONS.md` first** (invariant 0.4) — that is how the agent re-enters with context instead of re-deriving it.
 - **Every task that changes structure updates `ARCHITECTURE.md` as its final step**, and **appends a decision to `DECISIONS.md`** when it made a non-obvious choice — unprompted.
 - **The executor's lessons feed the planner.** A generalizable gotcha the executor discovers (`(pitfall)` in its report) is proposed, on the user's approval, into `CONVENTIONS.md`'s `## Known Pitfalls / Lessons` — which `/make-task` reads. That closes the loop from execution back to planning quality.
@@ -195,129 +195,30 @@ The same approach as the deploy passport: the directives live *inside* the files
 
 ---
 
-## Appendix A. Foundation file templates
+## Appendix A. What the skeleton contains
 
-Fill from the Phase 1 design. Keep each to about half a page. The `AGENT DIRECTIVE` blocks are what make the foundation self-maintaining (invariant 0.4) — keep them verbatim.
+The templates are **not** reproduced here. `fraim scaffold` writes them, so there is exactly one
+copy of each — a second copy in this document would drift from it, and the copy the model reads
+is the one that would win. Read the files it created; each carries its own `AGENT DIRECTIVE`
+block and its `fraim:stub` marker.
 
-### `README.md`
-
-````markdown
-# <project>
-
-<one line: what it is and what it serves>
-
-## Run
-- Dev: <command to run locally>
-- Deploy / prod: see `STACK.md` (built by docker-deploy)
-
-## Where things are
-See `ARCHITECTURE.md` for components, data model, and layout.
-
-## How work is done here
-Planner→executor loop: plans live in `ai/` (`/make-task`, `/run-task`).
-Micro-fixes: `/hotfix`. Re-entry: `/orient`. Gardening: `/prune`.
-Rules: `CONVENTIONS.md`. Decision history: `DECISIONS.md`.
-````
-
-### `ARCHITECTURE.md`
-
-````markdown
-# ARCHITECTURE — <project>
-
-> **AGENT DIRECTIVE — read first, keep current.**
-> Read this before any task in this project. If your task changes structure,
-> components, data flow, or entities, UPDATE this file as the final step — unprompted.
-
-## Purpose & scope
-<what v1 does> · Out of scope for now: <list>
-
-## Stack
-<language/framework> · <datastore> · <key libs>   (rationale → DECISIONS.md)
-
-## Components & responsibilities
-| component / dir | responsibility |
+| File | What you fill in |
 |---|---|
-| <...> | <...> |
+| `README.md` | what it is, how to run it in dev, pointers to `STACK.md`, `ARCHITECTURE.md` and the `ai/` loop |
+| `ARCHITECTURE.md` | purpose & scope · stack · components & responsibilities · data model · data flow · external interfaces · deployment access mode |
+| `CONVENTIONS.md` | house rules, the agent rules, and the `## Known Pitfalls / Lessons` store (starts empty) |
+| `DECISIONS.md` | append-only log, seeded with the founding decisions from Phase 1 |
+| `ai/` | `tasks/` (the queue, one folder per task) · `investigations/` · `archive/` (finished work under a timestamp, plus `decisions_log.md`) · `hotfix_log.md` · `fraim.conf` |
+| `.gitignore` | the two lines that are about secrets, not about the stack — extend for this project |
 
-## Data model (key entities)
-<entities + relationships>
+Keep each foundation file to about half a page (invariant 0.7), and delete the `fraim:stub` line
+from every file you filled — while it is there, `fraim status` correctly calls the foundation
+unfilled.
 
-## Data flow
-<request/event → … → response/storage>
+> One **folder per task** (named by a slug). The queue may hold several tasks, but only the one
+> being executed is \"in flight\". A task with a `blockers.md` is paused awaiting `/revise-task`.
+> Done tasks leave the queue only through a gate (`fraim task-seal`, or `fraim reconcile-seal`
+> for a session that drifted), which is what keeps the archive honest.
 
-## External interfaces
-<API surface / integrations, high level>
-
-## Deployment
-Access mode: <A | B | C>. Box + wiring: see `STACK.md`.
-````
-
-### `CONVENTIONS.md`
-
-````markdown
-# CONVENTIONS — <project>
-
-> **AGENT DIRECTIVE — load every session, follow it.**
-> Register this wherever your agent auto-loads context so it comes in every session.
-
-- Language: code, comments, docs in English. Chat may be in another language.
-- Workflow: planner→executor→reviser. Task queue in `ai/tasks/<slug>/`; archive to `ai/archive/`.
-  Commands: `/make-task`, `/run-task`, `/revise-task`, `/reconcile-task`, `/orient`, `/hotfix`, `/prune`.
-- Before a task: read `ARCHITECTURE.md` + this file (including Known Pitfalls below).
-  After: update them if changed; append any non-obvious choice to `DECISIONS.md`.
-- Solo-operator note: you may be both planner (`/make-task`) and executor (`/run-task`),
-  sometimes even running a strong model as executor. The temptation to improvise as
-  executor is strongest then, because you remember the plan's intent. Resist it — if the
-  plan is wrong, that is `blockers.md` + `/revise-task`, even on your own plan.
-- Queue discipline: keep the queue shallow. If two queued tasks touch the same files they
-  are NOT independent — sequence them explicitly or merge them, or the second plan goes
-  stale when the first lands.
-- Code style: <formatter / linter / naming / structure rules>
-- Secrets: never commit `.env` or `data/` (see `.gitignore`).
-- Deploy: never hand-edit host/system; use `docker-deploy.md`.
-- <project-specific rules>
-
-## Known Pitfalls / Lessons
-> Gotchas this codebase has cost an execution at least once. `/make-task` reads these so
-> the planner does not walk a new task into the same trap. `/run-task` proposes additions
-> here (on your approval) from its `(pitfall)` observations. `/prune` curates the list.
-- <e.g. \"auth middleware must be registered before routes or it silently no-ops\">
-- None yet.
-````
-
-### `DECISIONS.md`
-
-````markdown
-# DECISIONS — <project>  (append-only)
-
-> Newest on top. One entry per decision. Never rewrite history — supersede with a new
-> entry, or relocate stale entries to ai/archive/decisions_log.md via /prune.
-
-## <YYYY-MM-DD> — <decision title>
-- Context: <why this came up>
-- Decision: <what was chosen>
-- Alternatives: <what was rejected and why>
-- Consequences: <follow-ups / trade-offs accepted>
-````
-
-## Appendix B. The `ai/` structure (planner→executor→reviser)
-
-The shelf this workflow puts up for the loop you already run. Reference, not reinvention.
-
-```
-ai/
-├── tasks/                     # the task queue — one folder per task; several may coexist
-│   └── <slug>/
-│       ├── context.md         # WHY: provenance, goal, constraints, decisions, codebase context to read
-│       ├── task.md            # WHAT: files to change, steps, acceptance, verification
-│       └── blockers.md        # OPTIONAL: plan-defect findings → feeds /revise-task
-├── archive/
-│   ├── <YYYY-MM-DD_HHMM>_<slug>/   # context.md + task.md + result.md
-│   └── decisions_log.md            # superseded/dead DECISIONS entries relocated here by /prune
-├── hotfix_log.md              # one line per /hotfix; counts drift; /prune resets it with a marker
-└── README.md                  # one paragraph: the planner→executor→reviser loop + the queue
-```
-
-> One **folder per task** (named by a slug). The queue may hold several tasks, but only the one being executed is \"in flight\". A task with a `blockers.md` is paused awaiting `/revise-task`. Done tasks move whole to `ai/archive/`.
-
-> `ai/` and its contents are NOT secrets — they are tracked in git, so the decision and task trail travels with the repo.
+> `ai/` and its contents are NOT secrets — they are tracked in git, so the decision and task trail
+> travels with the repo.

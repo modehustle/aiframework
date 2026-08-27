@@ -11,6 +11,10 @@ You are the **planner**, back to fix a plan that did not survive contact with th
 
 > This workflow exists so the planner↔executor wall holds **even during correction**. The executor never patches its own plan; you do. You never write code; the executor does.
 
+> **Deterministic actions belong to `fraim`, not to you.** The revision record, the refreshed
+> provenance stamp and the consumed blocker are one command (Step 5) — not three things to
+> remember. No `fraim` — stop and say so.
+
 ## Core principle: amend, don't restart
 
 The point is to preserve everything that was right and the findings the executor paid for. You **edit** `ai/tasks/<slug>/context.md` and `ai/tasks/<slug>/task.md`; you do **not** archive them or create a new task. A fresh `/make-task` would throw away the blockers and the good parts of the plan — that is the wrong tool here.
@@ -42,19 +46,14 @@ Edit only what the diagnosis requires. Keep both files self-contained (the execu
 - `context.md` — fix Constraints / Decisions / Codebase Context if the defect was rooted there. If you reverse a prior decision, update the Decisions section AND note the `DECISIONS.md` supersede under the task's \"Foundation updates\".
 - `task.md` — fix the wrong steps, paths, Files to Change, Acceptance Criteria, or Verification Commands. Leave the correct parts untouched.
 
-Record what changed at the top of `task.md`:
-
-```markdown
-## Revision <N> — <YYYY-MM-DD>
-- Defect: <one line from blockers>
-- Fix: <what was changed in the plan and why>
-```
+Do **not** write the revision record or touch `## Plan provenance` by hand — Step 5 writes both,
+numbered and stamped, in one command. Your job here is the content of the plan itself.
 
 ## Step 4 — Quality self-check (same bar as /make-task)
 
 - [ ] The specific defect(s) in `blockers.md` are each addressed by a concrete change.
 - [ ] No `<...>` placeholders; every path is real (re-verify the paths the executor flagged actually exist now).
-- [ ] **`## Plan provenance` is refreshed** — new date, and the git ref / file-state the *repaired* plan is now based on — so the re-run is not falsely flagged stale by its own staleness check.
+- [ ] The repaired plan is consistent with the code **as it is now** — Step 5 refreshes the provenance stamp to this moment, and a stamp that says \"now\" over a plan written against last week's code is a lie the staleness check can no longer catch.
 - [ ] No references to this chat or to the blockers — all needed context is inline.
 - [ ] Acceptance Criteria and Verification Commands still match the (possibly changed) plan.
 - [ ] \"Foundation updates\" still names what the executor must refresh.
@@ -63,7 +62,18 @@ If any check fails, fix it before moving on.
 
 ## Step 5 — Clear the blocker and hand back
 
-1. Delete `ai/tasks/<slug>/blockers.md` (it is consumed — its content now lives in the revised plan and in the `## Revision` note). Do not archive a live task.
+1. Close the revision — one command, and the only way this workflow ends:
+
+   ```sh
+   fraim task-revise <slug> "<the defect, one line from blockers>" "<what you changed in the plan>"
+   ```
+
+   It refuses if there is no `blockers.md` (nothing to repair — that is `/make-task`). Otherwise it
+   writes the numbered `## Revision <N>` record at the top of `task.md`, refreshes `## Plan
+   provenance` with today's date, the current git ref and the system version, consumes
+   `blockers.md` **last**, and saves the repair as one point. Do not do any of that by hand: a
+   stale stamp on a repaired plan means the watchman keeps calling it stale, and a blocker removed
+   before the stamp is refreshed means an interrupted revision looks runnable when it is not.
 2. Output to the user:
    - The two amended file paths.
    - A 2–4 bullet summary: what was wrong, what you changed.

@@ -17,6 +17,10 @@ You are the **scout**, not the builder. The rest of the family assumes you alrea
 
 > Paths are **repo-relative to the project root** (the folder the agent has open). Never hardcode an absolute project path.
 
+> **Deterministic actions belong to `fraim`, not to you.** The folder, the provenance stamp, the
+> `findings.md` schema and the archive are `fraim investigate-new` / `fraim investigate-seal`.
+> No `fraim` — stop and say so.
+
 ## The two honest outcomes — internalize this first
 
 An investigation ends in exactly one of two ways, and **both are legitimate, successful exits:**
@@ -74,7 +78,7 @@ You need a guaranteed return point before you touch anything — and \"state\" h
 An investigation is **problem-scoped**, not project-scoped. \"Why does selector X flicker\" — yes. \"Look over the project\" — no, that is `/orient`. If the user hands you something broad, narrow it *with* them to a single question before proceeding.
 
 1. Derive a slug (lowercase, hyphens, ≤40 chars, e.g. `selector-flicker`).
-2. Create `ai/investigations/<slug>/` and open `findings.md` from the schema in the Appendix. Fill **Investigation goal** and **Baseline / provenance** (date + the clean `HEAD` ref from Step 1) now — the rest grows as you work.
+2. Run `fraim investigate-new <slug>`. It creates `ai/investigations/<slug>/`, writes `findings.md` from the schema, and stamps the provenance — date, the clean `HEAD` ref, the system version — so you cannot mistype it or leave it out. Fill **Investigation goal** now and delete the `fraim:stub` line; the rest grows as you work.
 3. Seed the **Hypothesis register** with your initial hypotheses. Each is a row: hypothesis · status (`open`) · evidence (empty for now).
 
 ## Step 3 — The investigation loop (this is where the discipline lives)
@@ -136,7 +140,18 @@ Naming each restored thing out loud is what makes a silent skip visible — to y
   - DIAGNOSIS → surgical: *\"Причина найдена, правка хирургическая — `/hotfix` (если влезает в потолок).\"*
   - DEAD-END: *\"Зашёл в тупик — записал, что исключено и где встал. Реши, что дальше: сузить вопрос, дать мне доступ/данные, или отложить.\"*
 
-Do not fix the thing yourself. Do not archive here — archiving a finished investigation (a folder whose `findings.md` has been acted on) is a user-initiated move, same as a task: move the folder to `ai/archive/`, commit `archive: investigate <slug>`.
+Do not fix the thing yourself. Do not archive here — archiving a finished investigation (a folder whose `findings.md` has been acted on) is a user-initiated move, same as a task. When the user asks:
+
+```sh
+fraim investigate-seal <slug>
+```
+
+It is a gate. It refuses unless **exactly one** outcome branch is filled — none means the
+investigation was abandoned, both mean it was never landed — and unless `## Restored to baseline`
+says what happened on **both** axes. That second check is the one this workflow could least
+afford to leave to good intentions: the cleanup is the only part whose absence nobody notices
+until a stray row or an unreleased lease bites weeks later. Until it is sealed, `fraim status`
+reports the investigation as finished-and-unarchived.
 
 ## Stop signals (the agent stops and asks the human)
 
@@ -151,57 +166,15 @@ Do not fix the thing yourself. Do not archive here — archiving a finished inve
 
 ---
 
-## Appendix. `findings.md` schema
+## Appendix. `findings.md`
 
-Fixed schema, like `task.md` / `result.md`. Keep it to about half a page — a fact sheet, not a lab journal.
+The schema is not reproduced here: `fraim investigate-new` writes it, so there is one copy of it
+and it cannot drift from what the seal gate reads. The file it lays down holds, in order —
+investigation goal · baseline/provenance · hypothesis register (one row per hypothesis: status
+`open` / `confirmed` / `excluded`, plus evidence) · diagnostic actions · the two outcome branches
+(**DIAGNOSIS** and **DEAD-END**, exactly one of which you fill) · the **REPO** manifest · the
+**WORLD** manifest · **Restored to baseline**.
 
-````markdown
-# INVESTIGATION — <slug>
-
-## Investigation goal
-<The one unclear thing, problem-scoped. e.g. \"Why does the login selector intermittently fail to click.\">
-
-## Baseline / provenance
-- Started: <YYYY-MM-DD>
-- Clean base (repo): <git ref, e.g. `HEAD a1b2c3d`> — OR \"no git; cleanup by manifest below\"
-- World baseline (if seeding state): <the slice you will touch, as found — e.g. \"tasks: 1 claimed, 0 pending · proxy 507796 idle · worker running\">
-
-## Hypothesis register
-<The spine. One row per hypothesis. Elimination counts as progress. Update live.>
-
-| # | Hypothesis | Status (open/confirmed/excluded) | Evidence |
-|---|---|---|---|
-| 1 | <...> | <...> | <what you observed, or empty> |
-| 2 | <...> | <...> | <...> |
-
-## Diagnostic actions
-<What you ran / instrumented, for reproducibility. All of it disposable.>
-- <e.g. \"added a timing log around the click; ran the flow 20×\">
-
-## Outcome — fill exactly ONE branch
-
-### DIAGNOSIS
-- Root cause: <the actual cause, one or two sentences>
-- Recommended route: <`/hotfix` | `/make-task` | `/revise-task` | `/prune`>
-- Classification: <surgical | structural> — <one line why>
-- For the planner: <the specific thing /make-task's context.md should carry — the constraint, the pitfall, the required assertion>
-
-### DEAD-END
-- Ruled out: <the excluded hypotheses — the durable value>
-- Stuck at: <where and why the discipline ran out>
-- Need from human: <a narrower question, access, data, or a decision to shelve>
-
-## Touched / created manifest — REPO  (= the repo cleanup list)
-- Created (untracked, to delete): <path> · <path> — or \"none\"
-- Modified (to `git restore`): <path> · <path> — or \"none\"
-
-## State manifest — WORLD  (= the world cleanup list; write live, the moment you mutate)
-<Every mutation outside the repo, each with its exact undo. \"none\" if the investigation was read-only.>
-- Seeded: <e.g. \"200 rows into `tasks`\"> → Undo: <e.g. \"DELETE FROM tasks WHERE payload->>'$.sku'='4791016907' AND status='pending'\"> 
-- Consumed/started: <e.g. \"worker picked up lease on proxy 507796\"> → Undo: <e.g. \"release lease, verify proxy back to idle\">
-- <...> → Undo: <...>
-
-## Restored to baseline
-- Repo: <yes — git status clean | pending>
-- World: <yes — matches Step 1 world baseline: row count restored, leases released, worker as found | not applicable (read-only) | pending>
-````
+Three of those headings are read by machine, so keep them as written: the two outcome branches
+and `## Restored to baseline` are what the gate checks before it lets the investigation into the
+archive.

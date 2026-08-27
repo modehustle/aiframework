@@ -2,7 +2,7 @@
 name: fraim
 description: Control panel for the fraim workflow system. Use when the user asks where a project stands, what needs attention, what to do next, which projects have drifted, or how to install and update the workflow procedures. Routes to the right procedure and reads the deterministic project watchman.
 metadata:
-  version: 0.3.0
+  version: 0.4.0
   source: fraim
 ---
 # fraim — control panel
@@ -61,14 +61,27 @@ these, run it: the format, the paths, the timestamps and the commit are not your
 |---|---|
 | `fraim scaffold` | hand-building the foundation files and `ai/` |
 | `fraim task-new SLUG` | creating a task folder and writing its provenance stamp |
+| `fraim task-block SLUG` | retyping the `blockers.md` shape |
+| `fraim task-result SLUG` | retyping the `result.md` shape (`--reconcile`, `--reset`) |
+| `fraim task-revise SLUG DEFECT FIX` | the revision record, the refreshed stamp, the consumed blocker |
 | `fraim task-seal SLUG` | archiving a finished task — **it can refuse** |
+| `fraim reconcile-seal SLUG` | archiving a drifted session — **it can refuse** |
+| `fraim investigate-new SLUG` | creating an investigation folder and its provenance stamp |
+| `fraim investigate-seal SLUG` | archiving a finished investigation — **it can refuse** |
 | `fraim hotfix-log FILE DESC yes\|no` | appending to the drift log by hand |
 | `fraim prune-mark` | writing the prune marker by hand |
 | `fraim stack-passport` | retyping the STACK.md schema |
+| `fraim commit KIND TEXT PATH…` | `git add` + `git commit` by hand |
 
-`task-seal` is a gate: it will not archive a task whose `result.md` leaves
-`## Foundation updated` empty or unfilled. A refusal is the check doing its job — fix what
-it names and run it again. Never archive by hand instead.
+Three of them are **gates**: `task-seal` will not archive a task whose `result.md` leaves
+`## Foundation updated` empty or unfilled; `reconcile-seal` adds a filled
+`## Divergence from plan` to that; `investigate-seal` wants exactly one outcome branch and a
+report on the cleanup. A refusal is the check doing its job — fix what it names and run it again.
+Never archive by hand instead.
+
+`fraim commit` takes an explicit path list and has no \"everything\" argument on purpose: a
+project folder also holds the user's unfinished work, their `.env` and their data. **A verb
+saves what it changed, and nothing else.**
 
 If `fraim` is not installed, **stop and say so** rather than reproducing the effect by hand.
 A deterministic action has exactly one implementation.

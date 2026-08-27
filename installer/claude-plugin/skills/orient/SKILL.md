@@ -3,7 +3,7 @@ name: orient
 description: "Re-enter a project after a break — load the foundation and report current state and the next move"
 metadata:
   tier: any
-  version: 0.3.0
+  version: 0.4.0
   source: fraim
 ---
 # /orient — Re-enter With Context
@@ -46,7 +46,7 @@ If none of these exist, this project has not been bootstrapped:
 
 - `ai/tasks/<slug>/` — list every task folder in the queue. For each: its `task.md` Summary line; its state — **blocked** (has `blockers.md`, awaiting `/revise-task`), **done, awaiting archive** (has `result.md` and no `blockers.md`), or **runnable**; and for runnable tasks check `## Plan provenance` — if the code has moved since it was planned (other tasks landed on overlapping files), flag the plan as **possibly stale**.
 - `ai/archive/` — list the few most recent archived tasks (by directory timestamp) to show recent history.
-- `ai/hotfix_log.md` — count the hotfixes since the last `--- pruned ... ---` marker. This is the foundation-drift signal.
+- `ai/hotfix_log.md` — count the hotfixes since the last `--- pruned ... ---` marker. This is the foundation-drift signal. The threshold is not a constant to remember: `fraim config` holds it and the watchman already compared against it in Step 0 — this manual count is only for when the CLI is absent.
 
 ## Step 3 — Report state
 
@@ -74,10 +74,12 @@ Based on state, name the single most likely next command — do not run it:
 
 - **A task is blocked** → \"Задача `<slug>` заблокирована. Запусти `/revise-task`, затем `/run-task`.\"
 - **A task is done, awaiting archive** → \"Задача `<slug>` исполнена и ждёт архивации. Запусти `/run-task` и попроси заархивировать её (Шаг 10), когда будешь готов.\"
+- **An investigation is finished and not archived** → \"Расследование `<slug>` доведено до исхода и ждёт архивации — `fraim investigate-seal <slug>`.\"
+- **An investigation has been open for days with no outcome** → \"Расследование `<slug>` открыто <N> дней без исхода. Доведи его через `/investigate` или признай тупик — за незакрытым расследованием могут стоять неубранные строки в базе.\"
 - **A queued plan looks stale** → \"Задача `<slug>` могла устареть, пока ждала в очереди. Перед `/run-task` стоит проверить её provenance — `/run-task` поймает это сам, либо почини через `/revise-task`.\"
 - **Runnable task(s) in the queue** → \"В очереди <N> задач(а). Запусти `/run-task`\" + (if several) \"и выбери, какую исполнять.\"
 - **Empty queue** → \"Очередь пуста. Обсуди следующий шаг и запусти `/make-task`, когда план согласован.\"
-- **Drift built up** (≥5 hotfixes since last prune, or the foundation looks stale) → \"С последнего прунинга <N> хотфиксов — фундамент мог поплыть. Запусти `/prune`, чтобы свести его с реальностью.\"
+- **Drift built up** (the watchman reported `drift` at attention level, or the foundation looks stale) → \"С последнего прунинга <N> хотфиксов — фундамент мог поплыть. Запусти `/prune`, чтобы свести его с реальностью.\"
 - **A trivial fix is all that is needed** → \"Это микро-правка — `/hotfix` (если в пределах потолка), не полный цикл.\"
 
 Then stop and wait for the human. Do not begin work in this session.

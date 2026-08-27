@@ -3,7 +3,7 @@ name: make-task
 description: "Capture the agreed plan into a new task folder under ai/tasks/ for handoff to a fresh-chat executor model"
 metadata:
   tier: strong
-  version: 0.3.0
+  version: 0.4.0
   source: fraim
 ---
 # /make-task — Plan Handoff
@@ -96,8 +96,9 @@ Verify each line against the files you just wrote. Any failure → fix the file 
 
 3.1 No reference to \"this chat\", \"above\", \"discussed\", or \"we decided\" — all rationale is inline.
 3.2 Every path mentioned is concrete; no placeholders remain.
-3.3 `## Plan provenance` is filled: date, plus a git ref or the list of files the plan assumes,
-    plus the `System:` line if `fraim` is on PATH (`fraim version`).
+3.3 `## Plan provenance` is exactly as `fraim task-new` wrote it (Step 1.8) — date, basis,
+    system version. You do not edit it and you do not retype it; if it is missing, the task
+    folder was not created by the verb, and that is a defect to fix rather than to patch.
 3.4 For a change to existing code: the Step 1b scan was run, and **every** dependent it found is
     in Files to Change or in Constraints.
 3.5 Every `Files to Change` entry has Action, What, and Pattern reference.
@@ -131,7 +132,6 @@ Verify each line against the files you just wrote. Any failure → fix the file 
 # Task Context
 
 ## Plan provenance
-- Planned: <YYYY-MM-DD>
 - Planned / Based on / System: **already written by `fraim task-new`** — leave them alone.
   Without git, replace `Based on` with the list of files this plan assumes the state of.
 <This is the snapshot the plan was written against. The executor re-checks it before running,

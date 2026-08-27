@@ -26,6 +26,25 @@ The shape is **reverse bootstrap / reverse deploy**: greenfield goes design → 
 
 This is a **one-time** act per project. Afterward the project is a normal citizen: `/make-task`, `/run-task`, `/hotfix`, `/prune` work on it identically, and `/prune` maintains the foundation from there. Think of `/onboard` as the manual first `/prune` that also stands up `ai/` and the git baseline.
 
+## Step 0 — lay the skeleton first
+
+```sh
+fraim scaffold
+```
+
+It creates the foundation files, the whole `ai/` tree (`tasks/`, `archive/`, `investigations/`),
+`.gitignore` and `ai/fraim.conf` from fixed templates, and registers the project. **It never
+overwrites**, so running it on a project that already has some of these files is safe — that is
+the normal onboarding case, and it is why this comes first rather than last.
+
+Now you are not inventing structure, you are filling it: read reality, propose the content of each
+section to the human, write it in, and **delete the `fraim:stub` marker line** from every file you
+filled. Until that line is gone, `fraim status` reports the foundation as a scaffold rather than a
+foundation — which is exactly right, and is why an empty skeleton can never masquerade as a
+healthy project.
+
+---
+
 ## Which sections to run (same routing question as the design session)
 
 - **It contains your own code** → run **Section 1**.
@@ -62,7 +81,7 @@ Organically-grown repos carry signals the code alone cannot resolve. Flag each a
 
 ### Step 4 — Ratify with the human, then stand up `ai/`
 
-Show the drafts; the human corrects what the code could not tell you. On confirmation, create the `ai/` structure at the root — `tasks/`, `archive/` (with `decisions_log.md` when first needed), `hotfix_log.md`, `README.md` — without moving any code.
+Show the drafts; the human corrects what the code could not tell you. On confirmation, write the content into the files `fraim scaffold` already laid down (Step 0) and delete their `fraim:stub` lines — without moving any code. The `ai/` tree is already there; do not rebuild it by hand, and do not invent a variant of it.
 
 ---
 
@@ -76,7 +95,7 @@ Show the drafts; the human corrects what the code could not tell you. On confirm
 
 ### Step 2 — Derive `STACK.md` and flag legacy deviations
 
-Fill the passport (Appendix C of `docker-deploy.md`) from what is actually running. A box deployed before the discipline will likely **violate the deploy invariants** — the default `bridge` network, a DB port on `0.0.0.0`, a container running as root, no compose file. Record each in `STACK.md`'s **Deviations / legacy risks** section, marked **accepted** or **should be remediated**.
+Run `fraim stack-passport` — it writes `STACK.md` from the template, including the standing directive that keeps the passport current — and fill it from what is actually running. A box deployed before the discipline will likely **violate the deploy invariants** — the default `bridge` network, a DB port on `0.0.0.0`, a container running as root, no compose file. Record each in `STACK.md`'s **Deviations / legacy risks** section, marked **accepted** or **should be remediated**.
 
 > You do **NOT** fix the running stack here. Remediation is a deliberate `docker-deploy.md` change, one risk at a time, with its own stop signals (opening a port, restarting, `chown`, etc.). Onboarding gives the human an honest passport plus a risk to-do list — not a silently re-secured prod.
 
@@ -87,15 +106,16 @@ Fill the passport (Appendix C of `docker-deploy.md`) from what is actually runni
 Onboarding an existing folder is exactly where `git init` is riskiest: the folder is already full of `.env`, `data/`, `__pycache__`, backup tarballs. A blind `git add .` commits secrets and gigabytes of data.
 
 1. **Detect git.** Is there a `.git`? Does `git status` work?
-2. **If NOT in git:** write/fix `.gitignore` **first** (`.env`, `data/`, logs as appropriate, `node_modules`, `venv`, `__pycache__`, `*.tar.gz` and other backup archives). Then run `git init` and `git status`, and **show the human exactly what would be committed.** Verify no secrets, data dirs, or backups are staged. Only then make the baseline commit `onboard: foundation + baseline`. **This is a stop-signal moment — human eyes before the first commit.**
-3. **If already in git:** make the baseline commit `onboard: add foundation`. Still check `.gitignore` covers secrets and cruft; if committed cruft already exists (e.g. `__pycache__`, backup archives), note it for the human — purging it from history is out of scope here, but `.gitignore` should at least stop it growing.
+2. **If NOT in git:** `fraim scaffold` (Step 0) already wrote a `.gitignore`; extend it for what this project actually carries (`data/`, logs, `node_modules`, `venv`, `__pycache__`, `*.tar.gz` and other backup archives). Then run `git init`, and save the baseline with the verb, naming the paths: `fraim commit onboard "baseline" README.md ARCHITECTURE.md CONVENTIONS.md DECISIONS.md .gitignore ai`. The user's existing code is **not** swept in by this — it enters the history later, file by file, as the workflows that change it save what they changed. Show the human what was saved. **This is a stop-signal moment — human eyes before the first save point.**
+3. **If already in git:** save the foundation and nothing else —
+   `fraim commit onboard "foundation derived from existing code" README.md ARCHITECTURE.md CONVENTIONS.md DECISIONS.md .gitignore ai` — and note that the verb saves **only the paths you name**, which is what keeps the user's `.env`, data and unfinished work out of it. If committed cruft already exists (e.g. `__pycache__`, backup archives), note it for the human — purging it from history is out of scope here, but `.gitignore` should at least stop it growing.
 
 ---
 
 ## Step — Present and finish
 
 1. Show the human: the derived foundation files (Section 1), the derived `STACK.md` + deviations list (Section 2), and the git status. Nothing is final until the human approves.
-2. On approval, apply and **commit** as one save point.
+2. On approval, apply and save as one point: `fraim commit onboard "<project> — onboarded"` plus the paths you actually wrote. Never \"everything\" — the verb has no such argument on purpose.
 3. Report:
    - What was created (`ARCHITECTURE.md` / `CONVENTIONS.md` / `DECISIONS.md` / `ai/` / `STACK.md`).
    - Which ambiguities the human resolved (dead code, live component, stale docs).
@@ -103,13 +123,3 @@ Onboarding an existing folder is exactly where `git init` is riskiest: the folde
    - That the project is now a normal citizen — point the user at `/orient` for re-entry and `/make-task` for the first real task.
 
 > Onboarding **documents and ratifies the present**; it does not redesign, reorganize, or remediate. Anything that changes code or the running stack is normal work afterward, never done here.
-
-## Before you derive anything — lay the skeleton
-
-```sh
-fraim scaffold
-```
-
-It creates the foundation files, the `ai/` tree and `ai/fraim.conf` from fixed templates, and registers the project. **It never overwrites**, so running it on a project that already has some of these files is safe — that is the normal onboarding case.
-
-Now you are not inventing structure, you are filling it: read reality, propose the content of each section to the human, write it in, and **delete the `fraim:stub` marker line** from every file you filled. Until that line is gone, `fraim status` reports the foundation as a scaffold rather than a foundation — which is exactly right, and is why an empty skeleton can never masquerade as a healthy project.

@@ -134,6 +134,45 @@ wm_check_plan_version() {
     done
 }
 
+# 4b. Unsealed work: the task was executed and never went through the gate. Until now
+#     nothing noticed this, while DETERMINISM.md claimed the watchman would — which is
+#     the one thing a system built on "the bypass is visible" cannot afford to be wrong about.
+wm_check_unsealed() {
+    _root=$1
+    [ -d "$_root/ai/tasks" ] || return 0
+    for _r in "$_root"/ai/tasks/*/result.md; do
+        [ -f "$_r" ] || continue
+        _dir=$(dirname -- "$_r")
+        [ -f "$_dir/blockers.md" ] && continue
+        _slug=$(basename -- "$_dir")
+        _days=$(wm_days_since "$(wm_mtime "$_r")")
+        if [ "$_days" -eq 0 ]; then _age="сегодня"
+        else _age="$_days $(wm_plural "$_days" день дня дней) назад"; fi
+        wm_add unsealed attention "задача «$_slug» исполнена $_age и не запечатана" "fraim task-seal $_slug"
+    done
+}
+
+# 4c. Investigations: a folder that never landed on an outcome, or landed and stayed.
+#     This is the terminal state /investigate never had — its folders grew forever.
+wm_check_investigations() {
+    _root=$1
+    [ -d "$_root/ai/investigations" ] || return 0
+    for _f in "$_root"/ai/investigations/*/findings.md; do
+        [ -f "$_f" ] || continue
+        _slug=$(basename -- "$(dirname -- "$_f")")
+        _days=$(wm_days_since "$(wm_mtime "$_f")")
+        if verb_section_filled "$_f" '### DIAGNOSIS' || verb_section_filled "$_f" '### DEAD-END'; then
+            wm_add investigation attention "расследование «$_slug» закончено и не заархивировано" \
+                "fraim investigate-seal $_slug"
+        elif [ "$_days" -ge 7 ]; then
+            wm_add investigation attention \
+                "расследование «$_slug» открыто $_days $(wm_plural "$_days" день дня дней) без исхода" "/investigate"
+        else
+            wm_add investigation info "расследование «$_slug» в работе" ""
+        fi
+    done
+}
+
 # 5. Queue depth. Informational — a full queue is normal, an empty one is too.
 wm_check_queue() {
     _root=$1
@@ -212,6 +251,8 @@ wm_run() {
     config_is_on check_blockers     "$_root" && wm_check_blockers "$_root"
     config_is_on check_stale_plans  "$_root" && wm_check_stale_plans "$_root"
     config_is_on check_plan_version "$_root" && wm_check_plan_version "$_root"
+    config_is_on check_unsealed       "$_root" && wm_check_unsealed "$_root"
+    config_is_on check_investigations "$_root" && wm_check_investigations "$_root"
     wm_check_queue "$_root"
     config_is_on check_foundation   "$_root" && wm_check_foundation "$_root"
     return 0
