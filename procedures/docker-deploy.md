@@ -274,7 +274,9 @@ ss -tlnp | grep -v '127.0.0.1'
     and pinned tags, network, exposure per service, data directories, deviations, and the
     originating per-stack input. Roughly half a page — a fixed-schema fact sheet, not a wiki.
 9.4 Show it to the human together with the rest of the deploy.
-9.5 Commit: `fraim commit deploy "<project> — <one line>"`, or plain git outside a fraim project.
+9.5 Save the point, naming the paths this deploy actually wrote:
+    `fraim commit deploy "<project> — <one line>" docker-compose.yml STACK.md conf`.
+    Never `.env` — it holds the secrets, and the verb has no \"everything\" argument on purpose.
 
 ### Step 10 — Maintenance
 

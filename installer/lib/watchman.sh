@@ -26,6 +26,16 @@ wm_days_since() { _t=$1; [ -n "$_t" ] || { printf '0\n'; return; }; printf '%s\n
 
 wm_is_git() { git -C "$1" rev-parse --git-dir >/dev/null 2>&1; }
 
+# Commits touching anything but markdown, since a given commit (or all of them).
+wm_code_commits_since() {
+    _root=$1; _from=$2
+    if [ -n "$_from" ]; then
+        git -C "$_root" rev-list --count "$_from..HEAD" -- ':!*.md' 2>/dev/null
+    else
+        git -C "$_root" rev-list --count HEAD -- ':!*.md' 2>/dev/null
+    fi
+}
+
 # Russian plurals: 1 хотфикс, 2 хотфикса, 5 хотфиксов. The verdict is read
 # daily, so getting this wrong is a small papercut repeated forever.
 wm_plural() {
@@ -134,6 +144,75 @@ wm_check_plan_version() {
     done
 }
 
+# 4b. Unsealed work: the task was executed and never went through the gate. Until now
+#     nothing noticed this, while DETERMINISM.md claimed the watchman would — which is
+#     the one thing a system built on "the bypass is visible" cannot afford to be wrong about.
+wm_check_unsealed() {
+    _root=$1
+    [ -d "$_root/ai/tasks" ] || return 0
+    for _r in "$_root"/ai/tasks/*/result.md; do
+        [ -f "$_r" ] || continue
+        _dir=$(dirname -- "$_r")
+        [ -f "$_dir/blockers.md" ] && continue
+        _slug=$(basename -- "$_dir")
+        _days=$(wm_days_since "$(wm_mtime "$_r")")
+        if [ "$_days" -eq 0 ]; then _age="сегодня"
+        else _age="$_days $(wm_plural "$_days" день дня дней) назад"; fi
+        wm_add unsealed attention "задача «$_slug» исполнена $_age и не запечатана" "fraim task-seal $_slug"
+    done
+}
+
+# 4c. Investigations: a folder that never landed on an outcome, or landed and stayed.
+#     This is the terminal state /investigate never had — its folders grew forever.
+wm_check_investigations() {
+    _root=$1
+    [ -d "$_root/ai/investigations" ] || return 0
+    for _f in "$_root"/ai/investigations/*/findings.md; do
+        [ -f "$_f" ] || continue
+        _slug=$(basename -- "$(dirname -- "$_f")")
+        _days=$(wm_days_since "$(wm_mtime "$_f")")
+        if verb_section_filled "$_f" '### DIAGNOSIS' || verb_section_filled "$_f" '### DEAD-END'; then
+            wm_add investigation attention "расследование «$_slug» закончено и не заархивировано" \
+                "fraim investigate-seal $_slug"
+        elif [ "$_days" -ge 7 ]; then
+            wm_add investigation attention \
+                "расследование «$_slug» открыто $_days $(wm_plural "$_days" день дня дней) без исхода" "/investigate"
+        else
+            wm_add investigation info "расследование «$_slug» в работе" ""
+        fi
+    done
+}
+
+# 4d. No save points at all. Every save point in this system is a commit, so a project
+#     without a repository is a project where nothing can be undone — and nobody said so.
+wm_check_git() {
+    _root=$1
+    if ! command -v git >/dev/null 2>&1; then
+        wm_add git attention "git не установлен — точек сохранения нет" "установи git"
+        return 0
+    fi
+    wm_is_git "$_root" ||
+        wm_add git attention "нет репозитория — точек сохранения нет" "fraim scaffold"
+    return 0
+}
+
+# 4e. Changed and not saved. Only the artefacts the verbs always commit themselves: if one
+#     of them is modified and uncommitted, a verb was interrupted or bypassed. Code and
+#     settings are the human's business and are deliberately not counted — a watchman that
+#     comments on work in progress stops being read.
+wm_check_dirty() {
+    _root=$1
+    wm_is_git "$_root" || return 0
+    _n=$(git -C "$_root" status --porcelain --untracked-files=no -- \
+            ARCHITECTURE.md CONVENTIONS.md DECISIONS.md README.md STACK.md \
+            ai/tasks ai/archive ai/hotfix_log.md 2>/dev/null | wc -l | tr -d ' ')
+    [ "$_n" -gt 0 ] || return 0
+    wm_add dirty attention \
+        "$_n $(wm_plural "$_n" файл файла файлов) фундамента и ai/ изменены после последней точки сохранения" \
+        "fraim commit"
+    return 0
+}
+
 # 5. Queue depth. Informational — a full queue is normal, an empty one is too.
 wm_check_queue() {
     _root=$1
@@ -175,20 +254,29 @@ wm_check_foundation() {
     fi
     wm_is_git "$_root" || return 0
 
-    _arch_t=$(git -C "$_root" log -1 --format=%ct -- ARCHITECTURE.md 2>/dev/null)
-    [ -n "$_arch_t" ] || _arch_t=$(wm_mtime "$_arch")
-    _code_t=$(git -C "$_root" log -1 --format=%ct -- ':!*.md' 2>/dev/null)
-    [ -n "$_code_t" ] || return 0
-    [ -n "$_arch_t" ] || return 0
+    # How much has changed since the map last did — measured in CHANGE, not in time.
+    #
+    # This used to be the number of days between the last code commit and the last
+    # ARCHITECTURE.md commit, and that was the wrong quantity. Time is a decent proxy
+    # only in the task loop, where one task is one sitting and the gate updates the map
+    # at the end of it. In reactive work — the most frequent mode, and the one with no
+    # gate at all — it inverts: a hundred commits inside a fortnight stayed silent while
+    # a single commit a fortnight later raised the alarm. The denser the work, the less
+    # likely the watchman was to notice. Counting commits measures the thing itself.
+    # Two anchors reset the count, and the nearer one wins: the map itself moving, and
+    # /prune having run. A prune that honestly found nothing to change still commits
+    # nothing to ARCHITECTURE.md — without the second anchor the verdict would keep
+    # asking for a gardening that just happened.
+    _n=$(wm_code_commits_since "$_root" "$(git -C "$_root" log -1 --format=%H -- ARCHITECTURE.md 2>/dev/null)")
+    _np=$(wm_code_commits_since "$_root" "$(git -C "$_root" log -1 --format=%H --grep='^prune: ' 2>/dev/null)")
+    [ -n "$_n" ] || _n=0
+    [ -n "$_np" ] || _np=0
+    [ "$_np" -lt "$_n" ] && _n=$_np
 
-    if [ "$_code_t" -gt "$_arch_t" ]; then
-        _gap=$(( (_code_t - _arch_t) / 86400 ))
-        # A day or two of lag is just the normal order of a commit. Weeks is drift.
-        _max=$(config_get foundation_lag_days "$_root")
-        if [ "$_gap" -ge "$_max" ]; then
-            _w=$(wm_plural "$_gap" день дня дней)
-            wm_add foundation attention "ARCHITECTURE.md отстаёт от кода на $_gap $_w" "/prune"
-        fi
+    _max=$(config_get foundation_lag_commits "$_root")
+    if [ "$_n" -ge "$_max" ]; then
+        _w=$(wm_plural "$_n" коммит коммита коммитов)
+        wm_add foundation attention "$_n $_w кода с последнего обновления ARCHITECTURE.md" "/prune"
     fi
     return 0
 }
@@ -212,6 +300,10 @@ wm_run() {
     config_is_on check_blockers     "$_root" && wm_check_blockers "$_root"
     config_is_on check_stale_plans  "$_root" && wm_check_stale_plans "$_root"
     config_is_on check_plan_version "$_root" && wm_check_plan_version "$_root"
+    config_is_on check_unsealed       "$_root" && wm_check_unsealed "$_root"
+    config_is_on check_investigations "$_root" && wm_check_investigations "$_root"
+    config_is_on check_git            "$_root" && wm_check_git "$_root"
+    config_is_on check_dirty          "$_root" && wm_check_dirty "$_root"
     wm_check_queue "$_root"
     config_is_on check_foundation   "$_root" && wm_check_foundation "$_root"
     return 0

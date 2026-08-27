@@ -3,7 +3,7 @@ name: reconcile-task
 description: "Close a /run-task session that drifted into live debugging — fold the unplanned changes back into the record and archive truthfully; but STOP and hand to /revise-task if the drift was structural, not surgical"
 metadata:
   tier: capable
-  version: 0.3.0
+  version: 0.4.0
   source: fraim
 ---
 # /reconcile-task — Seal a Drifted Execution Session
@@ -17,6 +17,11 @@ You are the **executor**, closing a `/run-task` that did not stay on rails. The 
 > - `/prune` reconciles the *whole foundation* against the *whole codebase*, periodically, proposing diffs. `/reconcile-task` reconciles *one task's record* against the code it just produced, now, and writes that record itself.
 
 > Paths are **repo-relative to the project root** (the folder the agent has open). Never hardcode an absolute project path.
+
+> **Deterministic actions belong to `fraim`, not to you.** This workflow ends at a gate
+> (`fraim reconcile-seal`), and that gate is the *second* door out of a task — the same one
+> `/run-task` uses, with one extra precondition. Archiving by hand is how a structural change
+> gets filed as a minor divergence. No `fraim` — stop and say so.
 
 ## The gate — check it FIRST, before reconciling anything
 
@@ -44,18 +49,13 @@ Apply the gate to the **delta from the plan** — only the edits that were NOT i
 The drift broke the gate. Reconciling now would **launder a structural change into the record as a minor divergence** — exactly the silent drift the system is built to prevent.
 
 1. **Do not archive. Do not commit. Do not move the task folder.**
-2. Write `ai/tasks/<slug>/blockers.md` capturing the structural reality so the planner does not start from zero:
-   ```markdown
-   # Blockers
-   ## What is wrong
-   - The plan's approach was defective: <what the plan assumed> → <what the approach actually became live>.
-   ## What changed live (un-scanned)
-   - <files touched live that were not in the plan, and the structural change each made>
-   ## Still needs
-   - A reference scan of the blast radius of the change above — it was made without one.
-   ## What I did NOT change
-   - <state plainly>
-   ```
+2. Run `fraim task-block <slug>` and fill the file it lays down, capturing the structural reality so the planner does not start from zero:
+   - **What is wrong** — the plan's approach was defective: what it assumed → what the approach actually became live.
+   - **Evidence** — the files touched live that were not in the plan, and the structural change each made.
+   - **Suggested direction** — a reference scan of the blast radius of that change; it was made without one.
+   - **What I did NOT change** — state it plainly.
+
+   Delete the `fraim:stub` line when the sections are filled.
 3. **STOP** and tell the operator:
    > *\"Дрейф структурный, не хирургический — это `/revise-task`, а не reconcile. То, что оно работает, не отменяет того, что изменение прошло мимо reference scan. Записал `blockers.md`. Запусти `/revise-task`, чтобы привести план к новому подходу (с reference scan'ом задетых зависимостей), затем `/run-task` — он проверит код против выправленного плана.\"*
 
@@ -74,12 +74,14 @@ List every edit that was NOT in the plan, or that broke a stated constraint. For
 One entry per delta that **changed behavior**. If a delta reversed an earlier `DECISIONS.md` entry, **do not delete it** — append a new entry marking the old one superseded.
 
 ### Step 3 — `result.md` + final report: the divergence section
-Add an explicit section recording, **as-is, without smoothing**:
+Run `fraim task-result <slug> --reconcile`. It lays down the report if the run never wrote one,
+and adds the `## Divergence from plan` section — the one the seal gate reads. Fill it **as-is,
+without smoothing**:
 - what the plan diagnosed / assumed,
 - what turned out to be true,
 - which plan constraints were **consciously overridden under operator direction** during live debugging.
 
-> An archive that reads cleaner than the session actually was is worse than no archive. The next `/prune` and the next planner rely on this being honest.
+> An archive that reads cleaner than the session actually was is worse than no archive. The next `/prune` and the next planner rely on this being honest. That is why the gate refuses an empty or placeholder-laden divergence section: this section *is* the workflow.
 
 ### Step 4 — `CONVENTIONS.md` → `## Known Pitfalls / Lessons` (English)
 From the deltas, lift the **generalizable** gotchas — the ones a future task in this codebase will hit again — one line each. **Exclude** one-off details specific to this task. This is the loop feed; do not let it become a dumping ground.
@@ -90,11 +92,18 @@ Surgical drift should not change structure. But if a corrected detail touched a 
 ### Step 6 — Leave bugs alone
 Any `(bug)` flagged for the operator stays a `/make-task` candidate. Do not fix it here.
 
-### Step 7 — Archive (the standard `/run-task` close)
-1. Create `ai/archive/<YYYY-MM-DD_HHMM>_<slug>/` using current local time.
-2. Move the task folder's contents there (`context.md`, `task.md`, any leftover `blockers.md`); write the final report into `result.md`.
-3. Remove the now-empty `ai/tasks/<slug>/`; confirm other queued tasks are untouched.
-4. **Commit** as one save point (e.g. `reconcile: <slug> — sealed drifted session <YYYY-MM-DD>`). If the project does not use git, skip silently.
+### Step 7 — Seal (the gate)
+```sh
+fraim reconcile-seal <slug>
+```
+It checks the same three preconditions as `fraim task-seal` — the task was executed, it is not
+blocked, `## Foundation updated` is filled in — **plus** a filled `## Divergence from plan`. Then
+it timestamps the archive directory, moves the folder whole, saves the point as
+`reconcile: <slug> — sealed drifted session`, and reports what is left in the queue.
+
+It refused → it named a precondition that is not met. Fix that and run it again. Do **not**
+archive by hand instead: the refusal is the check, not an obstacle, and a hand-made archive is
+exactly how a drifted session gets filed as if it had gone to plan.
 
 ### Step 8 — Self-check before declaring done
 - [ ] Every behavioral delta is in `DECISIONS.md`; every reversal supersedes (not deletes).

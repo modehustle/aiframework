@@ -3,7 +3,7 @@ name: docker-deploy
 description: "Build and run a Docker stack securely — one isolated network, non-root containers, dropped capabilities, resource limits, healthchecks, secrets in .env — verify it on loopback, and write the STACK.md passport. Making it reachable from outside is /expose."
 metadata:
   tier: capable
-  version: 0.3.0
+  version: 0.4.0
   source: fraim
 ---
 # /docker-deploy — Build and Box a Stack
@@ -275,7 +275,9 @@ ss -tlnp | grep -v '127.0.0.1'
     and pinned tags, network, exposure per service, data directories, deviations, and the
     originating per-stack input. Roughly half a page — a fixed-schema fact sheet, not a wiki.
 9.4 Show it to the human together with the rest of the deploy.
-9.5 Commit: `fraim commit deploy "<project> — <one line>"`, or plain git outside a fraim project.
+9.5 Save the point, naming the paths this deploy actually wrote:
+    `fraim commit deploy "<project> — <one line>" docker-compose.yml STACK.md conf`.
+    Never `.env` — it holds the secrets, and the verb has no \"everything\" argument on purpose.
 
 ### Step 10 — Maintenance
 

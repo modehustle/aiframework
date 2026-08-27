@@ -18,6 +18,65 @@
 
 verb_is_git() { git -C "$1" rev-parse --git-dir >/dev/null 2>&1; }
 
+# Where the file templates live. The SHAPE of every artefact the procedures write is a
+# fixed structure, so it is code (A2); only what goes inside the sections is text.
+verb_template() {
+    _r=$(fraim_root) || return 1
+    _t="$_r/installer/templates/$1"
+    [ -f "$_t" ] || return 1
+    printf '%s\n' "$_t"
+}
+
+# The provenance stamp: date, the snapshot the work is based on, and the system version.
+# One implementation, used by task-new, task-revise and investigate-new alike — the three
+# places where a forgotten or mistyped stamp silently disables a staleness check.
+verb_provenance() {
+    _root=$1
+    _date=$(date +%Y-%m-%d)
+    _ver=$(fraim_version)
+    if verb_is_git "$_root"; then
+        _ref=$(git -C "$_root" rev-parse --short HEAD 2>/dev/null)
+        _based="HEAD $_ref"
+    else
+        _based="<no git — list the files this plan assumes the current state of>"
+    fi
+    printf -- '- Planned: %s\n- Based on: %s\n- System: fraim %s\n' "$_date" "$_based" "$_ver"
+}
+
+# A section of a markdown file must be present, non-empty and free of placeholders.
+# Used by every gate: this is what turns "the executor promised" into a precondition.
+verb_section_filled() {
+    _file=$1; _head=$2
+    grep -q "^$_head\$" "$_file" || return 1
+    _sec=$(awk -v h="$_head" '$0 == h {f=1;next} /^#/{f=0} f' "$_file")
+    [ -n "$(printf '%s' "$_sec" | tr -d '[:space:]')" ] || return 2
+    printf '%s' "$_sec" | grep -q '<[^>]*>' && return 3
+    return 0
+}
+
+# Move a finished folder into the archive under a timestamp, then commit it.
+# One implementation for tasks, drifted sessions and investigations: the timestamp
+# format is what /orient reads back as "recent history".
+verb_archive() {
+    _root=$1; _src=$2; _name=$3; _kind=$4; _text=$5
+    _stamp=$(date +%Y-%m-%d_%H%M)
+    _dest="$_root/ai/archive/${_stamp}_${_name}"
+    [ -e "$_dest" ] && die "в архиве уже есть $_dest"
+    mkdir -p "$_root/ai/archive" || die "не удалось создать ai/archive/"
+    mv "$_src" "$_dest" || die "не удалось перенести в архив"
+    ok "архивировано: ai/archive/${_stamp}_${_name}"
+    verb_commit "$_root" "$_kind" "$_text" "ai/tasks" "ai/investigations" "ai/archive" ||
+        warn "коммит не удался"
+}
+
+# What is still waiting in the queue after something left it.
+verb_queue_left() {
+    _root=$1
+    _left=$(find "$_root/ai/tasks" -mindepth 1 -maxdepth 1 -type d 2>/dev/null |
+            while read -r _d; do basename -- "$_d"; done | sort | tr '\n' ' ')
+    if [ -n "$_left" ]; then say "  осталось в очереди: $_left"; else dim "  очередь пуста"; fi
+}
+
 # One commit format for the whole system. Kinds mirror the procedures that produce them.
 verb_commit() {
     _root=$1; _kind=$2; _text=$3
@@ -30,7 +89,10 @@ verb_commit() {
         git -C "$_root" add -- "$_p" >/dev/null 2>&1 || true
     done
     git -C "$_root" diff --cached --quiet 2>/dev/null && return 0
-    git -C "$_root" commit -q -m "$_kind: $_text" || return 1
+    # The trailer is what lets `fraim undo` tell our save points from everyone else's,
+    # mechanically, in a repository we may not own. It stays out of the subject line,
+    # so `git log --oneline` reads exactly as before.
+    git -C "$_root" commit -q -m "$_kind: $_text" -m "fraim: $(fraim_version)" || return 1
     ok "коммит: $_kind: $_text"
 }
 
@@ -47,21 +109,12 @@ verb_task_new() {
     [ -d "$_root/ai/tasks" ] || die "нет ai/tasks/ — проект не под системой; сначала fraim scaffold"
 
     mkdir -p "$_dir" || die "не удалось создать $_dir"
-    _date=$(date +%Y-%m-%d)
-    _ver=$(fraim_version)
-    if verb_is_git "$_root"; then
-        _ref=$(git -C "$_root" rev-parse --short HEAD 2>/dev/null)
-        _based="HEAD $_ref"
-    else
-        _based="<no git — list the files this plan assumes the current state of>"
-    fi
 
     {
         printf '# Task Context\n\n'
         printf '## Plan provenance\n'
-        printf -- '- Planned: %s\n' "$_date"
-        printf -- '- Based on: %s\n' "$_based"
-        printf -- '- System: fraim %s\n\n' "$_ver"
+        verb_provenance "$_root"
+        printf '\n'
         printf '<!-- fraim:stub — /make-task fills the sections below and deletes this line. -->\n\n'
         for _s in Goal Why "Codebase Context" Constraints "Decisions and Rationale" \
                   "Known Pitfalls" "Out of Scope"; do
@@ -80,16 +133,15 @@ verb_task_new() {
         done
     } > "$_dir/task.md"
 
-    ok "ai/tasks/$_slug/ — provenance: $_based, fraim $_ver"
+    ok "ai/tasks/$_slug/ — provenance: $(verb_provenance "$_root" | tr '\n' ' ')"
     dim "  заполни разделы по /make-task, потом задачу исполняет /run-task"
 }
 
 # --- task-seal (the gate) ---------------------------------------------------
-verb_task_seal() {
-    _root=$1; _slug=$2
-    _dir="$_root/ai/tasks/$_slug"
-    [ -d "$_dir" ] || die "нет такой задачи: ai/tasks/$_slug"
-
+# The three preconditions below are shared with reconcile-seal: a task leaves the
+# queue through one of two doors, and both doors are ours.
+verb_task_gate() {
+    _dir=$1
     # Gate 1 — the task must actually have been executed.
     [ -f "$_dir/result.md" ] ||
         die "нет result.md — задача не исполнена. Архивировать нечего."
@@ -98,32 +150,204 @@ verb_task_seal() {
     [ -f "$_dir/blockers.md" ] &&
         die "есть blockers.md — задача заблокирована. Сначала /revise-task, потом /run-task."
 
+    grep -q "$SCAFFOLD_STUB" "$_dir/result.md" 2>/dev/null &&
+        die "result.md — незаполненная заготовка (маркер $SCAFFOLD_STUB на месте)"
+
     # Gate 3 — the foundation must be accounted for. This is invariant 0.4 turning from
     # a request into a precondition: the executor may legitimately have changed nothing,
     # but it has to SAY so, and the statement lands in the archive as a record.
-    if ! grep -q '^## Foundation updated' "$_dir/result.md"; then
-        die "в result.md нет раздела '## Foundation updated' — инвариант 0.4 не отчитан"
-    fi
-    _fsec=$(awk '/^## Foundation updated/{f=1;next} /^## /{f=0} f' "$_dir/result.md")
-    if [ -z "$(printf '%s' "$_fsec" | tr -d '[:space:]')" ]; then
-        die "раздел '## Foundation updated' пуст — напиши, что стало с ARCHITECTURE.md и DECISIONS.md"
-    fi
-    if printf '%s' "$_fsec" | grep -q '<[^>]*>'; then
-        die "в '## Foundation updated' остались незаполненные плейсхолдеры — допиши их"
-    fi
+    _rc=0; verb_section_filled "$_dir/result.md" '## Foundation updated' || _rc=$?
+    case $_rc in
+        1) die "в result.md нет раздела '## Foundation updated' — инвариант 0.4 не отчитан" ;;
+        2) die "раздел '## Foundation updated' пуст — напиши, что стало с ARCHITECTURE.md и DECISIONS.md" ;;
+        3) die "в '## Foundation updated' остались незаполненные плейсхолдеры — допиши их" ;;
+    esac
+}
 
-    _stamp=$(date +%Y-%m-%d_%H%M)
-    _dest="$_root/ai/archive/${_stamp}_${_slug}"
-    [ -e "$_dest" ] && die "в архиве уже есть $_dest"
-    mkdir -p "$_root/ai/archive" || die "не удалось создать ai/archive/"
-    mv "$_dir" "$_dest" || die "не удалось перенести задачу в архив"
-    ok "архивировано: ai/archive/${_stamp}_${_slug}"
+verb_task_seal() {
+    _root=$1; _slug=$2
+    _dir="$_root/ai/tasks/$_slug"
+    [ -d "$_dir" ] || die "нет такой задачи: ai/tasks/$_slug"
+    verb_task_gate "$_dir"
+    verb_archive "$_root" "$_dir" "$_slug" archive "$_slug"
+    verb_queue_left "$_root"
+}
 
-    verb_commit "$_root" archive "$_slug" "ai/tasks" "ai/archive" || warn "коммит не удался"
+# --- reconcile-seal (the second door) ---------------------------------------
+# /reconcile-task used to archive a drifted session in PROSE — four mechanical steps
+# and its own commit format, past this gate entirely. That made the claim "the only
+# door out of a task is ours" false exactly where it mattered most: a session that
+# turned into live debugging, where the record is the only thing keeping the archive
+# honest. Same preconditions as task-seal, plus the one this workflow exists for.
+verb_reconcile_seal() {
+    _root=$1; _slug=$2
+    _dir="$_root/ai/tasks/$_slug"
+    [ -d "$_dir" ] || die "нет такой задачи: ai/tasks/$_slug"
+    verb_task_gate "$_dir"
 
-    _left=$(find "$_root/ai/tasks" -mindepth 1 -maxdepth 1 -type d 2>/dev/null |
-            while read -r _d; do basename -- "$_d"; done | sort | tr '\n' ' ')
-    if [ -n "$_left" ]; then say "  осталось в очереди: $_left"; else dim "  очередь пуста"; fi
+    _rc=0; verb_section_filled "$_dir/result.md" '## Divergence from plan' || _rc=$?
+    case $_rc in
+        1) die "в result.md нет раздела '## Divergence from plan' — заведи его: fraim task-result $_slug --reconcile" ;;
+        2) die "раздел '## Divergence from plan' пуст — расхождения с планом и есть предмет этой процедуры" ;;
+        3) die "в '## Divergence from plan' остались незаполненные плейсхолдеры — допиши их" ;;
+    esac
+
+    verb_archive "$_root" "$_dir" "$_slug" reconcile "$_slug — sealed drifted session"
+    verb_queue_left "$_root"
+}
+
+# --- task-result / task-block -----------------------------------------------
+# Both files have a fixed shape and are read back machine-side: the seal gate parses
+# result.md, the watchman looks for blockers.md. A model retyping the headings from
+# prose is how a gate starts refusing honest work — or passing dishonest work.
+# Never overwrites: on a second pass the executor edits the report it already wrote.
+verb_task_file() {
+    _root=$1; _slug=$2; _tpl=$3; _name=$4
+    _dir="$_root/ai/tasks/$_slug"
+    [ -d "$_dir" ] || die "нет такой задачи: ai/tasks/$_slug"
+    _src=$(verb_template "$_tpl") || die "не найден шаблон $_tpl — установка повреждена"
+    if [ -f "$_dir/$_name" ]; then
+        dim "  ai/tasks/$_slug/$_name уже есть — правь его, не перезаписываю"
+        return 0
+    fi
+    cp "$_src" "$_dir/$_name" || die "не удалось записать $_name"
+    ok "ai/tasks/$_slug/$_name — заполни разделы и удали строку $SCAFFOLD_STUB"
+}
+
+verb_task_result() {
+    _root=$1; _slug=$2; _mode=${3:-}
+    _dir="$_root/ai/tasks/$_slug"
+    [ -d "$_dir" ] || die "нет такой задачи: ai/tasks/$_slug"
+    case $_mode in
+        --reset)
+            [ -f "$_dir/result.md" ] || die "нет result.md — сбрасывать нечего"
+            rm -f "$_dir/result.md" || die "не удалось удалить result.md"
+            ok "result.md удалён — план оказался дефектным, дальше blockers.md и /revise-task"
+            return 0
+            ;;
+        --reconcile|"") ;;
+        *) die "неизвестный режим: $_mode (--reconcile | --reset)" ;;
+    esac
+
+    verb_task_file "$_root" "$_slug" task/result.md result.md
+    [ "$_mode" = --reconcile ] || return 0
+
+    if grep -q '^## Divergence from plan$' "$_dir/result.md"; then
+        dim "  раздел '## Divergence from plan' уже есть"
+        return 0
+    fi
+    _add=$(verb_template task/divergence.md) || die "не найден шаблон task/divergence.md"
+    cat "$_add" >> "$_dir/result.md" || die "не удалось дописать раздел"
+    ok "в result.md заведён раздел '## Divergence from plan'"
+}
+
+verb_task_block() {
+    verb_task_file "$1" "$2" task/blockers.md blockers.md
+}
+
+# --- task-revise (the planner's gate) ---------------------------------------
+# The repaired plan needs a FRESH provenance stamp, or the watchman keeps reporting it
+# stale against the very commit that repaired it. That stamp is the same thing task-new
+# took away from the model because it is the thing that gets forgotten — and after a
+# repair it was handed straight back. Order matters here: the blocker is consumed last,
+# so an interrupted revision leaves the task blocked rather than silently runnable.
+verb_task_revise() {
+    _root=$1; _slug=$2; _defect=$3; _fix=$4
+    _dir="$_root/ai/tasks/$_slug"
+    [ -d "$_dir" ] || die "нет такой задачи: ai/tasks/$_slug"
+    [ -f "$_dir/blockers.md" ] ||
+        die "нет blockers.md — чинить нечего. Новая задача — /make-task, исполнение — /run-task."
+    [ -f "$_dir/task.md" ] || die "нет task.md — задача повреждена"
+    [ -f "$_dir/context.md" ] || die "нет context.md — задача повреждена"
+
+    _n=$(grep -c '^## Revision ' "$_dir/task.md" 2>/dev/null || true)
+    [ -n "$_n" ] || _n=0
+    _n=$((_n + 1))
+    _date=$(date +%Y-%m-%d)
+
+    _tmp="$_dir/.task.md.$$"
+    {
+        head -1 "$_dir/task.md"
+        printf '\n## Revision %s — %s\n' "$_n" "$_date"
+        printf -- '- Defect: %s\n' "$_defect"
+        printf -- '- Fix: %s\n' "$_fix"
+        tail -n +2 "$_dir/task.md"
+    } > "$_tmp" || die "не удалось записать task.md"
+    mv "$_tmp" "$_dir/task.md" || die "не удалось записать task.md"
+
+    _tmp="$_dir/.context.md.$$"
+    awk -v prov="$(verb_provenance "$_root")" '
+        /^## Plan provenance/ { print; print prov; skip = 1; next }
+        skip && /^[-[:space:]]*(Planned|Based on|System):/ { next }
+        skip && /^##/ { skip = 0 }
+        { print }
+    ' "$_dir/context.md" > "$_tmp" || die "не удалось записать context.md"
+    mv "$_tmp" "$_dir/context.md" || die "не удалось записать context.md"
+
+    rm -f "$_dir/blockers.md" || die "не удалось удалить blockers.md"
+
+    ok "ревизия $_n: провенанс обновлён, blockers.md снят"
+    verb_commit "$_root" revise "$_slug — $_defect" "ai/tasks" || warn "коммит не удался"
+    dim "  план починен — задачу снова исполняет /run-task"
+}
+
+# --- investigate-new / investigate-seal -------------------------------------
+# An investigation has exactly the same mechanics as a task — a folder, a provenance
+# stamp, an archive with a timestamp — and until now it had none of them: /investigate
+# created the folder, typed the schema and archived with its own commit message by hand.
+# Its exit also has a real precondition, and it is the one the system can least afford
+# to leave to good intentions: the cleanup of everything the scout touched.
+verb_investigate_new() {
+    _root=$1; _slug=$2
+    printf '%s' "$_slug" | grep -qE '^[a-z0-9]+(-[a-z0-9]+)*$' ||
+        die "слаг должен быть kebab-case: буквы, цифры и дефисы"
+    [ -d "$_root/ai/investigations" ] ||
+        die "нет ai/investigations/ — проект не под системой; сначала fraim scaffold"
+    _dir="$_root/ai/investigations/$_slug"
+    [ -e "$_dir" ] && die "расследование уже существует: ai/investigations/$_slug"
+    _tpl=$(verb_template investigation/findings.md) || die "не найден шаблон — установка повреждена"
+
+    mkdir -p "$_dir" || die "не удалось создать $_dir"
+    _prov=$(verb_provenance "$_root")
+    awk -v slug="$_slug" -v prov="$_prov" '
+        { gsub(/\{\{SLUG\}\}/, slug); if ($0 == "{{PROVENANCE}}") { print prov; next } print }
+    ' "$_tpl" > "$_dir/findings.md" || die "не удалось записать findings.md"
+
+    ok "ai/investigations/$_slug/findings.md"
+    dim "  манифесты пиши живьём, а не в конце: они и есть список уборки"
+}
+
+verb_investigate_seal() {
+    _root=$1; _slug=$2
+    _dir="$_root/ai/investigations/$_slug"
+    [ -d "$_dir" ] || die "нет такого расследования: ai/investigations/$_slug"
+    _f="$_dir/findings.md"
+    [ -f "$_f" ] || die "нет findings.md — архивировать нечего"
+    grep -q "$SCAFFOLD_STUB" "$_f" &&
+        die "findings.md — незаполненная заготовка (маркер $SCAFFOLD_STUB на месте)"
+
+    # Exactly one outcome branch. None means the investigation was abandoned; both
+    # means it was never landed — and a dead-end recorded honestly is a success here.
+    _filled=0; _which=
+    for _b in '### DIAGNOSIS' '### DEAD-END'; do
+        if verb_section_filled "$_f" "$_b"; then
+            _filled=$((_filled + 1)); _which=$_b
+        fi
+    done
+    [ "$_filled" -eq 0 ] &&
+        die "ни одна ветка исхода не заполнена — расследование без исхода не архивируется (DIAGNOSIS или DEAD-END)"
+    [ "$_filled" -gt 1 ] &&
+        die "заполнены обе ветки исхода — оставь ровно одну"
+
+    _rc=0; verb_section_filled "$_f" '## Restored to baseline' || _rc=$?
+    case $_rc in
+        1) die "в findings.md нет раздела '## Restored to baseline' — уборка не отчитана" ;;
+        2) die "раздел '## Restored to baseline' пуст — напиши, что стало с репозиторием и с миром" ;;
+        3) die "в '## Restored to baseline' остались плейсхолдеры — допиши их" ;;
+    esac
+
+    ok "исход: $(printf '%s' "$_which" | sed 's/^### //')"
+    verb_archive "$_root" "$_dir" "investigate_$_slug" archive "investigate $_slug"
 }
 
 # --- hotfix-log -------------------------------------------------------------
@@ -179,4 +403,98 @@ verb_prune_mark() {
     verb_commit "$_root" prune "reconcile foundation $_date" \
         ai/hotfix_log.md ARCHITECTURE.md CONVENTIONS.md DECISIONS.md ai/archive ||
         warn "коммит не удался"
+}
+
+# --- undo -------------------------------------------------------------------
+# The system tells people to work boldly because there is a save point behind them.
+# That promise is empty if getting back to one requires `git reset --hard HEAD~1` — the
+# person who most needs the way back is the least likely to know it exists.
+#
+# Undo is a REVERT, never a reset: it adds a commit that takes the change back out. History
+# is not rewritten, so this is safe in a repository shared with other people and with a
+# remote — and it is the same rule the system already applies to DECISIONS.md: supersede,
+# never delete. Two steps on purpose (list, then name one): showing is not doing.
+verb_undo_list() {
+    _root=$1
+    git -C "$_root" log -n 8 --grep='^fraim: ' --format='%h%x09%ad%x09%s' --date=short 2>/dev/null
+}
+
+verb_undo_show() {
+    _root=$1
+    _rows=$(verb_undo_list "$_root")
+    [ -n "$_rows" ] && [ -n "$(printf '%s' "$_rows" | tr -d '[:space:]')" ] ||
+        die "нет ни одной точки сохранения, поставленной системой — отменять нечего"
+    say "${C_BLD}Последние точки сохранения${C_OFF}"
+    printf '%s\n' "$_rows" | while IFS='	' read -r _h _d _s; do
+        [ -n "$_h" ] || continue
+        printf '  %s  %s  %s\n' "$_h" "$_d" "$_s"
+    done
+    say ""
+    dim "  отменить одну: fraim undo <хеш>"
+    dim "  отмена — это встречный коммит, а не переписанная история: её саму можно отменить"
+}
+
+verb_undo() {
+    _root=$1; _ref=$2
+    verb_is_git "$_root" || die "здесь нет git — отменять нечего"
+    git -C "$_root" cat-file -e "$_ref^{commit}" 2>/dev/null || die "нет такого коммита: $_ref"
+
+    # Ours or not. We do not undo what we did not do — in someone else's repository that
+    # is the difference between a tool and an accident.
+    git -C "$_root" log -1 --format=%B "$_ref" 2>/dev/null | grep -q '^fraim: ' ||
+        die "этот коммит поставила не система — отменять его не буду. Свои: fraim undo"
+
+    # Only the files this commit touched have to be settled. The rest of the tree is the
+    # human's work in progress, and it is none of our business — the same rule as everywhere:
+    # we look at what we changed, and nothing else.
+    _files=$(git -C "$_root" show --pretty= --name-only "$_ref" 2>/dev/null)
+    if [ -n "$_files" ]; then
+        _busy=$(printf '%s\n' "$_files" | while IFS= read -r _f; do
+                    [ -n "$_f" ] || continue
+                    git -C "$_root" status --porcelain --untracked-files=no -- "$_f" 2>/dev/null
+                done)
+        [ -z "$_busy" ] ||
+            die "файлы этой точки сохранения сейчас изменены и не сохранены — сохрани или откати их, иначе отмену не с чем свести"
+    fi
+
+    _subj=$(git -C "$_root" log -1 --format=%s "$_ref")
+    if git -C "$_root" revert --no-edit "$_ref" >/dev/null 2>&1; then
+        ok "отменено: $_subj"
+        dim "  встречный коммит добавлен; сама отмена тоже отменяема"
+    else
+        git -C "$_root" revert --abort >/dev/null 2>&1 || true
+        die "отменить не удалось: изменения пересеклись с более поздними. Ничего не тронуто."
+    fi
+}
+
+# --- restore ----------------------------------------------------------------
+# The working-tree half of the same need, and the one /investigate lives on: put back
+# exactly the paths named, and nothing else. `git restore .` would take the user's own
+# unfinished work with it — which is why the workflow used to demand a clean tree before
+# it would start, handing a git chore to the person least able to do it.
+verb_restore() {
+    _root=$1
+    shift
+    [ $# -gt 0 ] || die "нужен список путей: fraim restore ПУТЬ... («всё» не бывает)"
+    verb_is_git "$_root" || die "здесь нет git — восстанавливать не из чего"
+    for _p in "$@"; do
+        case $_p in
+            /*|.|..|*..*|"") die "путь должен быть внутри проекта и не «.»: $_p" ;;
+        esac
+    done
+    for _p in "$@"; do
+        if git -C "$_root" ls-files --error-unmatch -- "$_p" >/dev/null 2>&1; then
+            if git -C "$_root" restore --source=HEAD -- "$_p" >/dev/null 2>&1 ||
+               git -C "$_root" checkout HEAD -- "$_p" >/dev/null 2>&1; then
+                ok "восстановлен: $_p"
+            else
+                warn "не удалось восстановить: $_p"
+            fi
+        elif [ -e "$_root/$_p" ]; then
+            rm -rf -- "$_root/$_p" && ok "удалён (его не было в базе): $_p" ||
+                warn "не удалось удалить: $_p"
+        else
+            dim "  $_p — уже нет, пропускаю"
+        fi
+    done
 }

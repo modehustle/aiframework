@@ -3,7 +3,7 @@ name: run-task
 description: "Pick a task from the ai/tasks/ queue, execute it literally, then archive on user approval"
 metadata:
   tier: cheap
-  version: 0.3.0
+  version: 0.4.0
   source: fraim
 ---
 # /run-task — Execute Prepared Task
@@ -19,6 +19,10 @@ perform it. `## TEMPLATES` holds the exact text of every file you write.
 
 > Paths are **repo-relative to the project root** (the folder the agent has open).
 > Never hardcode an absolute project path.
+
+> **Deterministic actions belong to `fraim`, not to you.** Where a `fraim …` command appears,
+> run it rather than reproducing its effect by hand: the file layout, the timestamps and the
+> save point are not your business. No `fraim` — stop and say so.
 
 ---
 
@@ -82,11 +86,14 @@ workflow, not a shortcut.
 4.3 Check: is every Acceptance Criterion verifiable exactly as written?
 4.4 Check: does any step depend on information that is not in the files?
 4.5 Check: does the plan contradict `ARCHITECTURE.md`, `CONVENTIONS.md`, or the code as it is?
-4.6 Read `## Plan provenance` in `context.md` and compare its basis — the git ref, or the listed
-    files — against the code as it is now. (why: N3)
-4.6a If the block carries a `System: fraim <version>` line, compare it with `fraim version`.
-    Different → the plan was written by a different release of these procedures than the one
-    executing it. Treat it as a plan defect and go to Step 4d. (why: N3)
+4.6 Run `fraim status --json` and read the findings for **this** slug. Two of them are staleness
+    checks the watchman already performs, deterministically, against the `## Plan provenance`
+    stamp: `stale-plan` (the code moved after the plan was written) and `plan-version` (the plan
+    was written by a different release of these procedures than the one executing it). Either
+    one naming your slug → plan defect, go to Step 4d. Do not re-derive this by hand: the
+    watchman is the one implementation of that arithmetic. (why: N3)
+4.6a No `fraim` — read `## Plan provenance` yourself and say plainly that the check was manual.
+     Reading is allowed without the CLI; changing state is not.
 4.7 Re-open the `## Codebase Context` files and confirm the patterns the plan tells you to mirror
     still hold.
 4.8 Any check from 4.1–4.7 failed → plan defect. Go to Step 4d.
@@ -98,7 +105,9 @@ Enter here from 1.14, 2.2, 4.8, 9.3, or gate G6/G7.
 
 4d.1 Stop executing. Write no further code. (why: N4)
 4d.2 Do not edit the plan and do not code around it.
-4d.3 Write `ai/tasks/<slug>/blockers.md` using TEMPLATE B.
+4d.3 Run `fraim task-block <slug>`. It lays down `blockers.md` from the template; fill its
+     sections — what is wrong, the evidence, what you did NOT change, and an optional hint for
+     the planner — and delete the `fraim:stub` line.
 4d.4 Tell the user, verbatim: *\"План `<slug>` невыполним как написан. Записал `ai/tasks/<slug>/blockers.md`. Запусти `/revise-task` (в этом или новом чате), чтобы починить план, затем `/run-task` снова.\"*
 4d.5 STOP. Do not archive. Do not continue.
 
@@ -126,25 +135,31 @@ Enter here from 1.14, 2.2, 4.8, 9.3, or gate G6/G7.
 
 ### Step 8 — Save
 
-8.1 Write the report (TEMPLATE R) to `ai/tasks/<slug>/result.md`. (why: N8)
+8.1 Run `fraim task-result <slug>`. It lays down `result.md` from the template. Fill every
+    section and delete the `fraim:stub` line — the seal gate at Step 10 reads this file, and an
+    unfilled stub is not a report. (why: N8)
 8.2 Print a copy of the report in the chat.
-8.3 Stage: the changed code files, `ARCHITECTURE.md` and `DECISIONS.md` if you touched them,
-    and `result.md`.
-8.4 Commit using TEMPLATE C. Commit now, before you ask the user anything. (why: N9)
-8.5 The project has no git → skip 8.3 and 8.4 silently.
-8.6 Ask the user, verbatim: **\"Принимаем результат?\"**
+8.3 Save. List the paths you actually changed — nothing else: (why: N9)
+
+    ```sh
+    fraim commit task "<slug> — <one-line summary>" <changed file> <changed file> ai/tasks/<slug>
+    ```
+
+    Status ⚠️ → put the caveat in the same line: `"<slug> — <summary> (caveats: <one line>)"`.
+8.4 Commit now, before you ask the user anything.
+8.5 Ask the user, verbatim: **\"Принимаем результат?\"**
 
 ### Step 9 — Read the answer, then feed the loop
 
 9.1 The answer is unclear → ask again. Do not guess which case it is.
 9.2 A step was executed wrong but the plan is sound → return to Step 5 and redo it. (why: N10)
-9.3 The plan itself is wrong → delete `ai/tasks/<slug>/result.md`, then go to Step 4d.
+9.3 The plan itself is wrong → `fraim task-result <slug> --reset`, then go to Step 4d.
 9.4 Accepted → continue at 9.5. Do not archive.
 9.5 Take each `(pitfall)` from your `## Out-of-plan observations`.
 9.6 Propose each one as a single line for `## Known Pitfalls / Lessons` in `CONVENTIONS.md`.
 9.7 Ask the user to approve each line: yes / edit / skip.
 9.8 One or more lines approved → append them to `CONVENTIONS.md`.
-9.9 One or more lines approved → commit them separately: `task: <slug> — pitfalls to CONVENTIONS`. (why: N11)
+9.9 One or more lines approved → save them separately: `fraim commit task "<slug> — pitfalls to CONVENTIONS" CONVENTIONS.md`. (why: N11)
 9.10 Nothing approved → make no commit, and say so.
 9.11 Leave every `(bug)` item for the user to schedule. Fix none of them.
 9.12 Tell the user the task can be archived now or later, in this chat or a fresh one.
@@ -164,63 +179,17 @@ Enter here only when the user asks to archive — never automatically on accepta
 
 ## TEMPLATES
 
-### TEMPLATE B — `ai/tasks/<slug>/blockers.md`
+The files this workflow writes have a fixed shape, so the shape is not yours to retype:
+`fraim task-block` and `fraim task-result` lay them down from the system's templates, filled
+with `<placeholders>` and a `fraim:stub` marker. You fill the sections and delete the marker.
 
-```markdown
-# Blockers
+Two things in `result.md` are read by machine, not only by humans — keep their headings exactly
+as the template wrote them:
 
-## What is wrong
-- <defect 1: which step or file, and why it cannot be executed as written>
-
-## Evidence
-- <command output / actual file contents / the real path that exists instead>
-
-## What I did NOT change
-- <state that no code was written, or list exactly what was, if you had already started>
-
-## Suggested direction (optional, for the planner)
-- <a hint, not a decision>
-```
-
-### TEMPLATE R — `ai/tasks/<slug>/result.md`
-
-```markdown
-## Status
-✅ complete | ⚠️ complete with caveats | ❌ blocked
-
-## Changed files
-- `path/to/file1` — <one-line summary>
-- `path/to/file2` — <one-line summary>
-
-## Verification
-- [x/✗] Criterion 1 — <evidence>
-- [x/✗] Criterion 2 — <evidence>
-
-## Command output
-<verbatim, trimmed only if huge>
-
-## Foundation updated
-- `ARCHITECTURE.md`: <what changed | no structural change>
-- `DECISIONS.md`: <entry appended | none needed>
-
-## Out-of-plan observations
-<Improvements, bugs, and smells you noticed but did NOT touch. Classify every one:>
-- (one-off) <a detail specific to this task, no wider lesson> — stays in this report only.
-- (pitfall) <a generalizable gotcha about THIS codebase the planner should have known,
-  e.g. \"X must be registered before Y or it silently no-ops\"> — candidate for CONVENTIONS.md.
-- (bug) <a real defect in existing code> — for the user to schedule via /make-task; not fixed here.
-<Empty if none.>
-
-## Questions for the user
-<If any. Empty if none.>
-```
-
-### TEMPLATE C — the commit message
-
-```
-Status ✅ →  task: <slug> — <one-line summary>
-Status ⚠️ →  task: <slug> — <one-line summary> (caveats: <one line>)
-```
+- `## Foundation updated` — the seal gate refuses to archive while it is missing, empty, or
+  still holds placeholders. \"Nothing changed structurally\" is a legitimate answer; silence is not.
+- `## Out-of-plan observations` — every line classified `(one-off)` / `(pitfall)` / `(bug)`.
+  Step 9 reads the `(pitfall)` lines back out of this file.
 
 ---
 
@@ -276,10 +245,14 @@ substitute. A report that lives only in chat is lost the moment the chat closes 
 is what `/orient` reads for recent history and what `/prune` reads later. The `(pitfall)`,
 `(bug)`, and `(one-off)` observations live in this file and nowhere else.
 
-**N9 — Why the commit is unconditional.** It is the save point, and a save point that waits for
-the user's \"да\" is not a save point. The caveat rides in the commit message on purpose: `git log
---oneline` then shows at a glance which points were clean and which carried a tail. A committed
-\"⚠️ with caveats\" snapshot is honest and recoverable — strictly better than an uncommitted one.
+**N9 — Why the save point is unconditional, and why you list the paths.** It is the save point,
+and one that waits for the user's \"да\" is not a save point. The caveat rides in the message on
+purpose: the history then shows at a glance which points were clean and which carried a tail.
+
+You name the paths because the verb never saves \"everything\": a project folder also holds the
+user's unfinished work, their `.env`, their data. A save point that sweeps those in is worse than
+none — and the person least able to notice it is the person this system is built for. So the rule
+is the same everywhere: **a verb saves what it changed, and nothing else.**
 
 **N10 — Why iterating is safe.** The next pass ends in its own Step 8 commit on top, and the
 earlier snapshot stays in history as a fallback. Re-running Step 8 overwrites `result.md`, which

@@ -17,6 +17,10 @@ You are the **scout**, not the builder. The rest of the family assumes you alrea
 
 > Paths are **repo-relative to the project root** (the folder the agent has open). Never hardcode an absolute project path.
 
+> **Deterministic actions belong to `fraim`, not to you.** The folder, the provenance stamp, the
+> `findings.md` schema and the archive are `fraim investigate-new` / `fraim investigate-seal`.
+> No `fraim` — stop and say so.
+
 ## The two honest outcomes — internalize this first
 
 An investigation ends in exactly one of two ways, and **both are legitimate, successful exits:**
@@ -37,8 +41,8 @@ Everything you write to reproduce, instrument, or probe is thrown away at the en
 
 But \"what you touch\" is **two** kinds of thing, and this is the trap:
 
-- **Repo state** — scratch scripts, added log lines, a dump file, an edited source file. Reverted by `git restore .` + deleting the untracked files you made.
-- **World state** — anything you change *outside* the repo: rows written to a live database, a proxy lease you consumed, a queue you seeded, a container or worker you started. **`git restore` does nothing to this** — for exactly the same reason it does nothing to untracked files: git has never heard of it.
+- **Repo state** — scratch scripts, added log lines, a dump file, an edited source file. Put back by `fraim restore <the paths in your manifest>`: it returns tracked files to the last save point and deletes the ones you created.
+- **World state** — anything you change *outside* the repo: rows written to a live database, a proxy lease you consumed, a queue you seeded, a container or worker you started. **No restore command reaches this** — for exactly the same reason it does not reach untracked files: git has never heard of it.
 
 A read-only investigation touches neither. But the projects this workflow exists for — browser automation over a live DB and a proxy pool, exactly this class — often *cannot* be observed without seeding world state (you need tasks in the queue to watch the scenario run). That is allowed (see MAY, below), but it means **the observer changes the system it observes**, and every such change must be tracked and undone with the same rigor as a code edit. A finding that leaves 200 rows and an orphaned lease behind has failed its own core principle — it mutated the thing it was measuring.
 
@@ -58,12 +62,19 @@ A read-only investigation touches neither. But the projects this workflow exists
 
 You need a guaranteed return point before you touch anything — and \"state\" here is **both** the repo and the world (see the two-kinds distinction above).
 
-**Repo baseline.** You do **not** create a checkpoint commit — a clean `HEAD` already *is* the checkpoint, and an extra commit would be either empty (clean tree) or actively harmful (it would commit the user's unfinished work under an investigate label).
+**Repo baseline.** You do **not** create a checkpoint commit, and you do **not** ask the user to
+tidy their working tree first. The last save point is the baseline for the files *you* touch, and
+the manifest is what says which files those are.
 
-1. Run `git status`.
-   - **Clean tree** → `HEAD` is your checkpoint. Proceed.
-   - **Dirty tree** → **STOP.** Tell the user: *\"Дерево грязное — сначала закоммить или отложи текущую работу, потом запускай `/investigate`. Мне нужна чистая база для гарантированного возврата.\"* Do not stash or commit their work for them.
-   - **No git** → the return point is the manifest instead (Step 4): you will restore by deleting exactly what you created and reverting exactly what you touched, tracked live in `findings.md`. Tell the user the project has no git, so cleanup relies on the manifest.
+1. The **manifest is the return point.** Every file you create or modify goes into the
+   `## Touched / created manifest — REPO` section of `findings.md` **the moment you touch it** —
+   not at the end. Step 4 hands exactly that list to `fraim restore`, which returns tracked files
+   to the last save point and deletes the ones you made.
+
+   The user's own unfinished work is **not** your business and must not be touched: no stashing,
+   no committing it for them, and never a blind restore of everything. That rule is what makes it
+   safe to start an investigation in a repository that is mid-edit — which is the normal state of
+   a repository someone is working in.
 
 **World baseline.** If the investigation will (or might) seed world state, snapshot the relevant slice *before* touching it, so you know what \"back to baseline\" means. A read-only count is enough: how many rows are in the table you will seed, which proxies are leased, is the worker running. Record it in `findings.md` under **State manifest → baseline**. Without this snapshot you cannot prove at the end that you undid exactly what you added and nothing more.
 
@@ -74,7 +85,7 @@ You need a guaranteed return point before you touch anything — and \"state\" h
 An investigation is **problem-scoped**, not project-scoped. \"Why does selector X flicker\" — yes. \"Look over the project\" — no, that is `/orient`. If the user hands you something broad, narrow it *with* them to a single question before proceeding.
 
 1. Derive a slug (lowercase, hyphens, ≤40 chars, e.g. `selector-flicker`).
-2. Create `ai/investigations/<slug>/` and open `findings.md` from the schema in the Appendix. Fill **Investigation goal** and **Baseline / provenance** (date + the clean `HEAD` ref from Step 1) now — the rest grows as you work.
+2. Run `fraim investigate-new <slug>`. It creates `ai/investigations/<slug>/`, writes `findings.md` from the schema, and stamps the provenance — date, the clean `HEAD` ref, the system version — so you cannot mistype it or leave it out. Fill **Investigation goal** now and delete the `fraim:stub` line; the rest grows as you work.
 3. Seed the **Hypothesis register** with your initial hypotheses. Each is a row: hypothesis · status (`open`) · evidence (empty for now).
 
 ## Step 3 — The investigation loop (this is where the discipline lives)
@@ -108,18 +119,22 @@ Fill exactly one outcome branch in `findings.md`:
 Then clean up. This is **mandatory and automatic — it is not optional and does not wait for the user's \"да\".** You restore **both** kinds of state you touched; skipping either leaves the system you were measuring in a state you changed.
 
 1. **Confirm both manifests in `findings.md` are complete.** The **Touched/created manifest** (every repo file you made or modified) and the **State manifest** (every world-state mutation — rows written, leases consumed, processes started — each with its undo command).
-2. **Restore the repo:**
-   - `git restore .` — reverts everything tracked back to the clean `HEAD` (command #4 of your five-command emergency set; the emotional lock holds).
-   - Then delete the **untracked** files you created — `git restore` does not remove them. Delete them **by the manifest**, precisely — not a blind `git clean` that could sweep up something unrelated.
-   - **No git?** → revert/delete strictly by the manifest.
+2. **Restore the repo** — by the manifest, never \"everything\":
+   ```sh
+   fraim restore <path> <path> ...
+   ```
+   Each path it knows: a tracked file goes back to the last save point, a file you created is
+   deleted, a path that is already gone is skipped. It refuses `.` and anything outside the
+   project on purpose — a blind restore would take the user's unfinished work with it, and
+   sweeping every untracked file would remove things nobody asked you to touch.
 3. **Restore the world:** run each undo command in the State manifest — `DELETE` the rows you seeded (bounded to exactly what you inserted, checked against the Step 1 world baseline), release the leases you consumed, stop the workers/containers you started. If any world mutation turns out **not** to be cleanly reversible, do NOT improvise a fix — say so explicitly in the report and hand it to the user as a to-do; a half-undo you invented is worse than an honest \"this row is still there, here is why.\"
-4. **Verify baseline on both axes:** `git status` matches the Step 1 clean state (or, no-git, the manifest targets are gone); and the world slice matches the Step 1 world baseline (same row count, leases released, worker state as found). State both explicitly.
+4. **Verify baseline on both axes:** every path in the REPO manifest is back to its saved state or gone (`git status` shows nothing of yours left); and the world slice matches the Step 1 world baseline (same row count, leases released, worker state as found). State both explicitly.
 
 > If you are ever interrupted mid-investigation, the two manifests in `findings.md` *are* the cleanup list — that is why they are written live, the moment you touch something, not at the end.
 
 **The baseline gate (do not skip — say it out loud).** After restoring, the last thing you output before the report is an explicit confirmation, in the shape of a question the user could veto, modeled on `/run-task`'s *\"Принимаем результат?\"*:
 
-> *\"Состояние восстановлено к базе: код — `git status` чист; мир — <N задач удалено, лиз освобождён, воркер как был>. Ничего от расследования не осталось. Baseline?\"*
+> *\"Состояние восстановлено к базе: код — всё из манифеста вернулось к последней точке сохранения; мир — <N задач удалено, лиз освобождён, воркер как был>. Ничего от расследования не осталось. Baseline?\"*
 
 Naming each restored thing out loud is what makes a silent skip visible — to you and to the user. If you cannot say this line truthfully, you are not done cleaning up.
 
@@ -130,17 +145,37 @@ Naming each restored thing out loud is what makes a silent skip visible — to y
 - **Outcome:** DIAGNOSIS or DEAD-END, in one line.
 - If DIAGNOSIS: the root cause + the recommended route (`/hotfix` | `/make-task` | `/revise-task` | `/prune`) + surgical/structural.
 - If DEAD-END: what was ruled out, where you stuck, what you need from the human.
-- **Cleanup:** confirm both axes were restored to baseline — repo (`git status` clean) and world (rows deleted, leases released, processes as found). Nothing left behind.
+- **Cleanup:** confirm both axes were restored to baseline — repo (every manifest path back or gone) and world (rows deleted, leases released, processes as found). Nothing left behind.
 - The next line:
   - DIAGNOSIS → structural: *\"Причина найдена. Обсуди план и запусти `/make-task` — приложи `ai/investigations/<slug>/findings.md`, секция DIAGNOSIS ляжет в `context.md`.\"*
   - DIAGNOSIS → surgical: *\"Причина найдена, правка хирургическая — `/hotfix` (если влезает в потолок).\"*
   - DEAD-END: *\"Зашёл в тупик — записал, что исключено и где встал. Реши, что дальше: сузить вопрос, дать мне доступ/данные, или отложить.\"*
 
-Do not fix the thing yourself. Do not archive here — archiving a finished investigation (a folder whose `findings.md` has been acted on) is a user-initiated move, same as a task: move the folder to `ai/archive/`, commit `archive: investigate <slug>`.
+Do not fix the thing yourself. Then **seal the investigation — it is finished, and finished is
+not a state it should sit in:**
+
+```sh
+fraim investigate-seal <slug>
+```
+
+It is a gate. It refuses unless **exactly one** outcome branch is filled — none means the
+investigation was abandoned, both mean it was never landed — and unless `## Restored to baseline`
+says what happened on **both** axes. That second check is the one this workflow could least
+afford to leave to good intentions: the cleanup is the only part whose absence nobody notices
+until a stray row or an unreleased lease bites weeks later.
+
+`findings.md` is not lost by this: it moves whole into `ai/archive/<timestamp>_investigate_<slug>/`
+and reads exactly the same, including when the very next thing you do is `/make-task` from it.
+Sealing here — rather than leaving it for the user to ask — is deliberate: an investigation that
+has landed on an outcome has delivered everything it was going to deliver, and its ratification
+already happened one step earlier, at the *\"Baseline?\"* question. Folders left \"for later\" are
+never collected later; they just accumulate until nobody trusts the queue.
+
+If `fraim status` ever reports an investigation as finished-and-unarchived, that means this step
+was skipped — the bypass being visible is the point.
 
 ## Stop signals (the agent stops and asks the human)
 
-- **Dirty tree at start** (Step 1) — cannot guarantee a clean return; the human commits or shelves first.
 - **5 consecutive barren cycles** (Step 3) — the stagnation tripwire; stop and declare a DEAD-END rather than flail.
 - **The urge to fix.** The moment a change would be *to make the problem go away* rather than *to observe it* — stop; that is `/hotfix` or `/make-task`, routed via the finding.
 - **About to seed world state** (insert rows into a live DB, trigger a run, start a worker) — announce it first and only proceed on the tracked-and-reversible path (MAY, above): announced + in the State manifest + undo command known. The user asking for it does not waive this.
@@ -151,57 +186,15 @@ Do not fix the thing yourself. Do not archive here — archiving a finished inve
 
 ---
 
-## Appendix. `findings.md` schema
+## Appendix. `findings.md`
 
-Fixed schema, like `task.md` / `result.md`. Keep it to about half a page — a fact sheet, not a lab journal.
+The schema is not reproduced here: `fraim investigate-new` writes it, so there is one copy of it
+and it cannot drift from what the seal gate reads. The file it lays down holds, in order —
+investigation goal · baseline/provenance · hypothesis register (one row per hypothesis: status
+`open` / `confirmed` / `excluded`, plus evidence) · diagnostic actions · the two outcome branches
+(**DIAGNOSIS** and **DEAD-END**, exactly one of which you fill) · the **REPO** manifest · the
+**WORLD** manifest · **Restored to baseline**.
 
-````markdown
-# INVESTIGATION — <slug>
-
-## Investigation goal
-<The one unclear thing, problem-scoped. e.g. \"Why does the login selector intermittently fail to click.\">
-
-## Baseline / provenance
-- Started: <YYYY-MM-DD>
-- Clean base (repo): <git ref, e.g. `HEAD a1b2c3d`> — OR \"no git; cleanup by manifest below\"
-- World baseline (if seeding state): <the slice you will touch, as found — e.g. \"tasks: 1 claimed, 0 pending · proxy 507796 idle · worker running\">
-
-## Hypothesis register
-<The spine. One row per hypothesis. Elimination counts as progress. Update live.>
-
-| # | Hypothesis | Status (open/confirmed/excluded) | Evidence |
-|---|---|---|---|
-| 1 | <...> | <...> | <what you observed, or empty> |
-| 2 | <...> | <...> | <...> |
-
-## Diagnostic actions
-<What you ran / instrumented, for reproducibility. All of it disposable.>
-- <e.g. \"added a timing log around the click; ran the flow 20×\">
-
-## Outcome — fill exactly ONE branch
-
-### DIAGNOSIS
-- Root cause: <the actual cause, one or two sentences>
-- Recommended route: <`/hotfix` | `/make-task` | `/revise-task` | `/prune`>
-- Classification: <surgical | structural> — <one line why>
-- For the planner: <the specific thing /make-task's context.md should carry — the constraint, the pitfall, the required assertion>
-
-### DEAD-END
-- Ruled out: <the excluded hypotheses — the durable value>
-- Stuck at: <where and why the discipline ran out>
-- Need from human: <a narrower question, access, data, or a decision to shelve>
-
-## Touched / created manifest — REPO  (= the repo cleanup list)
-- Created (untracked, to delete): <path> · <path> — or \"none\"
-- Modified (to `git restore`): <path> · <path> — or \"none\"
-
-## State manifest — WORLD  (= the world cleanup list; write live, the moment you mutate)
-<Every mutation outside the repo, each with its exact undo. \"none\" if the investigation was read-only.>
-- Seeded: <e.g. \"200 rows into `tasks`\"> → Undo: <e.g. \"DELETE FROM tasks WHERE payload->>'$.sku'='4791016907' AND status='pending'\"> 
-- Consumed/started: <e.g. \"worker picked up lease on proxy 507796\"> → Undo: <e.g. \"release lease, verify proxy back to idle\">
-- <...> → Undo: <...>
-
-## Restored to baseline
-- Repo: <yes — git status clean | pending>
-- World: <yes — matches Step 1 world baseline: row count restored, leases released, worker as found | not applicable (read-only) | pending>
-````
+Three of those headings are read by machine, so keep them as written: the two outcome branches
+and `## Restored to baseline` are what the gate checks before it lets the investigation into the
+archive.

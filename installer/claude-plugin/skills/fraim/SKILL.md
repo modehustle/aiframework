@@ -2,7 +2,7 @@
 name: fraim
 description: Control panel for the fraim workflow system. Use when the user asks where a project stands, what needs attention, what to do next, which projects have drifted, or how to install and update the workflow procedures. Routes to the right procedure and reads the deterministic project watchman.
 metadata:
-  version: 0.3.0
+  version: 0.4.0
   source: fraim
 ---
 # fraim — control panel
@@ -52,6 +52,20 @@ by design.
 The procedures are separate skills — invoke them by name. This skill does not
 contain their text and must not paraphrase it.
 
+## Working without a procedure
+
+Most sessions are not a planned task — a question, a small fix, a look around, a change
+whose shape appeared while doing it. **That is legitimate.** Do not force it into
+`/make-task`, and do not announce a procedure you are not running. What still holds:
+
+- invariant 0.4 — read the foundation first, fix it if the change made it wrong;
+- **save as you go**: when a coherent piece is done, not at the end of the session,
+  `fraim commit fix \"<what changed>\" <path> <path>`. Those commits are the record of
+  reactive work; there is no second log to keep.
+
+It stopped being a fix and became a story → `/make-task`. You are about to change
+something you do not understand → `/investigate`.
+
 ## Deterministic verbs — call them, do not reproduce them
 
 Mechanical, repeating actions belong to the CLI, not to you. Where a procedure names one of
@@ -61,14 +75,34 @@ these, run it: the format, the paths, the timestamps and the commit are not your
 |---|---|
 | `fraim scaffold` | hand-building the foundation files and `ai/` |
 | `fraim task-new SLUG` | creating a task folder and writing its provenance stamp |
+| `fraim task-block SLUG` | retyping the `blockers.md` shape |
+| `fraim task-result SLUG` | retyping the `result.md` shape (`--reconcile`, `--reset`) |
+| `fraim task-revise SLUG DEFECT FIX` | the revision record, the refreshed stamp, the consumed blocker |
 | `fraim task-seal SLUG` | archiving a finished task — **it can refuse** |
+| `fraim reconcile-seal SLUG` | archiving a drifted session — **it can refuse** |
+| `fraim investigate-new SLUG` | creating an investigation folder and its provenance stamp |
+| `fraim investigate-seal SLUG` | archiving a finished investigation — **it can refuse** |
 | `fraim hotfix-log FILE DESC yes\|no` | appending to the drift log by hand |
 | `fraim prune-mark` | writing the prune marker by hand |
 | `fraim stack-passport` | retyping the STACK.md schema |
+| `fraim commit KIND TEXT PATH…` | `git add` + `git commit` by hand |
+| `fraim undo [HASH]` | reaching for `git reset` / `git revert` |
+| `fraim restore PATH…` | `git restore` / deleting scratch files by hand |
 
-`task-seal` is a gate: it will not archive a task whose `result.md` leaves
-`## Foundation updated` empty or unfilled. A refusal is the check doing its job — fix what
-it names and run it again. Never archive by hand instead.
+Three of them are **gates**: `task-seal` will not archive a task whose `result.md` leaves
+`## Foundation updated` empty or unfilled; `reconcile-seal` adds a filled
+`## Divergence from plan` to that; `investigate-seal` wants exactly one outcome branch and a
+report on the cleanup. A refusal is the check doing its job — fix what it names and run it again.
+Never archive by hand instead.
+
+`fraim commit` and `fraim restore` take an explicit path list and have no \"everything\"
+argument on purpose: a project folder also holds the user's unfinished work, their `.env` and
+their data. **A verb touches what it changed, and nothing else.**
+
+Git is a given here, not a skill the user is expected to have: `fraim scaffold` creates the
+repository when there is none (never inside someone else's), the verbs make every save point,
+and `fraim undo` takes one back as a counter-commit — history is never rewritten. Never tell
+the user to run a git command; if something cannot be done through a verb, say so.
 
 If `fraim` is not installed, **stop and say so** rather than reproducing the effect by hand.
 A deterministic action has exactly one implementation.

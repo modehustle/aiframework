@@ -27,7 +27,7 @@ If you re-read `ARCHITECTURE.md` and rewrite it prettier, you have laundered sta
 ## When to run
 
 - The user runs it deliberately, every 2–4 weeks, OR
-- after **5 hotfixes** since the last prune (the default; `/orient` watches `ai/hotfix_log.md` and recommends it).
+- when the watchman reports the drift threshold reached — `fraim status` counts the hotfixes logged since the last prune marker and compares them with `hotfix_threshold` (`fraim config` shows the value in effect and where it came from). Do not carry a number in your head: a project hammered daily and one touched monthly honestly have different thresholds, and the user may have changed it.
 
 There is no wrong time to garden, but those are the triggers that catch drift before it rots.
 

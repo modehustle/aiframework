@@ -30,27 +30,35 @@ usage() {
     cat <<'USAGE'
 fraim — эксплуатационный слой для проектов на агентах
 
-Установка и состояние
-  fraim init                установить / обновить / подхватить новый харнес
-  fraim status [ПУТЬ]       вердикт сторожа по проекту (--json для машины)
+Это набираешь ты
+  fraim status [ПУТЬ]       что происходит в проекте (--json для машины)
+  fraim undo [ХЕШ]          показать точки сохранения / вернуть, как было
+  fraim scaffold [ПУТЬ]     завести проект под систему
+  fraim init | update       поставить / обновить / подхватить новый харнес
   fraim doctor              что и куда установлено, что разошлось
-  fraim projects            реестр проектов (add ПУТЬ / rm ПУТЬ)
   fraim config              что действует и откуда (set КЛЮЧ ЗНАЧЕНИЕ)
+  fraim projects            реестр проектов (add ПУТЬ / rm ПУТЬ)
 
-Проект
-  fraim scaffold [ПУТЬ]     развернуть скелет фундамента и ai/
-
-Детерминированные глаголы — их зовут процедуры вместо ручной работы
+Это зовут процедуры — тебе их помнить не нужно
   fraim task-new СЛАГ       папка задачи + штамп provenance
+  fraim task-block СЛАГ     завести blockers.md по шаблону
+  fraim task-result СЛАГ    завести result.md (--reconcile / --reset)
+  fraim task-revise СЛАГ ДЕФЕКТ ИСПРАВЛЕНО   ревизия плана
   fraim task-seal СЛАГ      проверить и заархивировать исполненную задачу
-  fraim hotfix-log ФАЙЛ ОПИСАНИЕ [yes|no]   строка в журнал хотфиксов + коммит
-  fraim prune-mark          сбросить счётчик дрейфа маркером + коммит
+  fraim reconcile-seal СЛАГ то же для дрейфнувшей сессии
+  fraim investigate-new СЛАГ   папка расследования + findings.md
+  fraim investigate-seal СЛАГ  проверить исход и уборку, заархивировать
+  fraim hotfix-log ФАЙЛ ОПИСАНИЕ [yes|no]   строка в журнал хотфиксов
+  fraim prune-mark          сбросить счётчик дрейфа маркером
   fraim stack-passport      создать STACK.md из шаблона
+  fraim commit ВИД ТЕКСТ ПУТЬ...   точка сохранения по перечисленным путям
+  fraim restore ПУТЬ...     вернуть перечисленные пути к последней точке
 
-Прочее
+Служебное
   fraim show ИМЯ            напечатать текст процедуры
   fraim build               пересобрать артефакты репозитория
   fraim version             версия
+  fraim help                этот экран
 
 Сторож детерминированный: файлы, git log и mtime. Ни модели, ни сети, ничего
 не пишет. Он замечает — решает человек.
@@ -297,6 +305,7 @@ cmd_scaffold() {
     say ""
     say "Дальше: ${C_BLD}/bootstrap${C_OFF} для нового проекта, ${C_BLD}/onboard${C_OFF} для существующего кода."
     dim "Файлы помечены маркером fraim:stub — сторож считает их незаполненными, пока он на месте."
+    scaffold_copy_notice "$_root"
 }
 
 # --- config -----------------------------------------------------------------
@@ -352,12 +361,45 @@ verb_root() {
 
 cmd_task_new()  { [ $# -ge 1 ] || die "нужен слаг задачи"; verb_task_new  "$(verb_root)" "$1"; }
 cmd_task_seal() { [ $# -ge 1 ] || die "нужен слаг задачи"; verb_task_seal "$(verb_root)" "$1"; }
+cmd_task_block() { [ $# -ge 1 ] || die "нужен слаг задачи"; verb_task_block "$(verb_root)" "$1"; }
+cmd_task_result() {
+    [ $# -ge 1 ] || die "нужен слаг задачи"
+    verb_task_result "$(verb_root)" "$1" "${2:-}"
+}
+cmd_task_revise() {
+    [ $# -ge 3 ] || die "нужно: fraim task-revise СЛАГ \"ДЕФЕКТ\" \"ЧТО ИСПРАВЛЕНО\""
+    verb_task_revise "$(verb_root)" "$1" "$2" "$3"
+}
+cmd_reconcile_seal() { [ $# -ge 1 ] || die "нужен слаг задачи"; verb_reconcile_seal "$(verb_root)" "$1"; }
+cmd_investigate_new()  { [ $# -ge 1 ] || die "нужен слаг расследования"; verb_investigate_new  "$(verb_root)" "$1"; }
+cmd_investigate_seal() { [ $# -ge 1 ] || die "нужен слаг расследования"; verb_investigate_seal "$(verb_root)" "$1"; }
+
+# The save point, by explicit path list. There is deliberately no way to say "everything":
+# `git add .` in a folder the system did not lay down is how secrets and data directories
+# get committed, and the person least able to notice that is the one this product is for.
+# A verb commits what it touched, and nothing else.
+cmd_commit() {
+    [ $# -ge 3 ] || die "нужно: fraim commit ВИД ТЕКСТ ПУТЬ... (пути обязательны — «всё» не бывает)"
+    _kind=$1; _text=$2
+    shift 2
+    printf '%s' "$_kind" | grep -qE '^[a-z][a-z-]*$' ||
+        die "вид должен быть одним словом в нижнем регистре: task, deploy, onboard, archive…"
+    _root=$(pwd -P)
+    verb_is_git "$_root" || die "здесь нет git — точку сохранения поставить не во что"
+    verb_commit "$_root" "$_kind" "$_text" "$@" || die "коммит не удался"
+}
 cmd_prune_mark() { verb_prune_mark "$(verb_root)"; }
 cmd_stack_passport() { verb_stack_passport "$(pwd -P)"; }
 cmd_hotfix_log() {
     [ $# -ge 2 ] || die "нужно: fraim hotfix-log ФАЙЛ ОПИСАНИЕ [yes|no]"
     verb_hotfix_log "$(verb_root)" "$1" "$2" "${3:-no}"
 }
+
+cmd_undo() {
+    _root=$(pwd -P)
+    if [ $# -ge 1 ]; then verb_undo "$_root" "$1"; else verb_undo_show "$_root"; fi
+}
+cmd_restore() { verb_restore "$(pwd -P)" "$@"; }
 
 # --- dispatch ---------------------------------------------------------------
 [ $# -ge 1 ] || { usage; exit 0; }
@@ -367,7 +409,16 @@ case $_cmd in
     scaffold)      cmd_scaffold "$@" ;;
     config)        cmd_config "$@" ;;
     task-new)      cmd_task_new "$@" ;;
+    task-block)    cmd_task_block "$@" ;;
+    task-result)   cmd_task_result "$@" ;;
+    task-revise)   cmd_task_revise "$@" ;;
     task-seal)     cmd_task_seal "$@" ;;
+    reconcile-seal) cmd_reconcile_seal "$@" ;;
+    investigate-new)  cmd_investigate_new "$@" ;;
+    investigate-seal) cmd_investigate_seal "$@" ;;
+    commit)        cmd_commit "$@" ;;
+    undo)          cmd_undo "$@" ;;
+    restore)       cmd_restore "$@" ;;
     hotfix-log)    cmd_hotfix_log "$@" ;;
     prune-mark)    cmd_prune_mark "$@" ;;
     stack-passport) cmd_stack_passport "$@" ;;
