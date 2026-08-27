@@ -10,6 +10,8 @@
 > Соседние документы объясняют **что** построено; этот — **почему именно так**.
 > [PRODUCT.md](installer/PRODUCT.md) · [HARNESS_TARGETS.md](installer/HARNESS_TARGETS.md) ·
 > [SCHEDULING.md](installer/SCHEDULING.md) · [DETERMINISM.md](installer/DETERMINISM.md)
+>
+> Пробелы, найденные по этому чек-листу и отложенные осознанно, — [BACKLOG.md](BACKLOG.md).
 
 ## Оглавление
 
