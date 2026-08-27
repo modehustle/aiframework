@@ -1,8 +1,11 @@
 ---
-description: Pick a task from the ai/tasks/ queue, execute it literally, then archive on user approval
+name: run-task
+description: "Pick a task from the ai/tasks/ queue, execute it literally, then archive on user approval"
+metadata:
+  tier: cheap
+  order: 6
 ---
-
-# /run_task — Execute Prepared Task
+# /run-task — Execute Prepared Task
 
 You are the **executor**. A precise, self-contained plan is waiting in `ai/tasks/<slug>/`.
 Pick one task, execute it literally, verify it, refresh the foundation, save the result, and
@@ -47,12 +50,12 @@ workflow, not a shortcut.
 1.3 List every folder in `ai/tasks/`.
 1.4 Label each folder: has `blockers.md` → BLOCKED. Else has `result.md` → DONE. Else → RUNNABLE.
 1.5 The user asked to archive a DONE task → go to Step 10 now and skip the rest of this procedure.
-1.6 The user named a slug (`/run_task <slug>`) → that is your task; go to 1.10.
-1.7 No RUNNABLE task → STOP. Say: *"Очередь пуста. Запусти `/make_task` в чате планирования."*
+1.6 The user named a slug (`/run-task <slug>`) → that is your task; go to 1.10.
+1.7 No RUNNABLE task → STOP. Say: *\"Очередь пуста. Запусти `/make-task` в чате планирования.\"*
 1.8 Exactly one RUNNABLE task → that is your task.
 1.9 Several RUNNABLE tasks → list their slugs, ask the user which to execute, and wait.
 1.10 Name any BLOCKED or DONE folders you excluded, and say which state each is in.
-1.11 Your chosen task has a `blockers.md` → STOP. Say: *"Задача `<slug>` заблокирована. Запусти `/revise_task`."*
+1.11 Your chosen task has a `blockers.md` → STOP. Say: *\"Задача `<slug>` заблокирована. Запусти `/revise-task`.\"*
 1.12 Read `ai/tasks/<slug>/context.md`.
 1.13 Read `ai/tasks/<slug>/task.md`.
 1.14 Either file is missing or empty → plan defect. Go to Step 4d.
@@ -80,6 +83,9 @@ workflow, not a shortcut.
 4.5 Check: does the plan contradict `ARCHITECTURE.md`, `CONVENTIONS.md`, or the code as it is?
 4.6 Read `## Plan provenance` in `context.md` and compare its basis — the git ref, or the listed
     files — against the code as it is now. (why: N3)
+4.6a If the block carries a `System: fraim <version>` line, compare it with `fraim version`.
+    Different → the plan was written by a different release of these procedures than the one
+    executing it. Treat it as a plan defect and go to Step 4d. (why: N3)
 4.7 Re-open the `## Codebase Context` files and confirm the patterns the plan tells you to mirror
     still hold.
 4.8 Any check from 4.1–4.7 failed → plan defect. Go to Step 4d.
@@ -92,7 +98,7 @@ Enter here from 1.14, 2.2, 4.8, 9.3, or gate G6/G7.
 4d.1 Stop executing. Write no further code. (why: N4)
 4d.2 Do not edit the plan and do not code around it.
 4d.3 Write `ai/tasks/<slug>/blockers.md` using TEMPLATE B.
-4d.4 Tell the user, verbatim: *"План `<slug>` невыполним как написан. Записал `ai/tasks/<slug>/blockers.md`. Запусти `/revise_task` (в этом или новом чате), чтобы починить план, затем `/run_task` снова."*
+4d.4 Tell the user, verbatim: *\"План `<slug>` невыполним как написан. Записал `ai/tasks/<slug>/blockers.md`. Запусти `/revise-task` (в этом или новом чате), чтобы починить план, затем `/run-task` снова.\"*
 4d.5 STOP. Do not archive. Do not continue.
 
 ### Step 5 — Execute
@@ -125,7 +131,7 @@ Enter here from 1.14, 2.2, 4.8, 9.3, or gate G6/G7.
     and `result.md`.
 8.4 Commit using TEMPLATE C. Commit now, before you ask the user anything. (why: N9)
 8.5 The project has no git → skip 8.3 and 8.4 silently.
-8.6 Ask the user, verbatim: **"Принимаем результат?"**
+8.6 Ask the user, verbatim: **\"Принимаем результат?\"**
 
 ### Step 9 — Read the answer, then feed the loop
 
@@ -147,13 +153,11 @@ Enter here from 1.14, 2.2, 4.8, 9.3, or gate G6/G7.
 Enter here only when the user asks to archive — never automatically on acceptance. (why: N12)
 
 10.1 Identify the task: the folder holding a `result.md`. Several qualify → name them and ask which.
-10.2 Create `ai/archive/<YYYY-MM-DD_HHMM>_<slug>/` using current local time.
-10.3 Move `context.md`, `task.md`, `result.md`, and any leftover `blockers.md` into that directory.
-10.4 Delete the now-empty `ai/tasks/<slug>/` folder.
-10.5 Confirm `ai/tasks/<slug>/` no longer exists and the other queued tasks are untouched.
-10.6 Commit: `archive: <slug>`. No git → skip silently.
-10.7 Tell the user: *"Архивировано в `<full path>`. Осталось в очереди: <slug list, or 'пусто'>."*
-10.8 Any step from 9.2–9.6 failed → STOP and report the error. Do not leave a half-archived folder.
+10.2 Run `fraim task-seal <slug>`. It timestamps the archive directory, moves the folder whole,
+     commits `archive: <slug>`, and reports what is left in the queue. (why: N13)
+10.3 It refused → it named a precondition that is not met. Fix that, then run it again.
+     Do **not** archive by hand instead: the refusal is the check, not an obstacle. (why: N13)
+10.4 Report its output to the user verbatim.
 
 ---
 
@@ -202,8 +206,8 @@ Enter here only when the user asks to archive — never automatically on accepta
 <Improvements, bugs, and smells you noticed but did NOT touch. Classify every one:>
 - (one-off) <a detail specific to this task, no wider lesson> — stays in this report only.
 - (pitfall) <a generalizable gotcha about THIS codebase the planner should have known,
-  e.g. "X must be registered before Y or it silently no-ops"> — candidate for CONVENTIONS.md.
-- (bug) <a real defect in existing code> — for the user to schedule via /make_task; not fixed here.
+  e.g. \"X must be registered before Y or it silently no-ops\"> — candidate for CONVENTIONS.md.
+- (bug) <a real defect in existing code> — for the user to schedule via /make-task; not fixed here.
 <Empty if none.>
 
 ## Questions for the user
@@ -243,8 +247,13 @@ that changed the same files. The provenance stamp is the snapshot it was written
 comparing it against the code now is what catches a plan that was correct when written and is
 not correct anymore.
 
+The `System:` line applies that same test to the workflow system itself. The procedures are
+installed globally and update on their own schedule, so a plan written by one release can be
+executed by another without a single file in the project changing. That is the same silent
+drift, one level up, and it is caught the same way — by comparing the stamp.
+
 **N4 — Why the plan-defect protocol exists.** It is the one escape hatch that keeps you from
-improvising. Repairing a plan is the planner's job (`/revise_task`); writing code is yours. The
+improvising. Repairing a plan is the planner's job (`/revise-task`); writing code is yours. The
 blockers file exists so the repair does not start from zero — everything you learned before
 stopping is worth more than the time it took to learn.
 
@@ -252,7 +261,7 @@ stopping is worth more than the time it took to learn.
 behind it, so nothing has mapped what depends on the code you would touch. Recording it costs
 one line and lets the user schedule it deliberately.
 
-**N6 — Why an unprovable criterion is failed.** "Probably fine" in a report becomes "verified"
+**N6 — Why an unprovable criterion is failed.** \"Probably fine\" in a report becomes \"verified\"
 in the archive, and `/prune` will later read that archive as ground truth. An honest ✗ is
 recoverable; a false ✓ is not.
 
@@ -267,18 +276,25 @@ is what `/orient` reads for recent history and what `/prune` reads later. The `(
 `(bug)`, and `(one-off)` observations live in this file and nowhere else.
 
 **N9 — Why the commit is unconditional.** It is the save point, and a save point that waits for
-the user's "да" is not a save point. The caveat rides in the commit message on purpose: `git log
+the user's \"да\" is not a save point. The caveat rides in the commit message on purpose: `git log
 --oneline` then shows at a glance which points were clean and which carried a tail. A committed
-"⚠️ with caveats" snapshot is honest and recoverable — strictly better than an uncommitted one.
+\"⚠️ with caveats\" snapshot is honest and recoverable — strictly better than an uncommitted one.
 
 **N10 — Why iterating is safe.** The next pass ends in its own Step 8 commit on top, and the
 earlier snapshot stays in history as a fallback. Re-running Step 8 overwrites `result.md`, which
 is correct: the file describes the current state of the task, not its history.
 
-**N11 — Why the pitfalls get their own commit.** "Recorded house-rule lessons" is a distinct act
-from "executed the task", and commits are additive and free here. Separating them keeps
+**N13 — Why archiving goes through a gate.** `task-seal` refuses to archive unless `result.md`
+carries a filled-in `## Foundation updated` section and no `blockers.md` is present. Invariant 0.4
+used to be a request the executor self-reported on; a plan can be executed perfectly and the
+foundation left to rot, and nothing catches it until `/prune` weeks later. Making the *exit* from
+a task conditional turns the request into a precondition. You may legitimately have changed
+nothing — then say so in that section. What you cannot do is stay silent.
+
+**N11 — Why the pitfalls get their own commit.** \"Recorded house-rule lessons\" is a distinct act
+from \"executed the task\", and commits are additive and free here. Separating them keeps
 `git log` readable. This is also the loop that carries a lesson the executor paid for back to
-the planner: `/make_task` reads `## Known Pitfalls / Lessons` before planning.
+the planner: `/make-task` reads `## Known Pitfalls / Lessons` before planning.
 
 **N12 — Why archiving is user-initiated.** Acceptance means the work is right; archiving means
 you are done looking at it. Those are different moments, and only the user knows when the second

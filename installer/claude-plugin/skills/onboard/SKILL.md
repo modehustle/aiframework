@@ -3,7 +3,8 @@ name: onboard
 description: "Bring an EXISTING project or a STACK already running under the system — derive the foundation from reality, ratify it with the human, never redesign or reorganize"
 metadata:
   tier: strong
-  order: 13
+  version: 0.3.0
+  source: fraim
 ---
 # /onboard — Bring an Existing Project Under the System
 

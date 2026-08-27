@@ -1,8 +1,12 @@
 ---
-description: Capture the agreed plan into a new ai/tasks/<slug>/ folder for handoff to a fresh-chat executor model
+name: make-task
+description: "Capture the agreed plan into a new task folder under ai/tasks/ for handoff to a fresh-chat executor model"
+metadata:
+  tier: strong
+  version: 0.3.0
+  source: fraim
 ---
-
-# /make_task — Plan Handoff
+# /make-task — Plan Handoff
 
 You are the **planner**. You and the user have just agreed on a plan in this chat. Serialize it
 into a new task folder `ai/tasks/<slug>/` holding two self-contained files — `context.md` and
@@ -22,17 +26,17 @@ shape of both files you write.
 ## GATES
 
 - **G1 — Self-containment.** The executor will NOT see this conversation. Every decision, path,
-  constraint, and rationale must live in the files. Banned phrases: "as we discussed", "the plan
-  above", "the approach we chose", "per the conversation". Context you cannot avoid referencing
+  constraint, and rationale must live in the files. Banned phrases: \"as we discussed\", \"the plan
+  above\", \"the approach we chose\", \"per the conversation\". Context you cannot avoid referencing
   is context you must write into the files. (why: N1)
 - **G2 — Plan to the floor.** Write for the **weakest plausible executor**. Do not rely on the
   executor to figure out a gap, infer an unstated step, or reason around an ambiguity.
   Over-specification is the safe error. (why: N2)
 - **G3 — Add, never replace.** The queue may already hold tasks. You add one. Other task folders
   are not yours to touch, edit, or clean up.
-- **G4 — Never execute.** You write the plan. Running it is `/run_task`'s job, in another chat.
-- **G5 — A defective plan is `/revise_task`.** If an existing task came back blocked, it is
-  repaired in place — not replaced by a fresh `/make_task`. (why: N3)
+- **G4 — Never execute.** You write the plan. Running it is `/run-task`'s job, in another chat.
+- **G5 — A defective plan is `/revise-task`.** If an existing task came back blocked, it is
+  repaired in place — not replaced by a fresh `/make-task`. (why: N3)
 
 ---
 
@@ -56,15 +60,18 @@ shape of both files you write.
 1.2 List every folder in `ai/tasks/`.
 1.3 `ai/tasks/<slug>/` already exists and this is a different task → pick a more specific slug.
 1.4 `ai/tasks/<slug>/` already exists and this is the SAME task being reworked → STOP. Tell the
-    user this is `/revise_task`, or that the old task must be finished or archived first.
+    user this is `/revise-task`, or that the old task must be finished or archived first.
 1.5 Another folder holds a `blockers.md` → do not touch it, and say:
-    *"Задача `<other-slug>` ждёт `/revise_task`."*
+    *\"Задача `<other-slug>` ждёт `/revise-task`.\"*
 1.6 Another folder holds a `result.md` and no `blockers.md` → do not touch it, and say:
-    *"Задача `<other-slug>` ждёт архивации."*
+    *\"Задача `<other-slug>` ждёт архивации.\"*
 1.7 This task touches files another queued task also touches → they are not independent.
-    Either state the ordering inside this plan ("assumes `<other-slug>` has NOT yet landed"),
+    Either state the ordering inside this plan (\"assumes `<other-slug>` has NOT yet landed\"),
     or tell the user the two should be merged. (why: N5)
-1.8 Create the folder `ai/tasks/<slug>/`.
+1.8 Run `fraim task-new <slug>`. It creates `ai/tasks/<slug>/` and stamps `## Plan provenance`
+    with today's date, the current git ref and the system version. Do not write that block
+    by hand — those three values are what `/run-task` later uses to detect a stale plan,
+    and they are exactly the kind of thing that gets forgotten. (why: N12)
 
 ### Step 1b — Reference scan
 
@@ -72,7 +79,7 @@ shape of both files you write.
 1b.2 Search the codebase for every reference to each existing symbol, function, type, route,
      config key, or interface this task modifies, renames, moves, or changes. (why: N6)
 1b.3 Put every dependent file the scan found into `Files to Change`.
-1b.4 A dependent that must stay untouched goes into Constraints as "must preserve" instead.
+1b.4 A dependent that must stay untouched goes into Constraints as \"must preserve\" instead.
 1b.5 Record the scan's blind spots in Known Pitfalls: grep finds textual references but not
      dynamic dispatch, reflection, string-built calls, or cross-language boundaries. Name any
      that are plausible here, so the executor re-checks at runtime.
@@ -87,9 +94,10 @@ shape of both files you write.
 
 Verify each line against the files you just wrote. Any failure → fix the file before continuing.
 
-3.1 No reference to "this chat", "above", "discussed", or "we decided" — all rationale is inline.
+3.1 No reference to \"this chat\", \"above\", \"discussed\", or \"we decided\" — all rationale is inline.
 3.2 Every path mentioned is concrete; no placeholders remain.
-3.3 `## Plan provenance` is filled: date, plus a git ref or the list of files the plan assumes.
+3.3 `## Plan provenance` is filled: date, plus a git ref or the list of files the plan assumes,
+    plus the `System:` line if `fraim` is on PATH (`fraim version`).
 3.4 For a change to existing code: the Step 1b scan was run, and **every** dependent it found is
     in Files to Change or in Constraints.
 3.5 Every `Files to Change` entry has Action, What, and Pattern reference.
@@ -111,7 +119,7 @@ Verify each line against the files you just wrote. Any failure → fix the file 
 4.2 Summarize what got captured, in 3–5 bullets.
 4.3 The queue now holds more than one task → list the queued slugs, and flag any overlap in files
     between them.
-4.4 Say, verbatim: **"Готово. Открой новый чат и запусти `/run_task`."**
+4.4 Say, verbatim: **\"Готово. Открой новый чат и запусти `/run-task`.\"**
 
 ---
 
@@ -124,10 +132,14 @@ Verify each line against the files you just wrote. Any failure → fix the file 
 
 ## Plan provenance
 - Planned: <YYYY-MM-DD>
-- Based on: <git ref, e.g. `HEAD a1b2c3d`> — OR, if not using git: <list of the files this plan
-  assumes the current state of>
+- Planned / Based on / System: **already written by `fraim task-new`** — leave them alone.
+  Without git, replace `Based on` with the list of files this plan assumes the state of.
 <This is the snapshot the plan was written against. The executor re-checks it before running,
 so it can detect a plan that went stale while sitting in the queue behind another task.>
+<The System line snapshots the workflow system itself, not the code. Under a global install
+the procedures update underneath a queued plan, so a plan written by an older /make-task can
+be executed by a newer /run-task without anyone noticing. This line is what makes that
+visible — the same staleness detection the system already applies to code, applied to itself.>
 
 ## Goal
 <One sentence. The outcome that defines success.>
@@ -158,7 +170,7 @@ executor can make small judgment calls correctly without re-deriving intent.>
 ## Known Pitfalls
 <Things that look fine but will break, or non-obvious gotchas — including relevant entries lifted
 from CONVENTIONS.md's Known Pitfalls, and any blind spots of the Step 1b scan. Keep the section
-and write "None known." if empty.>
+and write \"None known.\" if empty.>
 
 ## Out of Scope
 <Tempting adjacent improvements the executor must NOT do.>
@@ -178,7 +190,7 @@ and write "None known." if empty.>
 ### `path/to/file1.ext`
 - **Action:** create | modify | delete
 - **What:** <specific, surgical description of the change>
-- **Pattern reference:** <file from Codebase Context to mirror, or "n/a">
+- **Pattern reference:** <file from Codebase Context to mirror, or \"n/a\">
 
 ### `path/to/file2.ext`
 - **Action:** ...
@@ -190,10 +202,10 @@ and write "None known." if empty.>
 2. <Concrete step>
 
 ## Acceptance Criteria
-<Each item objectively, mechanically checkable. No "code looks clean".>
+<Each item objectively, mechanically checkable. No \"code looks clean\".>
 - [ ] <criterion 1>
 - [ ] <criterion 2>
-- [ ] Operator confirmed: <what to look at, and what "correct" looks like>
+- [ ] Operator confirmed: <what to look at, and what \"correct\" looks like>
       <Use this line only for a check no command can make. It moves verification to the human
       explicitly, instead of leaving it unstated.>
 
@@ -201,16 +213,16 @@ and write "None known." if empty.>
 <At least one command that exits non-zero on failure, run from repo root. Never empty.
 If this change genuinely cannot be checked by a command, write the manual check here instead,
 and add a matching `Operator confirmed:` line to Acceptance Criteria above.>
-\`\`\`bash
+\\`\\`\\`bash
 <command 1>
 <command 2>
-\`\`\`
+\\`\\`\\`
 
 ## Foundation updates (executor's final step — invariant 0.4)
 - `ARCHITECTURE.md`: <which section to update if structure, components, or data flow changed,
-  or "no structural change expected">
+  or \"no structural change expected\">
 - `DECISIONS.md`: <append an entry if a non-obvious choice is made — note the expected decision,
-  or "none expected">
+  or \"none expected\">
 
 ## Executor Rules — read before starting
 - Follow this plan **literally**. The plan is the authority — not because a stronger model wrote
@@ -220,12 +232,12 @@ and add a matching `Operator confirmed:` line to Acceptance Criteria above.>
   `blockers.md` — do not defer to the plan, and do not improvise around it.
 - If anything is ambiguous, **STOP and ask the user**. Do not guess.
 - If the plan itself is wrong (bad path, contradicts reality, unverifiable), do **NOT** patch it —
-  record findings in this task's `blockers.md` and stop for `/revise_task`.
+  record findings in this task's `blockers.md` and stop for `/revise-task`.
 - If you see improvements outside this plan, do **NOT** implement them — list them in your report.
-- Touch only files listed in "Files to Change". Anything else requires asking.
+- Touch only files listed in \"Files to Change\". Anything else requires asking.
 - Do not change tests, configs, or dependencies unless this file says so.
 - If you find a bug in existing code, note it for the report; do not fix it.
-- Final step: update `ARCHITECTURE.md` / append `DECISIONS.md` per "Foundation updates".
+- Final step: update `ARCHITECTURE.md` / append `DECISIONS.md` per \"Foundation updates\".
 ```
 
 ---
@@ -243,9 +255,9 @@ fails. This is also why the executor follows the plan literally: authority comes
 being explicit, self-contained, and mechanically verifiable — not from who wrote it. Make it
 worthy of that authority.
 
-**N3 — Why a blocked task is not a new task.** A fresh `/make_task` would throw away the
+**N3 — Why a blocked task is not a new task.** A fresh `/make-task` would throw away the
 `blockers.md` and everything the executor paid to learn, along with the parts of the plan that
-were already right. `/revise_task` amends in place and keeps both.
+were already right. `/revise-task` amends in place and keeps both.
 
 **N4 — Why Known Pitfalls feed planning.** Those entries are gotchas earlier executions paid
 for. A plan that walks a new task into a known trap is a defective plan, and the executor will
@@ -261,10 +273,10 @@ trips on the next one. Mapping the blast radius once, before writing `Files to C
 prevents the whole cycle.
 
 **N7 — Why record the rejected alternatives.** Without them, a capable executor will look at
-approach B, find it reasonable, and "improve" the plan by reverting your decision — silently,
+approach B, find it reasonable, and \"improve\" the plan by reverting your decision — silently,
 and with good intentions.
 
-**N8 — Why verification can never be empty.** "Empty if truly not applicable" is an escape a
+**N8 — Why verification can never be empty.** \"Empty if truly not applicable\" is an escape a
 weak model under pressure will take, and a plan with no check produces a report whose ✓ marks
 mean nothing — which `/prune` will later read as ground truth. There is no such thing as an
 unverifiable task; there are tasks whose verification belongs to the human. Saying that out loud
