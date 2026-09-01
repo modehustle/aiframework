@@ -24,7 +24,7 @@ mkdir -p "$HOME"
 printf '\nprocedures/\n'
 
 N=$(ls "$REPO"/procedures/*.md | grep -v manifest | wc -l | tr -d ' ')
-check "13 процедур на диске" "$N" "13"
+check "12 процедур на диске" "$N" "12"
 
 BADFM=""
 for f in "$REPO"/procedures/*.md; do
@@ -95,7 +95,7 @@ printf '\nfraim build\n'
 check "build завершился успешно" "$?" "0"
 
 PLUG="$REPO/installer/claude-plugin/skills"
-check "плагин: 14 скиллов" "$(find "$PLUG" -name SKILL.md | wc -l | tr -d ' ')" "14"
+check "плагин: 13 скиллов" "$(find "$PLUG" -name SKILL.md | wc -l | tr -d ' ')" "13"
 
 # The single-file rule is a compatibility constraint, not tidiness:
 # Hermes fetches only SKILL.md when installing from a URL, and omp discovers
@@ -135,29 +135,32 @@ git -C "$PROJ" add -A >/dev/null; git -C "$PROJ" commit -qm init
 "$FRAIM" status "$PROJ" >/dev/null 2>&1
 check "чистый проект → exit 0" "$?" "0"
 
-# Drift: 5 hotfixes since the last prune marker is the default threshold.
-printf -- '--- pruned 2026-01-01 ---\n' > "$PROJ/ai/hotfix_log.md"
-i=1; while [ $i -le 4 ]; do printf -- '- 2026-08-01 10:00 — `a.py` — fix — behavior: no\n' >> "$PROJ/ai/hotfix_log.md"; i=$((i+1)); done
+# Drift is code commits since ARCHITECTURE.md last moved. It counts every mode of work,
+# including the reactive one, which is why it replaced the hotfix counter.
+printf 'foundation_lag_commits = 3\n' > "$PROJ/ai/fraim.conf"
+i=1; while [ $i -le 2 ]; do
+    printf 'line %s\n' "$i" >> "$PROJ/app.py"
+    git -C "$PROJ" add app.py >/dev/null 2>&1
+    git -C "$PROJ" commit -qm "fix: change $i" >/dev/null 2>&1
+    i=$((i+1))
+done
 "$FRAIM" status "$PROJ" >/dev/null 2>&1
-check "4 хотфикса (ниже порога) → exit 0" "$?" "0"
-printf -- '- 2026-08-01 11:00 — `a.py` — fix — behavior: no\n' >> "$PROJ/ai/hotfix_log.md"
+check "2 коммита кода (ниже порога) → exit 0" "$?" "0"
+printf 'line 3\n' >> "$PROJ/app.py"
+git -C "$PROJ" add app.py >/dev/null 2>&1
+git -C "$PROJ" commit -qm "fix: change 3" >/dev/null 2>&1
 "$FRAIM" status "$PROJ" >/dev/null 2>&1
-check "5 хотфиксов (порог) → exit 1" "$?" "1"
+check "3 коммита кода (порог) → exit 1" "$?" "1"
 "$FRAIM" status "$PROJ" 2>/dev/null | grep -q '/prune'
 check "вердикт указывает на /prune" "$?" "0"
 
-# Entries logged BEFORE the marker are already reconciled and must not count.
-printf -- '--- pruned 2026-08-02 ---\n' >> "$PROJ/ai/hotfix_log.md"
+# The map moving is one anchor; a prune commit is the other, and the nearer one wins.
+printf 'updated\n' >> "$PROJ/ARCHITECTURE.md"
+git -C "$PROJ" add ARCHITECTURE.md >/dev/null 2>&1
+git -C "$PROJ" commit -qm "prune: reconcile foundation" >/dev/null 2>&1
 "$FRAIM" status "$PROJ" >/dev/null 2>&1
-check "маркер прунинга сбрасывает счётчик → exit 0" "$?" "0"
-
-# Per-project threshold override.
-printf 'hotfix_threshold = 2\n' > "$PROJ/ai/fraim.conf"
-printf -- '- 2026-08-03 10:00 — `a.py` — fix — behavior: no\n' >> "$PROJ/ai/hotfix_log.md"
-printf -- '- 2026-08-03 11:00 — `a.py` — fix — behavior: no\n' >> "$PROJ/ai/hotfix_log.md"
-"$FRAIM" status "$PROJ" >/dev/null 2>&1
-check "порог из ai/fraim.conf соблюдается → exit 1" "$?" "1"
-rm -f "$PROJ/ai/fraim.conf" "$PROJ/ai/hotfix_log.md"
+check "обновление карты сбрасывает счётчик → exit 0" "$?" "0"
+rm -f "$PROJ/ai/fraim.conf"
 
 # Blockers: the executor refused the plan and stopped.
 mkdir -p "$PROJ/ai/tasks/add-auth"
@@ -212,7 +215,7 @@ check "scaffold завершился успешно" "$?" "0"
 
 MISSING=""
 for f in README.md ARCHITECTURE.md CONVENTIONS.md DECISIONS.md .gitignore \
-         ai/README.md ai/hotfix_log.md ai/fraim.conf ai/archive/decisions_log.md; do
+         ai/README.md ai/fraim.conf ai/archive/decisions_log.md AGENTS.md CLAUDE.md; do
     [ -f "$PROJ2/$f" ] || MISSING="$MISSING $f"
 done
 for d in ai/tasks ai/archive ai/investigations; do
@@ -221,6 +224,15 @@ done
 check "все файлы и папки скелета созданы" "${MISSING:-none}" "none"
 
 check "имя проекта подставлено" "$(grep -c 'ARCHITECTURE — proj2' "$PROJ2/ARCHITECTURE.md")" "1"
+
+# The repository has to describe itself to an agent that has never heard of fraim —
+# a cloud session, CI, a second machine. The pointer travels in git, not on the machine.
+check "AGENTS.md несёт инвариант" "$(grep -c 'golden rule' "$PROJ2/AGENTS.md")" "1"
+check "AGENTS.md работает без CLI" "$(grep -c 'If it is not installed' "$PROJ2/AGENTS.md")" "1"
+check "CLAUDE.md указывает на AGENTS.md" "$(grep -c '@AGENTS.md' "$PROJ2/CLAUDE.md")" "1"
+check "AGENTS.md закоммичен скелетом" \
+    "$(git -C "$PROJ2" ls-files --error-unmatch AGENTS.md >/dev/null 2>&1 && echo yes || echo no)" "yes"
+
 
 # A scaffold must never masquerade as a filled foundation: that is worse than no
 # files at all, because the agent reads them, finds nothing, and goes back to guessing.
@@ -286,9 +298,10 @@ i=1; while [ $i -le 10 ]; do
 done
 "$FRAIM" status "$PROJ5" >/dev/null 2>&1
 check "снова накопилось → exit 1" "$?" "1"
-printf '# Hotfix log\n' > "$PROJ5/ai/hotfix_log.md"
 git -C "$PROJ5" add -A >/dev/null
-git -C "$PROJ5" commit -qm "prune: reconcile foundation" >/dev/null
+# --allow-empty: a prune that honestly changed nothing still has to leave the anchor,
+# which is exactly what `fraim prune-mark` does.
+git -C "$PROJ5" commit -q --allow-empty -m "prune: reconcile foundation" >/dev/null
 "$FRAIM" status "$PROJ5" >/dev/null 2>&1
 check "прошедший /prune сбрасывает счётчик" "$?" "0"
 
@@ -317,29 +330,102 @@ printf '# Arch\n' > "$PROJ4/ARCHITECTURE.md"
 "$FRAIM" status "$PROJ4" 2>/dev/null | grep -q 'нет репозитория'
 check "сторож видит проект без репозитория" "$?" "0"
 
+# ------------------------------------------------- существующий чужой репозиторий
+# The shape every real onboarding has: history, a remote, its own README and .gitignore.
+# Everything below used to be skipped silently on exactly this shape.
+printf '\nчужой репозиторий (онбординг)\n'
+
+LEGACY="$SANDBOX/legacy"
+ORIGIN="$SANDBOX/origin.git"
+git init -q --bare "$ORIGIN"
+mkdir -p "$LEGACY/src"
+git -C "$LEGACY" init -q
+git -C "$LEGACY" config user.email t@t; git -C "$LEGACY" config user.name t
+printf '# Legacy\n' > "$LEGACY/README.md"
+printf 'node_modules/\n' > "$LEGACY/.gitignore"
+printf 'x\n' > "$LEGACY/src/index.js"
+printf 'SECRET=xxx\n' > "$LEGACY/.env"
+git -C "$LEGACY" add README.md .gitignore src/index.js >/dev/null 2>&1
+git -C "$LEGACY" commit -qm "initial" >/dev/null 2>&1
+git -C "$LEGACY" remote add origin "$ORIGIN" >/dev/null 2>&1
+
+cd "$LEGACY" || exit 1
+"$FRAIM" scaffold >/dev/null 2>&1
+check "scaffold отработал на чужом репозитории" "$?" "0"
+check "чужой README не тронут" "$(cat "$LEGACY/README.md")" "# Legacy"
+check "чужой .gitignore сохранён" "$(grep -c '^node_modules/$' "$LEGACY/.gitignore")" "1"
+check "секреты дописаны в чужой .gitignore" "$(grep -c '^\.env$' "$LEGACY/.gitignore")" "1"
+check ".env теперь игнорируется" \
+    "$(git -C "$LEGACY" check-ignore -q .env && echo yes || echo no)" "yes"
+check "data/ в чужой проект не навязан" "$(grep -c '^data/$' "$LEGACY/.gitignore")" "0"
+
+# Idempotent: a second pass must not append the same lines again.
+"$FRAIM" scaffold >/dev/null 2>&1
+check "повторный scaffold не дублирует строки" "$(grep -c '^\.env$' "$LEGACY/.gitignore")" "1"
+
+# A tracked .env is not fixed by ignoring it, and silence there would be the dangerous
+# outcome — the user would push believing the secret is covered.
+printf 'SECRET=yyy\n' > "$LEGACY/.env2"
+git -C "$LEGACY" add -f .env >/dev/null 2>&1
+git -C "$LEGACY" commit -qm "oops" >/dev/null 2>&1
+"$FRAIM" scaffold 2>&1 | grep -q 'уже в истории git'
+check "отслеживаемый .env вызывает предупреждение" "$?" "0"
+rm -f "$LEGACY/.env2"
+
+# Save points that never left this machine: detection only, never a reach for the network.
+"$FRAIM" status "$LEGACY" 2>/dev/null | grep -q 'не уехали в удалённую копию'
+check "сторож видит неуехавшие точки сохранения" "$?" "0"
+"$FRAIM" config set unpushed_threshold 1 >/dev/null 2>&1
+"$FRAIM" status "$LEGACY" >/dev/null 2>&1
+check "выше порога — это тревога" "$?" "1"
+"$FRAIM" config set unpushed_threshold 99 >/dev/null 2>&1
+
+NOREMOTE="$SANDBOX/noremote"
+mkdir -p "$NOREMOTE"; cd "$NOREMOTE" || exit 1
+"$FRAIM" scaffold >/dev/null 2>&1
+"$FRAIM" status "$NOREMOTE" 2>/dev/null | grep -q 'нет удалённой копии'
+check "проект без remote назван честно" "$?" "0"
+"$FRAIM" config set check_remote off >/dev/null 2>&1
+"$FRAIM" status "$NOREMOTE" 2>/dev/null | grep -c 'удалённой копии' | grep -q '^0$'
+check "выключенная проверка remote молчит" "$?" "0"
+"$FRAIM" config set check_remote on >/dev/null 2>&1
+
+# The blind spot that mattered once reactive work became the main mode: a foundation
+# file that never entered history at all is invisible to --untracked-files=no.
+rm -f "$NOREMOTE/AGENTS.md"
+git -C "$NOREMOTE" rm -q --cached AGENTS.md >/dev/null 2>&1
+git -C "$NOREMOTE" commit -qm "drop" >/dev/null 2>&1
+printf 'brand new\n' > "$NOREMOTE/AGENTS.md"
+"$FRAIM" status "$NOREMOTE" 2>/dev/null | grep -q 'после последней точки сохранения'
+check "неотслеживаемый файл фундамента замечен" "$?" "0"
+
+cd "$PROJ2" || exit 1
+
 # ---------------------------------------------------------------- config
 printf '\nfraim config\n'
 
-check "значение по умолчанию" "$("$FRAIM" config 2>/dev/null | grep hotfix_threshold | awk '{print $2}')" "5"
-"$FRAIM" config set hotfix_threshold 3 >/dev/null 2>&1
-check "проектная настройка записана" "$(grep -c 'hotfix_threshold = 3' "$PROJ2/ai/fraim.conf")" "1"
-check "источник значения показан" "$("$FRAIM" config 2>/dev/null | grep hotfix_threshold | grep -c 'ai/fraim.conf')" "1"
+check "значение по умолчанию" "$("$FRAIM" config 2>/dev/null | grep foundation_lag_commits | awk '{print $2}')" "10"
+"$FRAIM" config set foundation_lag_commits 3 >/dev/null 2>&1
+check "проектная настройка записана" "$(grep -c 'foundation_lag_commits = 3' "$PROJ2/ai/fraim.conf")" "1"
+check "источник значения показан" "$("$FRAIM" config 2>/dev/null | grep foundation_lag_commits | grep -c 'ai/fraim.conf')" "1"
 "$FRAIM" config set --machine stale_plan_commits 4 >/dev/null 2>&1
 check "машинная настройка записана" "$(grep -c 'stale_plan_commits = 4' "$FRAIM_HOME/config")" "1"
 "$FRAIM" config set nonsense_key 1 >/dev/null 2>&1
 check "неизвестный ключ отвергнут" "$?" "2"
 
 # A check turned off must actually stop firing.
-printf -- '--- pruned 2026-01-01 ---\n' > "$PROJ2/ai/hotfix_log.md"
-for i in 1 2 3 4 5; do printf -- '- e — `a` — f — behavior: no\n' >> "$PROJ2/ai/hotfix_log.md"; done
-git -C "$PROJ2" commit -qam "test: hotfix log" >/dev/null 2>&1
+for i in 1 2 3; do
+    printf 'drift %s\n' "$i" >> "$PROJ2/app.py"
+    git -C "$PROJ2" add app.py >/dev/null 2>&1
+    git -C "$PROJ2" commit -qm "fix: drift $i" >/dev/null 2>&1
+done
 "$FRAIM" status "$PROJ2" >/dev/null 2>&1
 check "дрейф выше порога → exit 1" "$?" "1"
-"$FRAIM" config set check_drift off >/dev/null 2>&1
+"$FRAIM" config set check_foundation off >/dev/null 2>&1
 "$FRAIM" status "$PROJ2" >/dev/null 2>&1
 check "выключенная проверка не срабатывает" "$?" "0"
-"$FRAIM" config set check_drift on >/dev/null 2>&1
-rm -f "$PROJ2/ai/hotfix_log.md"
+"$FRAIM" config set check_foundation on >/dev/null 2>&1
+"$FRAIM" config set foundation_lag_commits 10 >/dev/null 2>&1
 
 # ---------------------------------------------------------------- verbs
 printf '\nдетерминированные глаголы\n'
@@ -383,13 +469,11 @@ check "задача убрана из очереди" "$([ -d "$PROJ2/ai/tasks/a
 check "задача лежит в архиве" "$(find "$PROJ2/ai/archive" -maxdepth 1 -name '*_add-auth' | wc -l | tr -d ' ')" "1"
 check "архивация закоммичена" "$(git -C "$PROJ2" log --oneline -1 --format=%s)" "archive: add-auth"
 
-# hotfix-log owns the format the drift counter reads.
-"$FRAIM" hotfix-log src/a.py "fix off-by-one" no >/dev/null 2>&1
-check "hotfix-log записал строку в точном формате" \
-    "$(grep -cE '^- [0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2} — `src/a\.py` — fix off-by-one — behavior: no$' "$PROJ2/ai/hotfix_log.md")" "1"
-check "hotfix-log закоммитил" "$(git -C "$PROJ2" log --oneline -1 --format=%s)" "hotfix: fix off-by-one"
-"$FRAIM" hotfix-log src/a.py "bad" maybe >/dev/null 2>&1
-check "hotfix-log отвергает неверный behavior" "$?" "2"
+# The reactive save point is the record of unplanned work: an ordinary commit verb.
+mkdir -p "$PROJ2/src"; printf 'reactive\n' >> "$PROJ2/src/a.py"
+"$FRAIM" commit fix "off-by-one" src/a.py >/dev/null 2>&1
+check "реактивная точка сохранения закоммичена" "$(git -C "$PROJ2" log --oneline -1 --format=%s)" "fix: off-by-one"
+check "точка сохранения помечена трейлером" "$(git -C "$PROJ2" log -1 --format=%b | grep -c '^fraim: ')" "1"
 
 "$FRAIM" stack-passport >/dev/null 2>&1
 check "stack-passport создал STACK.md" "$([ -f "$PROJ2/STACK.md" ] && echo yes || echo no)" "yes"
@@ -399,7 +483,7 @@ check "паспорт помечен как незаполненный" "$(grep 
 check "stack-passport не перезаписывает" "$?" "2"
 
 "$FRAIM" prune-mark >/dev/null 2>&1
-check "prune-mark поставил маркер" "$(grep -c '^--- pruned 20' "$PROJ2/ai/hotfix_log.md")" "1"
+check "prune-mark оставил якорь-коммит" "$(git -C "$PROJ2" log --oneline -1 --format=%s | grep -c '^prune: reconcile foundation')" "1"
 "$FRAIM" status "$PROJ2" >/dev/null 2>&1
 check "маркер сбросил счётчик дрейфа" "$?" "0"
 
@@ -495,7 +579,7 @@ check "гейт: без исхода не архивирует" "$?" "2"
 python3 - "$FIND" <<'PY2'
 import pathlib, re, sys
 p = pathlib.Path(sys.argv[1]); t = p.read_text()
-t = t.replace("<root cause, plainly. Route: /hotfix (surgical) | /make-task (structural) | /revise-task | /prune.>",
+t = t.replace("<root cause, plainly. Route: reactive fix (surgical) | /make-task (structural) | /revise-task | /prune.>",
               "The selector is rebuilt on every render; the observer attaches to the old node.")
 p.write_text(t)
 PY2
@@ -612,7 +696,7 @@ git -C "$PROJ2" checkout -- main.py >/dev/null 2>&1
 # commit_verbs = off must actually stop the commits.
 "$FRAIM" config set commit_verbs off >/dev/null 2>&1
 BEFORE_N=$(git -C "$PROJ2" rev-list --count HEAD)
-"$FRAIM" hotfix-log src/b.py "another" no >/dev/null 2>&1
+printf 'more\n' >> "$PROJ2/src/a.py"; "$FRAIM" commit fix "another" src/a.py >/dev/null 2>&1
 check "commit_verbs = off отключает коммит" "$(git -C "$PROJ2" rev-list --count HEAD)" "$BEFORE_N"
 "$FRAIM" config set commit_verbs on >/dev/null 2>&1
 
@@ -634,8 +718,8 @@ mkdir -p "$HOME/.codex" "$HOME/.claude"     # pretend two harnesses are installe
 cd "$PROJ" || exit 1
 "$FRAIM" init >/dev/null 2>&1
 check "init завершился успешно" "$?" "0"
-check "Codex: 14 скиллов" "$(find "$HOME/.codex/skills" -name SKILL.md 2>/dev/null | wc -l | tr -d ' ')" "14"
-check "Claude Code: 14 скиллов" "$(find "$HOME/.claude/skills" -name SKILL.md 2>/dev/null | wc -l | tr -d ' ')" "14"
+check "Codex: 13 скиллов" "$(find "$HOME/.codex/skills" -name SKILL.md 2>/dev/null | wc -l | tr -d ' ')" "13"
+check "Claude Code: 13 скиллов" "$(find "$HOME/.claude/skills" -name SKILL.md 2>/dev/null | wc -l | tr -d ' ')" "13"
 check "контекстный блок в ~/.codex/AGENTS.md" "$(grep -c 'fraim:begin' "$HOME/.codex/AGENTS.md" 2>/dev/null)" "1"
 check "проект зарегистрирован" "$("$FRAIM" projects 2>/dev/null | grep -cx "  $PROJ")" "1"
 check "разрешение Bash(fraim:*) прописано" "$(grep -c 'Bash(fraim' "$HOME/.claude/settings.json" 2>/dev/null)" "1"

@@ -113,7 +113,17 @@ Verify each line against the files you just wrote. Any failure → fix the file 
      this change genuinely cannot be checked by a command, the manual check is written out AND
      an `Operator confirmed:` line is in Acceptance Criteria. The section is never empty. (why: N8)
 
-### Step 4 — Confirm to the user
+### Step 4 — Save the plan, then confirm to the user
+
+4.0 Save the plan as its own point:
+
+```sh
+fraim commit plan "<slug> — <one-line goal>" ai/tasks/<slug>
+```
+
+    A plan that exists only in the working tree dies with the session that wrote it, and the
+    whole point of this procedure is that it survives into a different chat. This is also
+    what stops the watchman reporting the folder as unsaved work until `/run-task` picks it up.
 
 4.1 Print both file paths: `ai/tasks/<slug>/context.md` and `ai/tasks/<slug>/task.md`.
 4.2 Summarize what got captured, in 3–5 bullets.

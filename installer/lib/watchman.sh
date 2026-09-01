@@ -60,29 +60,12 @@ wm_pad() {
 
 # --- the checks -------------------------------------------------------------
 
-# 1. Drift: hotfix entries logged since the last /prune marker.
-wm_check_drift() {
-    _root=$1
-    _log="$_root/ai/hotfix_log.md"
-    [ -f "$_log" ] || return 0
-    _threshold=$(config_get hotfix_threshold "$_root")
-
-    # Entries after the LAST `--- pruned <date> ---` marker; an entry is a
-    # list item, so blank lines and prose in the log do not inflate the count.
-    _count=$(awk '
-        /^--- pruned .* ---[[:space:]]*$/ { n = 0; next }
-        /^-[[:space:]]/                   { n++ }
-        END { print n + 0 }
-    ' "$_log")
-
-    if [ "$_count" -ge "$_threshold" ]; then
-        _w=$(wm_plural "$_count" хотфикс хотфикса хотфиксов)
-        wm_add drift attention "$_count $_w с последнего прунинга (порог $_threshold)" "/prune"
-    elif [ "$_count" -gt 0 ]; then
-        _w=$(wm_plural "$_count" хотфикс хотфикса хотфиксов)
-        wm_add drift info "$_count $_w с последнего прунинга (порог $_threshold)" ""
-    fi
-}
+# 1. Drift used to be counted here, as hotfix entries since the last /prune marker. It is
+#    gone with /hotfix itself: the metric only ever saw work that went through that one
+#    procedure, while `wm_check_foundation` below counts code commits since ARCHITECTURE.md
+#    last moved — the same signal, measured over every mode of work including the reactive
+#    one. Two drift metrics where one is a strict subset of the other is not redundancy,
+#    it is a second number to keep honest.
 
 # 2. Blockers: the executor refused a plan and stopped. Nothing moves until
 #    the planner repairs it, so age matters more than count.
@@ -196,6 +179,44 @@ wm_check_git() {
     return 0
 }
 
+# 4d-bis. Save points that never left this machine.
+#
+#     Not a backup check — the system deliberately makes no promise about backups, and the
+#     history carries code and decisions, never data or secrets. This is about REACH: the
+#     product's promise is that you can re-enter a project with full context, and re-entering
+#     increasingly means from somewhere else — a web session, a cloud agent, CI, a second
+#     machine. All of them start by cloning. A foundation that never left this disk does not
+#     exist for any of them.
+#
+#     Detection only, per D4. Choosing a host, private or public, and authorising it is a
+#     fork with real content in it, so it stays a conversation with the agent — the watchman
+#     says the copy is missing and never reaches for the network to fix it.
+wm_check_remote() {
+    _root=$1
+    wm_is_git "$_root" || return 0
+
+    if [ -z "$(git -C "$_root" remote 2>/dev/null)" ]; then
+        wm_add remote info "нет удалённой копии — проект живёт только на этой машине" ""
+        return 0
+    fi
+
+    # Commits on HEAD that no remote ref carries. This works without an upstream being
+    # configured, which matters: a branch created locally usually has none.
+    _n=$(git -C "$_root" rev-list --count HEAD --not --remotes 2>/dev/null)
+    [ -n "$_n" ] || return 0
+    [ "$_n" -gt 0 ] || return 0
+
+    _max=$(config_get unpushed_threshold "$_root")
+    _w=$(wm_plural "$_n" "точка сохранения" "точки сохранения" "точек сохранения")
+    _v=$(wm_plural "$_n" "не уехала" "не уехали" "не уехали")
+    if [ "$_n" -ge "$_max" ]; then
+        wm_add remote attention "$_n $_w $_v в удалённую копию" "git push"
+    else
+        wm_add remote info "$_n $_w $_v в удалённую копию" ""
+    fi
+    return 0
+}
+
 # 4e. Changed and not saved. Only the artefacts the verbs always commit themselves: if one
 #     of them is modified and uncommitted, a verb was interrupted or bypassed. Code and
 #     settings are the human's business and are deliberately not counted — a watchman that
@@ -203,9 +224,24 @@ wm_check_git() {
 wm_check_dirty() {
     _root=$1
     wm_is_git "$_root" || return 0
-    _n=$(git -C "$_root" status --porcelain --untracked-files=no -- \
-            ARCHITECTURE.md CONVENTIONS.md DECISIONS.md README.md STACK.md \
-            ai/tasks ai/archive ai/hotfix_log.md 2>/dev/null | wc -l | tr -d ' ')
+    # Two sets, because "unsaved" means different things for them.
+    #
+    # The foundation and the archive belong in history from the moment they exist: a verb
+    # writes them and commits them in the same breath, so an untracked one is an interrupted
+    # or bypassed verb. Excluding untracked files made this blind exactly where it matters
+    # most now — reactive work usually leaves behind a file that never entered history at
+    # all, which `--untracked-files=no` cannot see.
+    #
+    # The exceptions stay modified-only: `ai/tasks` and `STACK.md` are both laid down as a
+    # stub by a verb and committed by the procedure that fills them, so between the two they
+    # are legitimately untracked — and a watchman that comments on work in progress stops
+    # being read.
+    _n=$(git -C "$_root" status --porcelain --untracked-files=normal -- \
+            ARCHITECTURE.md CONVENTIONS.md DECISIONS.md README.md \
+            AGENTS.md CLAUDE.md ai/archive 2>/dev/null | wc -l | tr -d ' ')
+    _nt=$(git -C "$_root" status --porcelain --untracked-files=no -- \
+            ai/tasks STACK.md 2>/dev/null | wc -l | tr -d ' ')
+    _n=$((_n + _nt))
     [ "$_n" -gt 0 ] || return 0
     wm_add dirty attention \
         "$_n $(wm_plural "$_n" файл файла файлов) фундамента и ai/ изменены после последней точки сохранения" \
@@ -296,13 +332,13 @@ wm_managed() {
 wm_run() {
     _root=$1
     WM_FINDINGS=
-    config_is_on check_drift        "$_root" && wm_check_drift "$_root"
     config_is_on check_blockers     "$_root" && wm_check_blockers "$_root"
     config_is_on check_stale_plans  "$_root" && wm_check_stale_plans "$_root"
     config_is_on check_plan_version "$_root" && wm_check_plan_version "$_root"
     config_is_on check_unsealed       "$_root" && wm_check_unsealed "$_root"
     config_is_on check_investigations "$_root" && wm_check_investigations "$_root"
     config_is_on check_git            "$_root" && wm_check_git "$_root"
+    config_is_on check_remote         "$_root" && wm_check_remote "$_root"
     config_is_on check_dirty          "$_root" && wm_check_dirty "$_root"
     wm_check_queue "$_root"
     config_is_on check_foundation   "$_root" && wm_check_foundation "$_root"

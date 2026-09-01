@@ -45,7 +45,7 @@ If none of these exist, this project has not been bootstrapped:
 
 - `ai/tasks/<slug>/` — list every task folder in the queue. For each: its `task.md` Summary line; its state — **blocked** (has `blockers.md`, awaiting `/revise-task`), **done, awaiting archive** (has `result.md` and no `blockers.md`), or **runnable**; and for runnable tasks check `## Plan provenance` — if the code has moved since it was planned (other tasks landed on overlapping files), flag the plan as **possibly stale**.
 - `ai/archive/` — list the few most recent archived tasks (by directory timestamp) to show recent history.
-- `ai/hotfix_log.md` — count the hotfixes since the last `--- pruned ... ---` marker. This is the foundation-drift signal. The threshold is not a constant to remember: `fraim config` holds it and the watchman already compared against it in Step 0 — this manual count is only for when the CLI is absent.
+- **Foundation drift** — count the code commits since `ARCHITECTURE.md` last changed (`git log -1 --format=%H -- ARCHITECTURE.md`, then commits after it touching anything but `*.md`). The count resets at the nearer of two anchors: the map itself moving, and the last `prune: ` commit. The threshold is not a constant to remember: `fraim config` holds `foundation_lag_commits` and the watchman already compared against it in Step 0 — this manual count is only for when the CLI is absent.
 
 ## Step 3 — Report state
 
@@ -79,6 +79,6 @@ Based on state, name the single most likely next command — do not run it:
 - **Runnable task(s) in the queue** → \"В очереди <N> задач(а). Запусти `/run-task`\" + (if several) \"и выбери, какую исполнять.\"
 - **Empty queue** → \"Очередь пуста. Обсуди следующий шаг и запусти `/make-task`, когда план согласован.\"
 - **Drift built up** (the watchman reported `drift` at attention level, or the foundation looks stale) → \"С последнего прунинга <N> хотфиксов — фундамент мог поплыть. Запусти `/prune`, чтобы свести его с реальностью.\"
-- **A trivial fix is all that is needed** → \"Это микро-правка — `/hotfix` (если в пределах потолка), не полный цикл.\"
+- **A trivial fix is all that is needed** → \"Это микро-правка — сделай прямо в этой сессии и поставь точку сохранения, полный цикл тут ни к чему.\"
 
 Then stop and wait for the human. Do not begin work in this session.

@@ -3,7 +3,7 @@ name: reconcile-task
 description: "Close a /run-task session that drifted into live debugging — fold the unplanned changes back into the record and archive truthfully; but STOP and hand to /revise-task if the drift was structural, not surgical"
 metadata:
   tier: capable
-  version: 0.4.0
+  version: 0.5.0
   source: fraim
 ---
 # /reconcile-task — Seal a Drifted Execution Session
@@ -27,7 +27,7 @@ You are the **executor**, closing a `/run-task` that did not stay on rails. The 
 
 You may seal-and-archive **only** if the drift was **surgical** — the live edits fixed *details the plan got wrong*, leaving the plan's shape and approach intact. If the drift was **structural** — it changed the shape — you do **not** archive; you hand the task to `/revise-task` (Section A).
 
-> Like the `/hotfix` ceiling, this gate measures the **shape of the drift, not whether it works.** \"The operator confirmed it works\" is **not** a pass. A structural change can work perfectly and still be the wrong thing to seal here, because it skipped the reference scan (blast-radius map) that `/make-task` and `/revise-task` exist to perform.
+> This gate measures the **shape of the drift, not whether it works.** \"The operator confirmed it works\" is **not** a pass. A structural change can work perfectly and still be the wrong thing to seal here, because it skipped the reference scan (blast-radius map) that `/make-task` and `/revise-task` exist to perform.
 
 Apply the gate to the **delta from the plan** — only the edits that were NOT in `task.md`'s `## Files to Change`, or that broke a stated constraint (`Do NOT`, `Must preserve`). The drift is **surgical** only if EVERY one of these holds:
 

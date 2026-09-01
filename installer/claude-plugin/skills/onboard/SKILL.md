@@ -3,7 +3,7 @@ name: onboard
 description: "Bring an EXISTING project or a STACK already running under the system — derive the foundation from reality, ratify it with the human, never redesign or reorganize"
 metadata:
   tier: strong
-  version: 0.4.0
+  version: 0.5.0
   source: fraim
 ---
 # /onboard — Bring an Existing Project Under the System
@@ -25,7 +25,7 @@ The shape is **reverse bootstrap / reverse deploy**: greenfield goes design → 
 > Нет `fraim` — **остановись и скажи об этом**, как `/docker-deploy` останавливается на
 > хостовых действиях. У детерминированного действия ровно одна реализация.
 
-This is a **one-time** act per project. Afterward the project is a normal citizen: `/make-task`, `/run-task`, `/hotfix`, `/prune` work on it identically, and `/prune` maintains the foundation from there. Think of `/onboard` as the manual first `/prune` that also stands up `ai/` and the git baseline.
+This is a **one-time** act per project. Afterward the project is a normal citizen: reactive sessions, `/make-task`, `/run-task` and `/prune` work on it identically, and `/prune` maintains the foundation from there. Think of `/onboard` as the manual first `/prune` that also stands up `ai/` and the git baseline.
 
 ## Step 0 — lay the skeleton first
 
@@ -105,9 +105,13 @@ Run `fraim stack-passport` — it writes `STACK.md` from the template, including
 ## Step — The save point
 
 `fraim scaffold` (Step 0) already made this a repository if it was not one — a project without
-one has no save points at all, and creating it is not a chore to hand to the user. It also wrote
-a `.gitignore`; extend it for what this project actually carries (`data/`, logs, `node_modules`,
-`venv`, `__pycache__`, `*.tar.gz` and other backup archives).
+one has no save points at all, and creating it is not a chore to hand to the user.
+
+It also handled `.gitignore`: written whole if the project had none, otherwise **extended** with
+the rules about secrets only. It said which lines it added, and warned if a `.env` is already
+tracked — that one is not fixed by ignoring it, so raise it with the user. What scaffold does
+NOT decide is the shape of this particular project: extend the file for what it actually carries
+(`data/`, logs, `node_modules`, `venv`, `__pycache__`, `*.tar.gz` and other backup archives).
 
 What used to be the dangerous step here — staging the whole folder at once, `.env`, data
 directories, backup tarballs and all — no longer exists. **The verb saves only the paths you name**,

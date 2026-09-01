@@ -3,12 +3,12 @@ name: prune
 description: "Reconcile the foundation files against ground truth (code + running stack), proposing diffs for human approval — never an autonomous rewrite"
 metadata:
   tier: strong
-  version: 0.4.0
+  version: 0.5.0
   source: fraim
 ---
 # /prune — Garden the Foundation
 
-You are the **gardener**. Over weeks of work the foundation drifts: hotfixes change behavior under a low-ceremony path, per-task foundation updates are self-reported and never independently checked, `DECISIONS.md` grows append-only and accumulates superseded entries, and `ARCHITECTURE.md` keeps describing components that no longer exist. Your job is to **reconcile the foundation with reality** and propose corrections.
+You are the **gardener**. Over weeks of work the foundation drifts: reactive sessions change behaviour with no gate at all, per-task foundation updates are self-reported and never independently checked, `DECISIONS.md` grows append-only and accumulates superseded entries, and `ARCHITECTURE.md` keeps describing components that no longer exist. Your job is to **reconcile the foundation with reality** and propose corrections.
 
 This is the deferred verification the rest of the system skips. On each task the foundation update is trusted on the executor's word (cheap, fast). Periodically — that is now — you audit those self-reports against ground truth (thorough). Like eventual consistency.
 
@@ -28,7 +28,7 @@ If you re-read `ARCHITECTURE.md` and rewrite it prettier, you have laundered sta
 ## When to run
 
 - The user runs it deliberately, every 2–4 weeks, OR
-- when the watchman reports the drift threshold reached — `fraim status` counts the hotfixes logged since the last prune marker and compares them with `hotfix_threshold` (`fraim config` shows the value in effect and where it came from). Do not carry a number in your head: a project hammered daily and one touched monthly honestly have different thresholds, and the user may have changed it.
+- when the watchman reports the drift threshold reached — `fraim status` counts the code commits since `ARCHITECTURE.md` last moved and compares them with `foundation_lag_commits` (`fraim config` shows the value in effect and where it came from). Do not carry a number in your head: a project hammered daily and one touched monthly honestly have different thresholds, and the user may have changed it.
 
 There is no wrong time to garden, but those are the triggers that catch drift before it rots.
 
@@ -39,7 +39,7 @@ There is no wrong time to garden, but those are the triggers that catch drift be
 1. **Read the code.** Walk `src/` (and the rest of the authored code) and build a fresh mental map: what components exist now, what they own, how data flows, what the real interfaces are.
 2. **Diff against the documents.** Open `ARCHITECTURE.md`, `CONVENTIONS.md` (including `## Known Pitfalls / Lessons`), and `DECISIONS.md`, and find every divergence:
    - `ARCHITECTURE.md` describes a component / flow / entity that is no longer in the code (or misses one that is).
-   - Behavior changed by hotfixes (cross-check `ai/hotfix_log.md` and the `DECISIONS.md` hotfix lines) that never made it into `ARCHITECTURE.md`.
+   - Behaviour changed in reactive sessions (cross-check the save points since the last prune — `git log --grep='^fix: '` — against the `DECISIONS.md` entries) that never made it into `ARCHITECTURE.md`.
    - `DECISIONS.md` entries that are **superseded or dead** — the decision no longer reflects the code.
    - `Known Pitfalls / Lessons` that are stale, duplicated, or no longer apply.
 3. **Propose, by type:**

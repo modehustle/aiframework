@@ -105,7 +105,6 @@ by design.
 | execute a prepared plan from the queue | \`/run-task\` | cheap |
 | repair a plan the executor called defective | \`/revise-task\` | strong |
 | close a run that drifted into live debugging | \`/reconcile-task\` | capable |
-| a one-file micro-fix, no ceremony | \`/hotfix\` | capable |
 | find out where a bug is, or whether X is feasible | \`/investigate\` | strong |
 | reconcile the foundation with reality | \`/prune\` | strong |
 | re-enter a project after a break | \`/orient\` | any |
@@ -121,12 +120,15 @@ whose shape appeared while doing it. **That is legitimate.** Do not force it int
 \`/make-task\`, and do not announce a procedure you are not running. What still holds:
 
 - invariant 0.4 — read the foundation first, fix it if the change made it wrong;
+- **behaviour changed → one line in \`DECISIONS.md\`**; pure cosmetics need no entry;
 - **save as you go**: when a coherent piece is done, not at the end of the session,
   \`fraim commit fix \"<what changed>\" <path> <path>\`. Those commits are the record of
   reactive work; there is no second log to keep.
 
-It stopped being a fix and became a story → \`/make-task\`. You are about to change
-something you do not understand → \`/investigate\`.
+Reactive work has **no size limit**. \`/make-task\` is not for \"this got big\" — it is for
+**handing the work to someone outside this conversation** (a fresh chat, a cheaper
+executor, tomorrow's user). That call is the human's, never yours. You are about to
+change something you do not understand → \`/investigate\`.
 
 ## Deterministic verbs — call them, do not reproduce them
 
@@ -144,8 +146,7 @@ these, run it: the format, the paths, the timestamps and the commit are not your
 | \`fraim reconcile-seal SLUG\` | archiving a drifted session — **it can refuse** |
 | \`fraim investigate-new SLUG\` | creating an investigation folder and its provenance stamp |
 | \`fraim investigate-seal SLUG\` | archiving a finished investigation — **it can refuse** |
-| \`fraim hotfix-log FILE DESC yes\|no\` | appending to the drift log by hand |
-| \`fraim prune-mark\` | writing the prune marker by hand |
+| \`fraim prune-mark\` | marking a completed prune by hand |
 | \`fraim stack-passport\` | retyping the STACK.md schema |
 | \`fraim commit KIND TEXT PATH…\` | \`git add\` + \`git commit\` by hand |
 | \`fraim undo [HASH]\` | reaching for \`git reset\` / \`git revert\` |
@@ -181,8 +182,8 @@ A deterministic action has exactly one implementation.
 
 ## The one rule for you
 
-The watchman notices; the human decides. Never run \`/prune\`, \`/run-task\` or
-\`/hotfix\` because the status output suggested them — surface the line and wait.
+The watchman notices; the human decides. Never run \`/prune\` or \`/run-task\`
+because the status output suggested them — surface the line and wait.
 SKILLEOF
 }
 

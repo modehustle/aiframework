@@ -350,32 +350,6 @@ verb_investigate_seal() {
     verb_archive "$_root" "$_dir" "investigate_$_slug" archive "investigate $_slug"
 }
 
-# --- hotfix-log -------------------------------------------------------------
-# The exact line format matters: the watchman counts these, and /prune resets the count.
-# A model improvising the format quietly breaks the drift counter, and nobody notices
-# until the foundation has rotted.
-verb_hotfix_log() {
-    _root=$1; _file=$2; _desc=$3; _behavior=${4:-no}
-    case $_behavior in yes|no) ;; *) die "behavior должен быть yes или no" ;; esac
-    _log="$_root/ai/hotfix_log.md"
-    [ -d "$_root/ai" ] || die "нет ai/ — проект не под системой"
-    [ -f "$_log" ] || printf '# Hotfix log\n\n' > "$_log"
-    printf -- '- %s — `%s` — %s — behavior: %s\n' \
-        "$(date '+%Y-%m-%d %H:%M')" "$_file" "$_desc" "$_behavior" >> "$_log"
-    ok "записано в ai/hotfix_log.md"
-
-    _count=$(awk '/^--- pruned .* ---[[:space:]]*$/ { n = 0; next } /^-[[:space:]]/ { n++ } END { print n+0 }' "$_log")
-    _threshold=$(config_get hotfix_threshold "$_root")
-    if [ "$_count" -ge "$_threshold" ]; then
-        warn "хотфиксов с последнего прунинга: $_count (порог $_threshold) — пора /prune"
-    else
-        dim "  хотфиксов с последнего прунинга: $_count из $_threshold"
-    fi
-
-    verb_commit "$_root" hotfix "$_desc" "$_file" ai/hotfix_log.md DECISIONS.md ||
-        warn "коммит не удался"
-}
-
 # --- stack-passport ---------------------------------------------------------
 # STACK.md has a fixed schema and a standing directive that must survive verbatim —
 # an LLM retyping it from prose drops a section every few projects. The shape is
@@ -393,16 +367,29 @@ verb_stack_passport() {
 }
 
 # --- prune-mark -------------------------------------------------------------
+# The prune anchor is the commit, not a line in a log file. It always was for
+# `wm_check_foundation`, which finds the last `prune: ` commit; the marker written into
+# ai/hotfix_log.md existed only for the hotfix counter, and went with it.
 verb_prune_mark() {
     _root=$1
-    _log="$_root/ai/hotfix_log.md"
-    [ -f "$_log" ] || die "нет ai/hotfix_log.md — нечего сбрасывать"
     _date=$(date +%Y-%m-%d)
-    printf -- '--- pruned %s ---\n' "$_date" >> "$_log"
-    ok "счётчик дрейфа сброшен маркером --- pruned $_date ---"
+    verb_is_git "$_root" || die "нет репозитория — прунинг нечем отметить"
+
+    _before=$(git -C "$_root" rev-parse HEAD 2>/dev/null)
     verb_commit "$_root" prune "reconcile foundation $_date" \
-        ai/hotfix_log.md ARCHITECTURE.md CONVENTIONS.md DECISIONS.md ai/archive ||
+        ARCHITECTURE.md CONVENTIONS.md DECISIONS.md ai/archive ||
         warn "коммит не удался"
+    _after=$(git -C "$_root" rev-parse HEAD 2>/dev/null)
+
+    # A prune that honestly found nothing to change still has to leave the anchor, or the
+    # verdict keeps asking for the gardening that just happened. Nothing was committed
+    # exactly when HEAD did not move.
+    if [ "$_before" = "$_after" ]; then
+        git -C "$_root" commit -q --allow-empty \
+            -m "prune: reconcile foundation $_date" -m "fraim: $(fraim_version)" ||
+            { warn "не удалось отметить прунинг"; return 0; }
+        ok "прунинг отмечен: изменений в фундаменте не потребовалось"
+    fi
 }
 
 # --- undo -------------------------------------------------------------------

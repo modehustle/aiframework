@@ -64,7 +64,6 @@ fraim init
 | `fraim reconcile-seal СЛАГ` | архивацию дрейфнувшей сессии — **может отказать** |
 | `fraim investigate-new СЛАГ` | создание папки расследования и штамп provenance |
 | `fraim investigate-seal СЛАГ` | архивацию расследования — **может отказать** |
-| `fraim hotfix-log ФАЙЛ ОПИСАНИЕ yes\|no` | строку в журнале дрейфа |
 | `fraim prune-mark` | маркер прунинга |
 | `fraim stack-passport` | создание `STACK.md` по схеме |
 | `fraim commit ВИД ТЕКСТ ПУТЬ…` | `git add` + `git commit` руками |
