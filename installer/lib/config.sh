@@ -17,6 +17,7 @@ config_table() {
     cat <<'TBL'
 foundation_lag_commits|10|Сколько коммитов кода без обновления ARCHITECTURE.md считать дрейфом
 stale_plan_commits|1|Сколько коммитов вперёд делают план протухшим
+lessons_lag_commits|25|Сколько коммитов кода без единой записи в Known Pitfalls считать потерей уроков
 unpushed_threshold|5|Сколько точек сохранения без удалённой копии считать проблемой
 check_blockers|on|Проверять заблокированные задачи
 check_stale_plans|on|Проверять протухшие планы
@@ -28,6 +29,7 @@ check_git|on|Проверять, что репозиторий есть — бе
 check_remote|on|Проверять, что точки сохранения уезжают с этой машины
 check_dirty|on|Проверять несохранённые изменения фундамента и ai/
 check_foundation|on|Проверять отставание фундамента от кода
+check_lessons|on|Проверять, возвращаются ли грабли в CONVENTIONS.md
 commit_verbs|on|Детерминированные глаголы делают коммит сами
 TBL
 }

@@ -230,6 +230,29 @@ check "план от старой версии fraim замечен" "$?" "0"
 python3 -c "import json,sys;json.load(sys.stdin)" < "$("$FRAIM" status "$PROJ" --json > "$SANDBOX/s.json" 2>/dev/null; echo "$SANDBOX/s.json")"
 check "--json — валидный JSON" "$?" "0"
 
+# Lessons that never came back: work saved while CONVENTIONS.md stays frozen. Same
+# arithmetic as the map check, one file over — and not a subset of it: the map here is
+# fresh, only the lessons are not.
+"$FRAIM" config set --machine lessons_lag_commits 3 >/dev/null 2>&1
+printf '# Conventions\n\n## Known Pitfalls / Lessons\n- None yet.\n' > "$PROJ/CONVENTIONS.md"
+git -C "$PROJ" add CONVENTIONS.md >/dev/null 2>&1
+git -C "$PROJ" commit -qm "onboard: house rules" >/dev/null 2>&1
+"$FRAIM" status "$PROJ" 2>/dev/null | grep -q 'грабли никуда не записывались'
+check "свежий CONVENTIONS.md тревоги не поднимает" "$?" "1"
+for i in 1 2 3 4; do
+    printf 'l%s\n' "$i" >> "$PROJ/app.py"
+    git -C "$PROJ" add app.py >/dev/null 2>&1
+    git -C "$PROJ" commit -qm "fix: reactive change $i" >/dev/null 2>&1
+done
+"$FRAIM" status "$PROJ" 2>/dev/null | grep -q 'грабли никуда не записывались'
+check "работа без единого урока замечена" "$?" "0"
+printf -- '- Retry on a 200 that carries an error body.\n' >> "$PROJ/CONVENTIONS.md"
+git -C "$PROJ" add CONVENTIONS.md >/dev/null 2>&1
+git -C "$PROJ" commit -qm "fix: lesson recorded" >/dev/null 2>&1
+"$FRAIM" status "$PROJ" 2>/dev/null | grep -q 'грабли никуда не записывались'
+check "записанный урок сбрасывает счётчик" "$?" "1"
+"$FRAIM" config set --machine lessons_lag_commits 25 >/dev/null 2>&1
+
 # The watchman is read-only. Anything else and it could not be put on a cron.
 BEFORE=$(find "$PROJ" -newer "$PROJ/ARCHITECTURE.md" -type f | md5sum)
 "$FRAIM" status "$PROJ" >/dev/null 2>&1

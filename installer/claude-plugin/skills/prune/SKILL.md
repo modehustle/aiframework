@@ -28,7 +28,7 @@ If you re-read `ARCHITECTURE.md` and rewrite it prettier, you have laundered sta
 ## When to run
 
 - The user runs it deliberately, every 2–4 weeks, OR
-- when the watchman reports the drift threshold reached — `fraim status` counts the code commits since `ARCHITECTURE.md` last moved and compares them with `foundation_lag_commits` (`fraim config` shows the value in effect and where it came from). Do not carry a number in your head: a project hammered daily and one touched monthly honestly have different thresholds, and the user may have changed it.
+- when the watchman reports a drift threshold reached. There are two, counted the same way and configurable separately (`fraim config` shows the values in effect and where they came from): `foundation_lag_commits` — code commits since `ARCHITECTURE.md` last moved, i.e. the map going stale; and `lessons_lag_commits` — code commits since `CONVENTIONS.md` last moved, i.e. work happening while nothing is learned from it. Do not carry either number in your head: a project hammered daily and one touched monthly honestly have different thresholds, and the user may have changed them.
 
 There is no wrong time to garden, but those are the triggers that catch drift before it rots.
 
@@ -42,10 +42,11 @@ There is no wrong time to garden, but those are the triggers that catch drift be
    - Behaviour changed in reactive sessions (cross-check the save points since the last prune — `git log --grep='^fix: '` — against the `DECISIONS.md` entries) that never made it into `ARCHITECTURE.md`.
    - `DECISIONS.md` entries that are **superseded or dead** — the decision no longer reflects the code.
    - `Known Pitfalls / Lessons` that are stale, duplicated, or no longer apply.
+   - **Lessons that never got written down.** Walk the reactive save points since the last prune (`git log --grep='^fix: '`, with their diffs) and the `blockers.md` files in `ai/archive/`. A fix whose message or diff says *why* it was needed — a call that failed silently, a config that means the opposite of what it reads, an order of operations that could not be swapped — is a gotcha that will trap the next change too. Check each against `Known Pitfalls / Lessons` and propose the ones that are missing. You cannot recover what was never recorded anywhere; you can recover what the commit itself says, and that is most of it.
 3. **Propose, by type:**
    - `ARCHITECTURE.md` / `CONVENTIONS.md` (not append-only): propose a concrete diff — what to change, add, or remove — grounded in the code you just read.
    - `DECISIONS.md` (**append-only — never delete**): propose **relocating** superseded/dead entries to `ai/archive/decisions_log.md`, leaving a one-line pointer in the root file. The root keeps only living decisions; history is preserved, not destroyed.
-   - `Known Pitfalls`: propose collapsing duplicates and dropping ones that no longer apply.
+   - `Known Pitfalls`: propose collapsing duplicates, dropping ones that no longer apply, and **adding** the lessons you recovered from reactive work above. One line each, in the same voice as the existing entries — a rule, not a story.
 4. **Contradictions are a fork, not your call.** If the code contradicts a recorded decision, you do not silently \"fix the doc\". Flag it and let the user choose:
    - *the code is right, the doc is stale* → update the doc, and supersede the decision; or
    - *the doc is right, the code drifted* → this is a **bug**; the user schedules a `/make-task`. You do not touch code here.
