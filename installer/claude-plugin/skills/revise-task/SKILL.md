@@ -3,7 +3,7 @@ name: revise-task
 description: "Repair a task plan the executor found defective, in place, without losing what was learned"
 metadata:
   tier: strong
-  version: 0.5.0
+  version: 0.6.0
   source: fraim
 ---
 # /revise-task — Repair a Defective Plan
@@ -45,6 +45,7 @@ From the blockers, state plainly **what was wrong and why**, then converge with 
 Edit only what the diagnosis requires. Keep both files self-contained (the executor still will not see this chat — same forbidden phrases as `/make-task`: \"as we discussed\", \"per the blockers\", etc.; fold any needed context inline). Keep planning to the floor: the re-run may land on a different, weaker executor model — do not make the repaired plan rely on inference.
 
 - `context.md` — fix Constraints / Decisions / Codebase Context if the defect was rooted there. If you reverse a prior decision, update the Decisions section AND note the `DECISIONS.md` supersede under the task's \"Foundation updates\".
+- **A repair points at the code; it never retells it** (`/make-task` G6). You have just read real files to diagnose the defect, and the pull to paste what you found — the current signature, the line the executor tripped on — is strongest right here. Do not: `/run-task` opens those files anyway and believes them over the plan, so the paste can only agree redundantly or rot into the next blocker. A `Codebase Context` entry is a path, an anchor (**whole** or a symbol name) and a reason. Never a line number.
 - `task.md` — fix the wrong steps, paths, Files to Change, Acceptance Criteria, or Verification Commands. Leave the correct parts untouched.
 
 Do **not** write the revision record or touch `## Plan provenance` by hand — Step 5 writes both,
@@ -57,6 +58,7 @@ numbered and stamped, in one command. Your job here is the content of the plan i
 - [ ] The repaired plan is consistent with the code **as it is now** — Step 5 refreshes the provenance stamp to this moment, and a stamp that says \"now\" over a plan written against last week's code is a lie the staleness check can no longer catch.
 - [ ] No references to this chat or to the blockers — all needed context is inline.
 - [ ] Acceptance Criteria and Verification Commands still match the (possibly changed) plan.
+- [ ] Neither file retells code: no line numbers or ranges, no copied signatures, no pasted snippets — the repair did not add any, and any the original plan carried are gone.
 - [ ] \"Foundation updates\" still names what the executor must refresh.
 
 If any check fails, fix it before moving on.

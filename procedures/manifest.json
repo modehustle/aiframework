@@ -1,11 +1,11 @@
 {
-  "version": "0.5.0",
+  "version": "0.6.0",
   "procedures": [
     { "name": "design-session", "file": "procedures/design-session.md", "tier": "strong", "order": 1, "description": "Run the thinking session that comes first: decide WHAT you are about to build and WHY, before any folder, code, or container exists. Converge with the human and produce one artifact for the next workflow (a Design Brief, or a per-stack prompt) — never code." },
     { "name": "bootstrap", "file": "procedures/bootstrap.md", "tier": "strong", "order": 2, "description": "Lay the development foundation of an authored project from a Design Brief: foundation documents plus a minimal running skeleton, so the project can be re-entered weeks later with full context instead of guesswork." },
     { "name": "docker-deploy", "file": "procedures/docker-deploy.md", "tier": "capable", "order": 3, "description": "Build and run a Docker stack securely — one isolated network, non-root containers, dropped capabilities, resource limits, healthchecks, secrets in .env — verify it on loopback, and write the STACK.md passport. Making it reachable from outside is /expose." },
     { "name": "expose", "file": "procedures/expose.md", "tier": "capable", "order": 4, "description": "Decide and implement how a running service is reachable from outside — internal only, HTTP on the internet behind a reverse proxy with TLS, or non-HTTP over a private network — then apply the edge and firewall for whichever tooling this host actually uses." },
-    { "name": "make-task", "file": "procedures/make-task.md", "tier": "strong", "order": 5, "description": "Capture the agreed plan into a new task folder under ai/tasks/ for handoff to a fresh-chat executor model" },
+    { "name": "make-task", "file": "procedures/make-task.md", "tier": "strong", "order": 5, "description": "Capture the agreed plan into a new task folder under ai/tasks/ so it can be executed without this conversation — by a fresh chat, a cheaper model, or /run-task right here" },
     { "name": "run-task", "file": "procedures/run-task.md", "tier": "cheap", "order": 6, "description": "Pick a task from the ai/tasks/ queue, execute it literally, then archive on user approval" },
     { "name": "revise-task", "file": "procedures/revise-task.md", "tier": "strong", "order": 7, "description": "Repair a task plan the executor found defective, in place, without losing what was learned" },
     { "name": "reconcile-task", "file": "procedures/reconcile-task.md", "tier": "capable", "order": 8, "description": "Close a /run-task session that drifted into live debugging — fold the unplanned changes back into the record and archive truthfully; but STOP and hand to /revise-task if the drift was structural, not surgical" },

@@ -3,7 +3,7 @@ name: run-task
 description: "Pick a task from the ai/tasks/ queue, execute it literally, then archive on user approval"
 metadata:
   tier: cheap
-  version: 0.5.0
+  version: 0.6.0
   source: fraim
 ---
 # /run-task — Execute Prepared Task
@@ -50,6 +50,14 @@ workflow, not a shortcut.
 
 ### Step 1 — Load the foundation, pick a task
 
+1.0 **The reading rule — it governs every \"read\" in this procedure.** A file you have already
+    read *in this session*, and that has not changed since you read it, is already in front of
+    you: do not read it again. Everything else, read now, from the file. In a fresh chat this
+    rule costs nothing and changes nothing — you have read nothing, so you read everything. In
+    a chat that also planned this task, it is the difference between loading the codebase once
+    and loading it three times. What it is **not** is permission to work from memory of a
+    *different* file, an older version of this one, or the plan's description of it. (why: N1a)
+
 1.1 Read `ARCHITECTURE.md`. Missing → STOP and tell the user the project was never bootstrapped.
 1.2 Read `CONVENTIONS.md`, including `## Known Pitfalls / Lessons`. Missing → STOP, same message.
 1.3 List every folder in `ai/tasks/`.
@@ -67,9 +75,17 @@ workflow, not a shortcut.
 
 ### Step 2 — Load the codebase context
 
-2.1 Read every file listed under `## Codebase Context` in `context.md`, in full. (why: N1)
-2.2 A listed file does not exist or is empty → plan defect. Go to Step 4d.
-2.3 Never substitute a path you guessed for one that is missing.
+2.1 Take every entry under `## Codebase Context` in `context.md`. Each one has to be in front of
+    you before you write a line of code. Apply the reading rule (1.0). (why: N1)
+2.2 Each entry names an anchor. **whole** → read the file end to end. A named symbol or section →
+    find it in the file and read it with enough of its surroundings to see the pattern. Either
+    way you open the real file: the plan carries pointers, never copies of the code. (why: N1b)
+2.3 As you read, check that the pattern the plan tells you to mirror is actually there. It is
+    not → plan defect, go to Step 4d. This is the staleness check on the patterns, and it
+    happens here, while the file is open — not a second time later. (why: N1b)
+2.4 A listed file does not exist or is empty → plan defect. Go to Step 4d.
+2.5 An entry names a symbol that does not exist in the file → plan defect. Go to Step 4d.
+2.6 Never substitute a path you guessed for one that is missing.
 
 ### Step 3 — State your understanding
 
@@ -94,14 +110,15 @@ workflow, not a shortcut.
     watchman is the one implementation of that arithmetic. (why: N3)
 4.6a No `fraim` — read `## Plan provenance` yourself and say plainly that the check was manual.
      Reading is allowed without the CLI; changing state is not.
-4.7 Re-open the `## Codebase Context` files and confirm the patterns the plan tells you to mirror
-    still hold.
+4.7 The `## Codebase Context` patterns were confirmed at Step 2.3, with the files open. Do not
+    re-open them here: nothing between that step and this one can have changed them, and reading
+    the whole context twice is the single largest avoidable cost in this procedure. (why: N1b)
 4.8 Any check from 4.1–4.7 failed → plan defect. Go to Step 4d.
 4.9 All clear → go to Step 5.
 
 ### Step 4d — Plan-defect protocol
 
-Enter here from 1.14, 2.2, 4.8, 9.3, or gate G6/G7.
+Enter here from 1.14, 2.3, 2.4, 2.5, 4.8, 9.3, or gate G6/G7.
 
 4d.1 Stop executing. Write no further code. (why: N4)
 4d.2 Do not edit the plan and do not code around it.
@@ -138,7 +155,9 @@ Enter here from 1.14, 2.2, 4.8, 9.3, or gate G6/G7.
 8.1 Run `fraim task-result <slug>`. It lays down `result.md` from the template. Fill every
     section and delete the `fraim:stub` line — the seal gate at Step 10 reads this file, and an
     unfilled stub is not a report. (why: N8)
-8.2 Print a copy of the report in the chat.
+8.2 In the chat, print the report's **status**, the acceptance criteria with their verdicts, any
+    caveat, and the path to `result.md`. Not the whole file: the operator decides at 8.5 on
+    those lines, and the rest is already saved where it belongs. (why: N8)
 8.3 Save. List the paths you actually changed — nothing else: (why: N9)
 
     ```sh
@@ -207,6 +226,33 @@ That is why G7 sends a plan/code disagreement to Step 4d instead of to your own 
 pattern you did not read is a pattern you will reinvent, and reinventing it is how a plan that
 was correct produces code that does not fit the codebase.
 
+**N1a — Why the reading rule is not a shortcut.** It looks like one and it is not: it changes
+what you *re-load*, never what you *know*. The plan is written to be handed to a stranger,
+because the planner cannot know who will run it — so it stays complete either way, and nothing
+in this procedure is skipped. What the rule removes is the one thing that has no defender: the
+same file entering the same context window a second and a third time, once because the planner
+read it and once more because a later step said "re-open".
+
+The two conditions are load-bearing, and both fail closed. *This session* — a file read in some
+other chat is a file you have not read. *Not changed since* — including by you: the moment
+Step 5 edits a file, or Step 7 rewrites `ARCHITECTURE.md`, your copy of it is history and the
+next task in this session reads it again. When in doubt, read. Reading twice costs tokens;
+mirroring a pattern you remember instead of one that exists costs the task.
+
+**N1b — Why the plan carries pointers and the reading happens here.** Two halves of one rule.
+
+The plan is forbidden to retell the code (`/make-task` G6), so an anchor is a path and a symbol
+name, never a line range or a paraphrase. That is not economy, it is correctness: G7 says the
+code wins, so anything the plan says *about* the inside of a file can never be acted on — at
+best it repeats what you are reading anyway, at worst it sends you to Step 4d over a defect
+that exists only in the plan. A name, unlike a line number, survives every edit above it and
+tells you honestly when it is gone (2.5).
+
+And because you open the real file here, the check that the pattern still holds belongs here
+too — one pass, file open, both jobs done. It used to happen twice: once at this step and once
+again at 4.6's neighbour, which re-opened the entire context to ask a question the first read
+had already answered.
+
 **N2 — Why not silently merge the user's extra message.** A conflict between the plan and a
 side remark in chat is exactly the kind of ambiguity the planner→executor wall exists to catch.
 Merging it silently produces code that matches neither the plan it is filed under nor what the
@@ -240,10 +286,16 @@ read first by every task in this project (invariant 0.4). If a task changes stru
 not update them, the next planner plans against a map that is already wrong. Skipping this is a
 bug, not a shortcut.
 
-**N8 — Why the report is a file, not chat output.** Printing it in chat is a copy, never a
-substitute. A report that lives only in chat is lost the moment the chat closes — and this file
-is what `/orient` reads for recent history and what `/prune` reads later. The `(pitfall)`,
-`(bug)`, and `(one-off)` observations live in this file and nowhere else.
+**N8 — Why the report is a file, and why the chat gets a summary.** Printing it in chat is a
+copy, never a substitute. A report that lives only in chat is lost the moment the chat closes —
+and this file is what `/orient` reads for recent history and what `/prune` reads later. The
+`(pitfall)`, `(bug)`, and `(one-off)` observations live in this file and nowhere else.
+
+Which is also why the chat gets a summary and not the whole thing. The operator answers one
+question at 8.5 — «Принимаем результат?» — and answers it from the status, the criteria and
+their evidence, and any caveat. Reprinting the sections that exist for `/orient` and `/prune`
+to read later does not help that decision; it just spends the same text twice, once on disk
+where it is needed and once in a window where it is not.
 
 **N9 — Why the save point is unconditional, and why you list the paths.** It is the save point,
 and one that waits for the user's \"да\" is not a save point. The caveat rides in the message on

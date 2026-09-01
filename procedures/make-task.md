@@ -1,6 +1,6 @@
 ---
 name: make-task
-description: "Capture the agreed plan into a new task folder under ai/tasks/ for handoff to a fresh-chat executor model"
+description: "Capture the agreed plan into a new task folder under ai/tasks/ so it can be executed without this conversation — by a fresh chat, a cheaper model, or /run-task right here"
 metadata:
   tier: strong
   order: 5
@@ -20,6 +20,15 @@ shape of both files you write.
 > Paths are **repo-relative to the project root** (the folder the agent has open).
 > Never hardcode an absolute project path.
 
+> **When this procedure is not the answer.** A plan exists to be *handed over* — to a new chat,
+> to a cheaper model, to next week's you. The trigger is the handover, not the size of the work:
+> a change you are going to sit through yourself, deciding as you go, is a normal working
+> session, and it keeps its own rules (foundation read first and updated last, a save point per
+> finished piece, a line in `DECISIONS.md` when behaviour changed). Sizing a task is not what
+> this procedure is for. If the user asked for `/make-task`, write the plan — but if they are
+> reaching for it only because the work feels big, say so once, in one line, and let them
+> choose.
+
 ---
 
 ## GATES
@@ -33,9 +42,18 @@ shape of both files you write.
   Over-specification is the safe error. (why: N2)
 - **G3 — Add, never replace.** The queue may already hold tasks. You add one. Other task folders
   are not yours to touch, edit, or clean up.
-- **G4 — Never execute.** You write the plan. Running it is `/run-task`'s job, in another chat.
+- **G4 — Never execute.** You write the plan; executing it is `/run-task`'s job. `/run-task` is
+  a procedure, not a chat — it may run here or in a new one — but the one thing you never do is
+  slide from planning straight into writing code.
 - **G5 — A defective plan is `/revise-task`.** If an existing task came back blocked, it is
   repaired in place — not replaced by a fresh `/make-task`. (why: N3)
+- **G6 — Point at the code, never retell it.** Every file you list under `Codebase Context`
+  is one the executor is *required* to open (`/run-task` step 2), and where the plan and the
+  code disagree, the code wins (`/run-task` G7). So a retelling buys the executor nothing and
+  is the first thing in the plan to rot: line numbers, copied signatures and paraphrased
+  function bodies are wrong the moment anything above them moves — including a move this very
+  task makes on an earlier step. Name the file and the **symbol**; the reading is the
+  executor's job. (why: N9)
 
 ---
 
@@ -70,7 +88,7 @@ shape of both files you write.
 1.8 Run `fraim task-new <slug>`. It creates `ai/tasks/<slug>/` and stamps `## Plan provenance`
     with today's date, the current git ref and the system version. Do not write that block
     by hand — those three values are what `/run-task` later uses to detect a stale plan,
-    and they are exactly the kind of thing that gets forgotten. (why: N12)
+    and they are exactly the kind of thing that gets forgotten.
 
 ### Step 1b — Reference scan
 
@@ -82,6 +100,9 @@ shape of both files you write.
 1b.5 Record the scan's blind spots in Known Pitfalls: grep finds textual references but not
      dynamic dispatch, reflection, string-built calls, or cross-language boundaries. Name any
      that are plausible here, so the executor re-checks at runtime.
+1b.6 Write the scan's result as an **index**: path plus the symbol involved. You read real code
+     to produce it; none of that code — not as a quote, not as a paraphrase, not as a line
+     range — goes into the plan. (see G6)
 
 ### Step 2 — Write the two files
 
@@ -101,10 +122,13 @@ Verify each line against the files you just wrote. Any failure → fix the file 
 3.4 For a change to existing code: the Step 1b scan was run, and **every** dependent it found is
     in Files to Change or in Constraints.
 3.5 Every `Files to Change` entry has Action, What, and Pattern reference.
+3.5a Every `Codebase Context` entry carries an anchor: **whole**, or the name of the symbol or
+     section to look at. No entry carries a line number. (see G6)
 3.6 Every Acceptance Criterion is objectively verifiable.
 3.7 Verification Commands run as-is from the repo root.
-3.8 Codebase Context lists every file the executor must read to understand the patterns — not
-    only the files being changed.
+3.8 Codebase Context lists every file the executor must read to understand the patterns, and
+    **only** those: a file this task changes lives in `Files to Change`, with its pattern named
+    there. Neither list repeats the other.
 3.9 No step relies on the executor inferring something unstated. (see G2)
 3.10 The Decisions section says why the rejected alternatives were rejected. (why: N7)
 3.11 `Foundation updates` names which `ARCHITECTURE.md` section to refresh, or states that no
@@ -112,6 +136,10 @@ Verify each line against the files you just wrote. Any failure → fix the file 
 3.12 `Verification Commands` holds at least one command that exits non-zero on failure — or, if
      this change genuinely cannot be checked by a command, the manual check is written out AND
      an `Operator confirmed:` line is in Acceptance Criteria. The section is never empty. (why: N8)
+3.13 Neither file retells code: no line numbers or ranges, no copied signatures, no paraphrased
+     function bodies, no pasted snippets. Search both files for `line`, `lines`, `:` followed by
+     digits, and for anything you wrote *about* the inside of a file rather than *about the
+     change*. Delete it and leave the pointer. (see G6, why: N9)
 
 ### Step 4 — Save the plan, then confirm to the user
 
@@ -129,7 +157,10 @@ fraim commit plan "<slug> — <one-line goal>" ai/tasks/<slug>
 4.2 Summarize what got captured, in 3–5 bullets.
 4.3 The queue now holds more than one task → list the queued slugs, and flag any overlap in files
     between them.
-4.4 Say, verbatim: **\"Готово. Открой новый чат и запусти `/run-task`.\"**
+4.4 Say, verbatim: **\"Готово. Запусти `/run-task` — в этом чате или в новом.\"**
+    Both work and the plan is identical either way: it is self-contained because it may be
+    handed over, and `/run-task` reads only what it does not already have. What you must never
+    do is execute it yourself, here, without `/run-task` — that is G4. (why: N10)
 
 ---
 
@@ -158,12 +189,20 @@ visible — the same staleness detection the system already applies to code, app
 executor can make small judgment calls correctly without re-deriving intent.>
 
 ## Codebase Context
-<Files the executor MUST read before writing code, each with a reason. Exact repo-relative paths.>
-- `ARCHITECTURE.md` — the project map; read first (invariant 0.4)
-- `CONVENTIONS.md` — house rules + Known Pitfalls the executor must follow
-- `path/to/file.ext` — existing pattern for X; mirror its structure
-- `path/to/dir/` — module being extended; understand its public API
-- <every dependent file surfaced by the Step 1b reference scan>
+<Files the executor MUST open before writing code — the ones it reads to *understand*, not the
+ones it changes. One line each, exact repo-relative path, in the form:
+
+`path` · anchor — why this file is here
+
+The anchor is **whole** when the whole file is the thing to look at, or the NAME of the symbol
+or section when it is not. Never a line number: it is wrong as soon as anything above it moves,
+and `/run-task` opens the file anyway. See G6.>
+- `ARCHITECTURE.md` · **whole** — the project map; read first (invariant 0.4)
+- `CONVENTIONS.md` · **whole** — house rules + Known Pitfalls the executor must follow
+- `path/to/file.ext` · `symbol_name` — existing pattern for X; mirror its structure
+- `path/to/dir/` · **whole** — module being extended; understand its public API
+<Files this task CHANGES do not belong here. They are in `Files to Change`, with their pattern
+named on the entry — one list each, neither repeating the other.>
 
 ## Constraints
 - Do NOT modify: <exact paths or globs>
@@ -194,7 +233,9 @@ and write \"None known.\" if empty.>
 <One sentence describing what is being built or changed.>
 
 ## Files to Change
-<Every file the Step 1b reference scan surfaced — not only the primary one.>
+<Every file this task creates, modifies or deletes — including every dependent the Step 1b
+reference scan surfaced, not only the primary one. A file that is merely read for its pattern
+is not here; it is in `Codebase Context`.>
 
 ### `path/to/file1.ext`
 - **Action:** create | modify | delete
@@ -234,28 +275,23 @@ and add a matching `Operator confirmed:` line to Acceptance Criteria above.>
   or \"none expected\">
 
 ## Executor Rules — read before starting
-- Follow this plan **literally**. The plan is the authority — not because a stronger model wrote
-  it, but because it is explicit and verifiable. Do not improvise.
-- Read `ARCHITECTURE.md` + `CONVENTIONS.md` before touching code (invariant 0.4).
-- Where the plan diverges from the code in front of you, **reality wins**: stop and record a
-  `blockers.md` — do not defer to the plan, and do not improvise around it.
-- If anything is ambiguous, **STOP and ask the user**. Do not guess.
-- If the plan itself is wrong (bad path, contradicts reality, unverifiable), do **NOT** patch it —
-  record findings in this task's `blockers.md` and stop for `/revise-task`.
-- If you see improvements outside this plan, do **NOT** implement them — list them in your report.
-- Touch only files listed in \"Files to Change\". Anything else requires asking.
-- Do not change tests, configs, or dependencies unless this file says so.
-- If you find a bug in existing code, note it for the report; do not fix it.
-- Final step: update `ARCHITECTURE.md` / append `DECISIONS.md` per \"Foundation updates\".
+- **already written by `fraim task-new`** — leave it alone.
+<One line pointing at `/run-task`'s `## GATES`, laid down by the verb. It used to be a dozen
+bullets retyped into every plan, and every one of them already existed, word for word, in the
+procedure the executor is running while it reads them. A copy that is rewritten per task, kept
+in the archive forever, and silently diverges the next time `run-task.md` changes is the
+weaker of the two — so there is only one now, and it is the procedure.>
 ```
 
 ---
 
 ## NOTES
 
-**N1 — Why self-containment is absolute.** The executor runs in a fresh chat, on a different
-model, possibly weeks later. A plan that leans on this conversation is a plan that only works
-today, for you. Every phrase pointing outward is a hole the executor will fall through.
+**N1 — Why self-containment is absolute.** The executor may be a fresh chat, on a different
+model, weeks later — and you do not get to know which it will be while you are writing. A plan
+that leans on this conversation is a plan that only works today, for you. Every phrase pointing
+outward is a hole the executor will fall through. This is the one thing that does NOT vary with
+who runs the plan, which is why it is a gate and not a preference.
 
 **N2 — Why plan to the floor.** You do not choose who executes this plan — the user picks the
 model at run time, and it may be small and cheap, or it may be strong. A strong model executing
@@ -290,3 +326,34 @@ weak model under pressure will take, and a plan with no check produces a report 
 mean nothing — which `/prune` will later read as ground truth. There is no such thing as an
 unverifiable task; there are tasks whose verification belongs to the human. Saying that out loud
 in an `Operator confirmed:` line is honest. Silence is not.
+
+**N9 — Why a retelling of the code is worse than nothing.** It is not a matter of style or of
+saving tokens, though it saves them. The executor is *required* to open every file you list
+(`/run-task` step 2), and it is required to believe the file over the plan (`/run-task` G7). So
+a retelling can never be the basis of an action: at best it agrees with the file the executor is
+reading anyway, at worst it disagrees and produces a blocker for a defect that does not exist.
+That is the whole return on it — nothing, or a false alarm.
+
+The rot is faster than it looks. A line number breaks on any edit above it, including an edit
+this same task makes on an earlier step; a copied signature breaks on any refactor; a
+paraphrased body breaks silently, because nothing compares it to the source. The system has a
+whole provenance apparatus for exactly this failure — the plan going stale under the code — and
+none of it covers a copy inside the plan: nothing checks a paraphrase against its original.
+This is the same reasoning that kept pasted code fragments out of plans; it applies to prose
+about the code for exactly the same reason.
+
+What survives is the pointer: a path and a symbol name. A name is greppable, it moves with the
+code, and when it disappears the executor notices immediately instead of mirroring a pattern
+that no longer exists.
+
+**N10 — Why the executor may run in this chat.** The plan is written for a stranger, and that
+does not change: G1 stands whoever runs it. What changed is that running it here stopped being
+wasteful. `/run-task` reads what it does not already have, so in a fresh chat it reads
+everything and in this one it reads what is new — the same procedure, the same gates, the same
+report, the same archive. The plan is therefore identical in both cases and you do not ask the
+user which it will be.
+
+Note what is NOT being said: that a plan is optional when you execute it yourself. The
+`result.md`, the pitfalls that flow back into `CONVENTIONS.md`, the archive `/prune` reads
+later — those are written for the project's memory, not for the executor, and the project's
+memory does not remember this conversation either.
