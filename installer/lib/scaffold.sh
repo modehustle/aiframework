@@ -33,6 +33,41 @@ scaffold_file() {
     printf 'created\n'
 }
 
+# Add the secret rules to a .gitignore that already exists, and say what was added.
+# Silence here would be the worst outcome: the user would believe the protection is in
+# place because scaffold printed a tick, when the file it ticked never mentioned `.env`.
+scaffold_gitignore_extend() {
+    _root=$1
+    _gi="$_root/.gitignore"
+    _added=
+    for _pat in '.env' '.env.*' '!.env.example'; do
+        grep -qxF -- "$_pat" "$_gi" 2>/dev/null && continue
+        _added="$_added $_pat"
+    done
+
+    if [ -z "$_added" ]; then
+        dim "  .gitignore — секреты уже закрыты, не трогаю"
+    else
+        {
+            printf '\n# fraim — секреты не место в истории\n'
+            for _pat in $_added; do printf '%s\n' "$_pat"; done
+        } >> "$_gi" || return 1
+        ok ".gitignore — дописано:$_added"
+    fi
+
+    # .gitignore does nothing about a file git already tracks, and this is exactly the
+    # project shape where that happens — code and history predate the system.
+    if git -C "$_root" rev-parse --git-dir >/dev/null 2>&1; then
+        _tracked=$(git -C "$_root" ls-files -- '.env' '.env.*' 2>/dev/null | grep -v '\.example$' | head -3)
+        if [ -n "$_tracked" ]; then
+            warn ".env уже в истории git — .gitignore его оттуда не убирает"
+            printf '%s\n' "$_tracked" | while read -r _f; do dim "    $_f"; done
+            dim "    смени секреты и убери файл из индекса; чистка истории — отдельная работа"
+        fi
+    fi
+    return 0
+}
+
 scaffold_run() {
     _root=$1
     _tpl=$(scaffold_templates) || die "не найдены шаблоны фундамента — установка повреждена"
@@ -41,7 +76,7 @@ scaffold_run() {
 
     _created=0; _skipped=0
     for _rel in README.md ARCHITECTURE.md CONVENTIONS.md DECISIONS.md \
-                ai/README.md ai/hotfix_log.md ai/archive/decisions_log.md; do
+                ai/README.md ai/archive/decisions_log.md; do
         case $_rel in
             ai/archive/decisions_log.md) _from="$_tpl/ai/decisions_log.md" ;;
             *) _from="$_tpl/$_rel" ;;
@@ -57,9 +92,19 @@ scaffold_run() {
 
     # .gitignore is scaffolded because the two lines that matter are universal and are
     # about secrets, not about the stack.
-    _res=$(scaffold_file "$_tpl/gitignore" "$_root/.gitignore" "$_project") || return 1
-    if [ "$_res" = created ]; then _created=$((_created + 1)); ok ".gitignore"
-    else _skipped=$((_skipped + 1)); dim "  .gitignore — уже есть, не трогаю"; fi
+    #
+    # "Never overwrite" is right for a file, and wrong for this one taken as a whole: every
+    # real repository already has a .gitignore, so skipping it meant the secret rules — the
+    # one thing here that is about safety rather than taste — never landed on exactly the
+    # projects that already have code and a remote. So an existing file is EXTENDED, not
+    # replaced, and only with the lines about secrets: `data/` is a shape decision and a
+    # project may legitimately track it, while `.env` in a pushed history is an incident.
+    if [ ! -f "$_root/.gitignore" ]; then
+        _res=$(scaffold_file "$_tpl/gitignore" "$_root/.gitignore" "$_project") || return 1
+        [ "$_res" = created ] && { _created=$((_created + 1)); ok ".gitignore"; }
+    else
+        scaffold_gitignore_extend "$_root" || return 1
+    fi
 
     # Empty directories git will not carry on its own.
     mkdir -p "$_root/ai/tasks" "$_root/ai/archive" "$_root/ai/investigations"
@@ -82,7 +127,36 @@ scaffold_run() {
         dim "  ai/fraim.conf — уже есть, не трогаю"
     fi
 
+    # The repository has to describe itself to whoever opens it. Until this existed the
+    # foundation travelled in git while the instruction to honour it stayed on the machine
+    # that ran `fraim init` — so a web session, a cloud agent, CI or a second machine
+    # cloned the files and had no reason to open them. AGENTS.md is the cross-agent
+    # standard (C3: aim at the standard, do not invent a format); CLAUDE.md points at it.
+    for _ctx in AGENTS.md CLAUDE.md; do
+        case $_ctx in
+            AGENTS.md) _fn=context_project_block ;;
+            *)         _fn=context_pointer_block ;;
+        esac
+        _existed=no; [ -f "$_root/$_ctx" ] && _existed=yes
+        if context_install "$_root/$_ctx" "$_fn"; then
+            if [ "$_existed" = no ]; then
+                _created=$((_created + 1)); ok "$_ctx"
+            else
+                dim "  $_ctx — блок fraim обновлён, остальное не тронуто"
+            fi
+        else
+            warn "не удалось записать $_ctx"
+        fi
+    done
+
     scaffold_git "$_root"
+
+    # The skeleton is only a save point if it is committed — an uncommitted skeleton
+    # leaves `fraim undo` with nothing to show and the invariant "every save point is a
+    # commit" false on the very first command a project runs.
+    verb_commit "$_root" scaffold "разворачиваю фундамент" \
+        README.md ARCHITECTURE.md CONVENTIONS.md DECISIONS.md \
+        AGENTS.md CLAUDE.md .gitignore ai
 
     say ""
     if [ "$_skipped" -eq 0 ]; then

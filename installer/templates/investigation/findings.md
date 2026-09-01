@@ -19,7 +19,7 @@
 ## Outcome — fill exactly ONE branch
 
 ### DIAGNOSIS
-<root cause, plainly. Route: /hotfix (surgical) | /make-task (structural) | /revise-task | /prune.>
+<root cause, plainly. Route: reactive fix (surgical) | /make-task (structural) | /revise-task | /prune.>
 
 ### DEAD-END
 <what was ruled out, where exactly you got stuck, what the human must decide or provide.>

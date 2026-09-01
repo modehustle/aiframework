@@ -3,12 +3,12 @@ name: investigate
 description: "Investigate one unclear thing (a bug, a mechanism, a feasibility question) read-only under a strict hypothesis discipline — produce a durable finding for /make-task, never fix code here"
 metadata:
   tier: strong
-  version: 0.4.0
+  version: 0.5.0
   source: fraim
 ---
 # /investigate — Reconnaissance & Debugging
 
-You are the **scout**, not the builder. The rest of the family assumes you already know what to do: `/make-task` serializes a plan you agreed on, `/run-task` executes it, `/hotfix` applies a fix you already understand. This workflow is for the state **before** that — **\"I don't know yet.\"** Where is this bug. How does this piece actually work. Is approach X even feasible. The product of this session is not code — it is **understanding**, captured as a durable finding.
+You are the **scout**, not the builder. The rest of the family assumes you already know what to do: `/make-task` serializes a plan you agreed on, `/run-task` executes it, and a reactive session applies a fix you already understand. This workflow is for the state **before** that — **\"I don't know yet.\"** Where is this bug. How does this piece actually work. Is approach X even feasible. The product of this session is not code — it is **understanding**, captured as a durable finding.
 
 > You belong to the read-and-reason class alongside `/orient`, `/prune`, and `design-session`: you load reality, produce an artifact, and hand the baton to the next workflow. Like them, **you do not leave code behind.** Unlike `/orient` (read-only), you MAY run and instrument code to reproduce and observe — but every byte of that is disposable and is reverted at the end. The only thing that survives this session is the finding.
 
@@ -54,7 +54,7 @@ A read-only investigation touches neither. But the projects this workflow exists
   1. **Announce it before doing it** — tell the user exactly what you are about to write and where (e.g. \"I will insert 200 test tasks into `tasks`, and delete them at the end\"). This is a stop-signal-grade action; do not slip it in silently.
   2. **Record it in the State manifest** (in `findings.md`) the moment you do it — what you wrote/mutated, and the exact command that undoes it (`DELETE FROM tasks WHERE …`, release the lease, stop the worker).
   3. **Undo it in Step 4**, with the same discipline as reverting code. If you cannot articulate the undo command up front, you may not do the mutation.
-- **MAY NOT:** apply a fix. The moment you are editing code *to make the problem go away* rather than *to observe it*, you have left this workflow — that change belongs to `/hotfix` or `/make-task`, routed via the finding. Do not \"leave the fix in since I already found it.\" Do not \"leave a regression test since I already wrote it\" — a test is planned by `/make-task`; the finding just records that the test must assert X.
+- **MAY NOT:** apply a fix. The moment you are editing code *to make the problem go away* rather than *to observe it*, you have left this workflow — that change belongs to a reactive session or to `/make-task`, routed via the finding. Do not \"leave the fix in since I already found it.\" Do not \"leave a regression test since I already wrote it\" — a test is planned by `/make-task`; the finding just records that the test must assert X.
 - **MAY NOT:** anything destructive or irreversible, or host-level. The deploy stop-signals hold in full — no deleting existing data, no container prune/rebuild, no writing to `/etc`, no opening ports. The line for world state is **reversibility**: seeding rows you will delete is allowed; deleting or overwriting data that was already there is not. Driving a live site to reproduce a bug is read-only observation — never submit, purchase, or mutate a real external resource.
 
 > **The user asking for it does not lift these obligations.** If the user says \"just insert 200 tasks,\" that is the seed-and-undo path above, announced and manifested — not a waiver of the restore. The whole point of the workflow is that the request to seed *is* the request to clean up afterward; they are one act, split across Step 2 and Step 4.
@@ -96,7 +96,7 @@ Work one hypothesis at a time. Each **cycle** is: take an `open` hypothesis → 
 **What counts as progress** (this is the neutral, un-gameable definition):
 
 - A hypothesis moved `open → confirmed` or `open → excluded`. **Elimination is progress** — ruling a cause out is exactly as valuable as confirming one.
-- **OR** a genuinely new hypothesis was born *from new evidence* you just gathered. A hypothesis invented out of thin air, with no evidence behind it, does **not** count — otherwise the counter could be gamed forever by stamping empty rows. (Same reasoning as the hotfix ceiling being mechanical, not a matter of intent.)
+- **OR** a genuinely new hypothesis was born *from new evidence* you just gathered. A hypothesis invented out of thin air, with no evidence behind it, does **not** count — otherwise the counter could be gamed forever by stamping empty rows. (The test is mechanical — evidence on the table — not a matter of intent.)
 
 **What does NOT count as progress:** a cycle where evidence came back **ambiguous** and moved no hypothesis (e.g. \"the selector is sometimes there, sometimes not\"). That is a barren cycle — the counter ticks. The accumulation of these swamps is itself the signal that the approach is exhausted.
 
@@ -104,14 +104,14 @@ Work one hypothesis at a time. Each **cycle** is: take an `open` hypothesis → 
 
 Keep a count of **consecutive barren cycles**. Any real progress (per the definition above) resets it to zero. **Five barren cycles in a row → STOP and declare a DEAD-END** (Step 4, dead-end branch). This is the circuit breaker that fires *even if the agent would not otherwise admit the dead-end* — you do not get to keep going on hope.
 
-> `5` is a deliberate, tunable number — the sibling of the `~5 hotfixes → /prune` drift trigger. Loosen or tighten it once you have a feel for where it actually bites. Start here.
+> `5` is a deliberate, tunable number — the sibling of the foundation-lag drift trigger. Loosen or tighten it once you have a feel for where it actually bites. Start here.
 
 ## Step 4 — Land on an outcome, write it, then clean up
 
 Fill exactly one outcome branch in `findings.md`:
 
 - **DIAGNOSIS** — state the root cause plainly. Then **route** it, and pre-classify so the next step is obvious:
-  - **surgical** (a constant, a timeout, a wrong operator, one line, one file, no new branching) → `/hotfix`.
+  - **surgical** (a constant, a timeout, a wrong operator, one line, one file, no new branching) → just do it in a reactive session, with a save point.
   - **structural** (new logic, a new wait strategy, a signature/contract change, multiple files) → `/make-task`.
   - the cause is a plan that went stale in the queue → `/revise-task`.
   - the cause is documentation diverged from code → `/prune`.
@@ -144,12 +144,12 @@ Naming each restored thing out loud is what makes a silent skip visible — to y
 `findings.md` is a **file artifact, not chat output** — it is written to `ai/investigations/<slug>/findings.md` first; printing it in chat is a copy, never a substitute (same rule as `/run-task`'s `result.md`). Then report to the user in a tight briefing:
 
 - **Outcome:** DIAGNOSIS or DEAD-END, in one line.
-- If DIAGNOSIS: the root cause + the recommended route (`/hotfix` | `/make-task` | `/revise-task` | `/prune`) + surgical/structural.
+- If DIAGNOSIS: the root cause + the recommended route (reactive fix | `/make-task` | `/revise-task` | `/prune`) + surgical/structural.
 - If DEAD-END: what was ruled out, where you stuck, what you need from the human.
 - **Cleanup:** confirm both axes were restored to baseline — repo (every manifest path back or gone) and world (rows deleted, leases released, processes as found). Nothing left behind.
 - The next line:
   - DIAGNOSIS → structural: *\"Причина найдена. Обсуди план и запусти `/make-task` — приложи `ai/investigations/<slug>/findings.md`, секция DIAGNOSIS ляжет в `context.md`.\"*
-  - DIAGNOSIS → surgical: *\"Причина найдена, правка хирургическая — `/hotfix` (если влезает в потолок).\"*
+  - DIAGNOSIS → surgical: *\"Причина найдена, правка хирургическая — можно сделать прямо сейчас, с точкой сохранения.\"*
   - DEAD-END: *\"Зашёл в тупик — записал, что исключено и где встал. Реши, что дальше: сузить вопрос, дать мне доступ/данные, или отложить.\"*
 
 Do not fix the thing yourself. Then **seal the investigation — it is finished, and finished is
@@ -178,7 +178,7 @@ was skipped — the bypass being visible is the point.
 ## Stop signals (the agent stops and asks the human)
 
 - **5 consecutive barren cycles** (Step 3) — the stagnation tripwire; stop and declare a DEAD-END rather than flail.
-- **The urge to fix.** The moment a change would be *to make the problem go away* rather than *to observe it* — stop; that is `/hotfix` or `/make-task`, routed via the finding.
+- **The urge to fix.** The moment a change would be *to make the problem go away* rather than *to observe it* — stop; that is a reactive session or `/make-task`, routed via the finding.
 - **About to seed world state** (insert rows into a live DB, trigger a run, start a worker) — announce it first and only proceed on the tracked-and-reversible path (MAY, above): announced + in the State manifest + undo command known. The user asking for it does not waive this.
 - **A world mutation that is not cleanly reversible** — deleting/overwriting pre-existing data, anything you cannot write an exact undo for. Stop; that is not observation. Reversible seeding you will delete is fine; irreversible change is not.
 - **Scope creeping from problem-scoped to project-scoped** — surface it, re-narrow with the human; do not drift into a general audit.

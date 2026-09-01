@@ -7,7 +7,8 @@
 
 - Language: code, comments, docs in English. Chat may be in another language.
 - Workflow: planner→executor→reviser. Task queue in `ai/tasks/<slug>/`; archive to `ai/archive/`.
-  Commands: `/make-task`, `/run-task`, `/revise-task`, `/reconcile-task`, `/orient`, `/hotfix`, `/prune`.
+  Commands: `/make-task`, `/run-task`, `/revise-task`, `/reconcile-task`, `/orient`, `/prune`.
+  Most sessions need none of them: reactive work is the default mode.
 - Before a task: read `ARCHITECTURE.md` + this file (including Known Pitfalls below).
   After: update them if changed; append any non-obvious choice to `DECISIONS.md`.
 - Solo-operator note: you may be both planner (`/make-task`) and executor (`/run-task`),

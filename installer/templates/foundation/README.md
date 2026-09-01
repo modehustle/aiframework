@@ -12,6 +12,7 @@
 See `ARCHITECTURE.md` for components, data model, and layout.
 
 ## How work is done here
-Planner→executor loop: plans live in `ai/` (`/make-task`, `/run-task`).
-Micro-fixes: `/hotfix`. Re-entry: `/orient`. Gardening: `/prune`.
+Most work is reactive — no procedure, just a save point per finished piece.
+Handing work to a fresh chat: `/make-task` → `/run-task` (plans live in `ai/`).
+Re-entry: `/orient`. Gardening: `/prune`.
 Rules: `CONVENTIONS.md`. Decision history: `DECISIONS.md`.

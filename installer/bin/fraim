@@ -10,6 +10,16 @@
 set -eu
 
 _self=$0
+# install.sh always installs fraim as a symlink into ~/.local/bin, so $0 is
+# the link, not the file — resolve the chain before deriving lib/ from it,
+# or every installed command breaks with "no such file".
+while [ -L "$_self" ]; do
+    _link=$(readlink -- "$_self")
+    case $_link in
+        /*) _self=$_link ;;
+        *)  _self=$(dirname -- "$_self")/$_link ;;
+    esac
+done
 _libdir=$(cd -- "$(dirname -- "$_self")/../lib" 2>/dev/null && pwd -P) || {
     printf 'fraim: не найден каталог lib/ рядом с исполняемым файлом\n' >&2
     exit 2
@@ -48,7 +58,6 @@ fraim — эксплуатационный слой для проектов на
   fraim reconcile-seal СЛАГ то же для дрейфнувшей сессии
   fraim investigate-new СЛАГ   папка расследования + findings.md
   fraim investigate-seal СЛАГ  проверить исход и уборку, заархивировать
-  fraim hotfix-log ФАЙЛ ОПИСАНИЕ [yes|no]   строка в журнал хотфиксов
   fraim prune-mark          сбросить счётчик дрейфа маркером
   fraim stack-passport      создать STACK.md из шаблона
   fraim commit ВИД ТЕКСТ ПУТЬ...   точка сохранения по перечисленным путям
@@ -108,7 +117,11 @@ cmd_init() {
     _cwd=$(pwd -P)
     if project_is_managed "$_cwd"; then
         registry_add "$_cwd" && ok "проект зарегистрирован: $_cwd"
-        if context_install "$_cwd/AGENTS.md"; then
+        # The PROJECT block, not the machine one. They share the marker pair, so writing
+        # the machine block here would have overwritten what `fraim scaffold` puts in a
+        # project's AGENTS.md — and it would be the wrong text anyway: a routing table for
+        # skills installed on this machine says nothing to the agent that clones the repo.
+        if context_install "$_cwd/AGENTS.md" context_project_block; then
             dim "    контекстный блок → $_cwd/AGENTS.md"
         fi
     fi
@@ -390,11 +403,6 @@ cmd_commit() {
 }
 cmd_prune_mark() { verb_prune_mark "$(verb_root)"; }
 cmd_stack_passport() { verb_stack_passport "$(pwd -P)"; }
-cmd_hotfix_log() {
-    [ $# -ge 2 ] || die "нужно: fraim hotfix-log ФАЙЛ ОПИСАНИЕ [yes|no]"
-    verb_hotfix_log "$(verb_root)" "$1" "$2" "${3:-no}"
-}
-
 cmd_undo() {
     _root=$(pwd -P)
     if [ $# -ge 1 ]; then verb_undo "$_root" "$1"; else verb_undo_show "$_root"; fi
@@ -419,7 +427,6 @@ case $_cmd in
     commit)        cmd_commit "$@" ;;
     undo)          cmd_undo "$@" ;;
     restore)       cmd_restore "$@" ;;
-    hotfix-log)    cmd_hotfix_log "$@" ;;
     prune-mark)    cmd_prune_mark "$@" ;;
     stack-passport) cmd_stack_passport "$@" ;;
     status)        cmd_status "$@" ;;
