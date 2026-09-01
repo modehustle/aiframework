@@ -185,6 +185,43 @@ check "HEAD ушёл вперёд → exit 1" "$?" "1"
 "$FRAIM" status "$PROJ" 2>/dev/null | grep -q 'отстал'
 check "вердикт называет протухший план" "$?" "0"
 
+# The plan's OWN save point must not age it: /make-task commits the task folder right after
+# task-new stamped the provenance, so counting every commit made every fresh plan report
+# itself stale by one — the one that saved it.
+BASE2=$(git -C "$PROJ" rev-parse HEAD)
+mkdir -p "$PROJ/ai/tasks/feature-y"
+printf '# Task Context\n\n## Plan provenance\n- Based on: HEAD %s\n' "$BASE2" > "$PROJ/ai/tasks/feature-y/context.md"
+printf '# Task\n' > "$PROJ/ai/tasks/feature-y/task.md"
+git -C "$PROJ" add ai/tasks/feature-y >/dev/null 2>&1
+git -C "$PROJ" commit -qm "plan: feature-y" >/dev/null 2>&1
+"$FRAIM" status "$PROJ" 2>/dev/null | grep -q 'feature-y.*отстал'
+check "собственный коммит плана его не старит" "$?" "1"
+printf 'z\n' >> "$PROJ/main.py"
+git -C "$PROJ" commit -aqm third
+"$FRAIM" status "$PROJ" 2>/dev/null | grep -q 'feature-y.*отстал'
+check "коммит кода план старит" "$?" "0"
+
+# Staleness is a statement about what will be executed next: a task already done or blocked
+# is not waiting for an executor.
+printf '# Result\n' > "$PROJ/ai/tasks/feature-y/result.md"
+"$FRAIM" status "$PROJ" 2>/dev/null | grep -q 'feature-y.*отстал'
+check "исполненная задача не считается протухшей" "$?" "1"
+rm -rf "$PROJ/ai/tasks/feature-y"
+
+# A plan that retells the code instead of pointing at it. Informational, never a blocker.
+mkdir -p "$PROJ/ai/tasks/retold"
+printf '# Task Context\n\n## Codebase Context\n- `app.py` · `handler` — pattern to mirror\n' \
+    > "$PROJ/ai/tasks/retold/context.md"
+printf '# Task\n' > "$PROJ/ai/tasks/retold/task.md"
+"$FRAIM" status "$PROJ" 2>/dev/null | grep -q 'пересказывает код'
+check "план с указателями пересказом не считается" "$?" "1"
+printf 'Read lines 660-792 of app.py; create_run_dir (lines 664-670).\n' >> "$PROJ/ai/tasks/retold/task.md"
+"$FRAIM" status "$PROJ" 2>/dev/null | grep -q 'пересказывает код'
+check "пересказ кода замечен" "$?" "0"
+"$FRAIM" status "$PROJ" --json 2>/dev/null | grep -q '"id": "plan-retelling", "severity": "info"'
+check "пересказ — info, а не блокер" "$?" "0"
+rm -rf "$PROJ/ai/tasks/retold"
+
 # Version drift of the system itself.
 printf -- '- System: fraim 0.0.1-old\n' >> "$PROJ/ai/tasks/feature-x/context.md"
 "$FRAIM" status "$PROJ" 2>/dev/null | grep -q 'написан fraim 0.0.1-old'
@@ -192,6 +229,29 @@ check "план от старой версии fraim замечен" "$?" "0"
 
 python3 -c "import json,sys;json.load(sys.stdin)" < "$("$FRAIM" status "$PROJ" --json > "$SANDBOX/s.json" 2>/dev/null; echo "$SANDBOX/s.json")"
 check "--json — валидный JSON" "$?" "0"
+
+# Lessons that never came back: work saved while CONVENTIONS.md stays frozen. Same
+# arithmetic as the map check, one file over — and not a subset of it: the map here is
+# fresh, only the lessons are not.
+"$FRAIM" config set --machine lessons_lag_commits 3 >/dev/null 2>&1
+printf '# Conventions\n\n## Known Pitfalls / Lessons\n- None yet.\n' > "$PROJ/CONVENTIONS.md"
+git -C "$PROJ" add CONVENTIONS.md >/dev/null 2>&1
+git -C "$PROJ" commit -qm "onboard: house rules" >/dev/null 2>&1
+"$FRAIM" status "$PROJ" 2>/dev/null | grep -q 'грабли никуда не записывались'
+check "свежий CONVENTIONS.md тревоги не поднимает" "$?" "1"
+for i in 1 2 3 4; do
+    printf 'l%s\n' "$i" >> "$PROJ/app.py"
+    git -C "$PROJ" add app.py >/dev/null 2>&1
+    git -C "$PROJ" commit -qm "fix: reactive change $i" >/dev/null 2>&1
+done
+"$FRAIM" status "$PROJ" 2>/dev/null | grep -q 'грабли никуда не записывались'
+check "работа без единого урока замечена" "$?" "0"
+printf -- '- Retry on a 200 that carries an error body.\n' >> "$PROJ/CONVENTIONS.md"
+git -C "$PROJ" add CONVENTIONS.md >/dev/null 2>&1
+git -C "$PROJ" commit -qm "fix: lesson recorded" >/dev/null 2>&1
+"$FRAIM" status "$PROJ" 2>/dev/null | grep -q 'грабли никуда не записывались'
+check "записанный урок сбрасывает счётчик" "$?" "1"
+"$FRAIM" config set --machine lessons_lag_commits 25 >/dev/null 2>&1
 
 # The watchman is read-only. Anything else and it could not be put on a cron.
 BEFORE=$(find "$PROJ" -newer "$PROJ/ARCHITECTURE.md" -type f | md5sum)
@@ -435,6 +495,12 @@ check "task-new создал задачу" "$([ -f "$PROJ2/ai/tasks/add-auth/con
 check "провенанс: дата проставлена" "$(grep -c '^- Planned: 20' "$PROJ2/ai/tasks/add-auth/context.md")" "1"
 check "провенанс: git-ref проставлен" "$(grep -c '^- Based on: HEAD ' "$PROJ2/ai/tasks/add-auth/context.md")" "1"
 check "провенанс: версия системы проставлена" "$(grep -c '^- System: fraim ' "$PROJ2/ai/tasks/add-auth/context.md")" "1"
+# The executor's rules live in /run-task. The verb lays down a pointer so the planner never
+# retypes them into a copy that outlives the procedure it was copied from.
+check "task-new положил указатель на правила" \
+    "$(grep -c 'Your rules are `/run-task` itself' "$PROJ2/ai/tasks/add-auth/task.md")" "1"
+check "правила исполнителя в план не скопированы" \
+    "$(grep -c 'Touch only files listed' "$PROJ2/ai/tasks/add-auth/task.md")" "0"
 "$FRAIM" task-new add-auth >/dev/null 2>&1
 check "task-new не затирает существующую задачу" "$?" "2"
 "$FRAIM" task-new "Not Kebab" >/dev/null 2>&1
@@ -501,6 +567,10 @@ check "task-revise записал ревизию" "$(grep -c '^## Revision 1 —
 check "task-revise записал дефект" "$(grep -c 'Defect: wrong path in step 3' "$PROJ2/ai/tasks/fix-cache/task.md")" "1"
 check "провенанс не задвоился" "$(grep -c '^- Planned: ' "$PROJ2/ai/tasks/fix-cache/context.md")" "1"
 check "task-revise закоммитил" "$(git -C "$PROJ2" log --oneline -1 --format=%s)" "revise: fix-cache — wrong path in step 3"
+# The repair used to leave the plan one commit behind again — its own — so /run-task sent it
+# straight back to /revise-task. The loop has to terminate.
+"$FRAIM" status "$PROJ2" 2>/dev/null | grep -q 'fix-cache.*отстал'
+check "после ревизии план не считается протухшим" "$?" "1"
 "$FRAIM" task-revise fix-cache "again" "again" >/dev/null 2>&1
 check "task-revise без блокера отказывает" "$?" "2"
 

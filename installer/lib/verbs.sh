@@ -127,10 +127,20 @@ verb_task_new() {
         printf '<!-- fraim:stub — /make-task fills the sections below and deletes this line. -->\n\n'
         for _s in Summary "Files to Change" "Step-by-step Implementation" \
                   "Acceptance Criteria" "Verification Commands" \
-                  "Foundation updates (executor's final step — invariant 0.4)" \
-                  "Executor Rules — read before starting"; do
+                  "Foundation updates (executor's final step — invariant 0.4)"; do
             printf '## %s\n\n' "$_s"
         done
+        # The executor's rules are not the plan's to carry. They used to be a dozen bullets
+        # retyped into every task.md, every one of them already present, word for word, in the
+        # procedure the executor is running while it reads them — a copy rewritten per task,
+        # archived forever, and silently diverging the next time run-task.md changed. The verb
+        # lays down the pointer instead: one source, updated with the system, zero planner
+        # tokens, nothing to drift.
+        printf '## Executor Rules — read before starting\n\n'
+        printf 'Your rules are `/run-task` itself — the procedure you are executing right now:\n'
+        printf '`## GATES` G1–G7, the plan-defect protocol at Step 4d, and Step 7 on the\n'
+        printf 'foundation. They are not copied here on purpose: a copy in the plan is a second\n'
+        printf 'source of truth that no one updates.\n\n'
     } > "$_dir/task.md"
 
     ok "ai/tasks/$_slug/ — provenance: $(verb_provenance "$_root" | tr '\n' ' ')"

@@ -25,6 +25,8 @@
 
 ## Known Pitfalls / Lessons
 > Gotchas this codebase has cost an execution at least once. `/make-task` reads these so
-> the planner does not walk a new task into the same trap. `/run-task` proposes additions
-> here (on your approval) from its `(pitfall)` observations. `/prune` curates the list.
+> the planner does not walk a new task into the same trap. Three things add to the list, all
+> on your approval: `/run-task` from its `(pitfall)` observations, `/prune` when it finds a
+> lesson in the save points that never got written down, and any ordinary session the moment
+> something bites — that last one is where most of them come from. `/prune` also curates.
 - None yet.

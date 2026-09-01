@@ -45,6 +45,13 @@ whose shape only appeared while doing it. **That is legitimate** — do not forc
   wrong, fix it before you finish.
 - **Behaviour changed → one line in `DECISIONS.md`.** Any change to what the program does
   leaves a trail. Pure cosmetics — a comment, a log string, formatting — need no entry.
+- **Something bit you → one line in `## Known Pitfalls / Lessons`** (in `CONVENTIONS.md`).
+  Not every surprise: only the kind that would trap the next change too — a call that fails
+  silently, a config that means the opposite of what it reads, an order of operations that
+  must not be swapped. Propose the line, let the human approve, edit or skip it, and save it
+  with the same save point. This is the only way a lesson from a session with no procedure
+  ever reaches the next one — `/make-task` reads that section before planning, and nothing
+  else in reactive work writes to it.
 - **Save as you go.** When a coherent piece is done — not at the end of the session, a
   session can die — put down a save point naming the paths you changed:
   `fraim commit fix "<what changed>" <path> <path>`. Those commits **are** the record of
@@ -96,6 +103,12 @@ the map wrong, fixing the map is part of the change, not follow-up work.
 **Behaviour changed → one line in `DECISIONS.md`.** A change to what the program does, with
 no trail anywhere, is not allowed. Pure cosmetics (a comment, a log string, formatting) need
 no entry.
+
+**Something bit you → one line in `## Known Pitfalls / Lessons`** (in `CONVENTIONS.md`). Only
+the kind of surprise that would trap the next change too — something that fails silently,
+reads as the opposite of what it does, or must happen in an order nobody would guess. Propose
+the line, let the human approve, edit or skip it, then save it with the change. A lesson that
+stays in the chat is paid for twice.
 
 **Save as you go.** When a coherent piece is done, put down a save point naming the paths you
 changed — not at the end of the session, a session can die. Save the paths you actually
