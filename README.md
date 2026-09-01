@@ -105,6 +105,7 @@ fraim undo a1b2c3d    # отменяет одну — встречным ком�
 По каким правилам принимаются такие решения — [PRINCIPLES.md](PRINCIPLES.md).
 Что найдено, но отложено — [BACKLOG.md](BACKLOG.md).
 Последний прогон чек-листа по всем процедурам — [AUDIT-VERBS.md](AUDIT-VERBS.md).
+Сколько стоит передача работы между `/make-task` и `/run-task` — [AUDIT-PLAN-COST.md](AUDIT-PLAN-COST.md).
 
 ---
 
