@@ -485,3 +485,218 @@ verb_restore() {
         fi
     done
 }
+
+# --- decide / pitfall: writing INTO the foundation ---------------------------
+# Appending to the foundation was the largest block of mechanics still left to the
+# model. `DECISIONS.md` alone is written by three procedures (run-task 7.2,
+# reconcile-task 2, prune) and its shape is described a fourth time in the template:
+# four descriptions of one format, executed by prose (A3 + B1). What is mechanical
+# here is placement, heading and date — never the wording, which is why the body
+# arrives on stdin instead of through argv. A multi-line entry squeezed through a
+# command-line argument is how a verb starts damaging content (AUDIT-VERBS 4.4).
+#
+# Neither verb commits. The save point stays in `fraim commit`, called by the
+# procedure with the rest of the paths it touched — one implementation of a commit,
+# and no surprise second commit inside a step that only meant to append a line.
+
+verb_read_body() {
+    # Refuse rather than block: on a terminal there is no piped body, and a verb
+    # that silently waits for EOF looks identical to a hung agent session.
+    [ -t 0 ] && return 1
+    cat
+}
+
+verb_decide() {
+    _root=$1; _title=$2; _supersedes=${3:-}
+    _file="$_root/DECISIONS.md"
+    [ -f "$_file" ] || die "нет DECISIONS.md — сначала fraim scaffold, потом /bootstrap или /onboard"
+    [ -n "$_title" ] || die "нужен заголовок решения"
+
+    _body=$(verb_read_body) ||
+        die "тело решения приходит потоком:  fraim decide \"ЗАГОЛОВОК\" <<'EOF' … EOF"
+    [ -n "$(printf '%s' "$_body" | tr -d '[:space:]')" ] || die "тело решения пустое"
+
+    _date=$(date +%Y-%m-%d)
+    _entry="## $_date — $_title"
+    _tmp="$_file.fraim.tmp"
+
+    # Newest on top: the entry goes above the first existing one, and when there is
+    # none yet, after the header block. The stub marker goes away with the first real
+    # entry — a file with a decision in it is no longer an unfilled scaffold (D1).
+    awk -v entry="$_entry" -v body="$_body" -v sup="$_supersedes" -v stub="$SCAFFOLD_STUB" '
+        index($0, stub) { next }
+        !done && /^## / {
+            print entry
+            if (sup != "") print "> Supersedes: " sup
+            print ""
+            print body
+            print ""
+            done = 1
+        }
+        { print }
+        END {
+            if (!done) {
+                print ""
+                print entry
+                if (sup != "") print "> Supersedes: " sup
+                print ""
+                print body
+            }
+        }
+    ' "$_file" > "$_tmp" || { rm -f "$_tmp"; die "не удалось записать DECISIONS.md"; }
+    mv "$_tmp" "$_file" || die "не удалось записать DECISIONS.md"
+
+    ok "DECISIONS.md ← $_entry"
+    dim "  запись не сохранена: добавь DECISIONS.md в свой fraim commit"
+}
+
+verb_pitfall() {
+    _root=$1; shift
+    _file="$_root/CONVENTIONS.md"
+    _head='## Known Pitfalls / Lessons'
+    [ -f "$_file" ] || die "нет CONVENTIONS.md — сначала fraim scaffold, потом /bootstrap или /onboard"
+    grep -q "^$_head\$" "$_file" || die "в CONVENTIONS.md нет раздела '$_head'"
+
+    if [ $# -gt 0 ]; then
+        _lines=$(for _l in "$@"; do printf '%s\n' "$_l"; done)
+    else
+        _lines=$(verb_read_body) ||
+            die "строки приходят аргументами или потоком: fraim pitfall \"СТРОКА\" [\"СТРОКА\"…]"
+    fi
+    [ -n "$(printf '%s' "$_lines" | tr -d '[:space:]')" ] || die "нечего добавлять"
+
+    _tmp="$_file.fraim.tmp"
+    # Appended at the END of that one section, not at the end of the file: the
+    # section is what /make-task reads before planning, and a line that lands under
+    # the wrong heading is a lesson nobody will ever be shown again.
+    awk -v head="$_head" -v lines="$_lines" '
+        $0 == head { inside = 1; print; next }
+        inside && /^## / {
+            n = split(lines, a, "\n")
+            for (i = 1; i <= n; i++) if (a[i] != "") print "- " a[i]
+            inside = 0; done = 1
+            print ""
+            print
+            next
+        }
+        inside && $0 == "- None yet." { next }
+        { print }
+        END {
+            if (inside && !done) {
+                n = split(lines, a, "\n")
+                for (i = 1; i <= n; i++) if (a[i] != "") print "- " a[i]
+            }
+        }
+    ' "$_file" > "$_tmp" || { rm -f "$_tmp"; die "не удалось записать CONVENTIONS.md"; }
+    mv "$_tmp" "$_file" || die "не удалось записать CONVENTIONS.md"
+
+    _n=$(printf '%s\n' "$_lines" | grep -c '[^[:space:]]')
+    ok "CONVENTIONS.md ← $_n $(wm_plural "$_n" строка строки строк) в '$_head'"
+    dim "  запись не сохранена: добавь CONVENTIONS.md в свой fraim commit"
+}
+
+# --- plan-seal (the fourth door) --------------------------------------------
+# Three gates guarded the exits from EXECUTION; the exit from PLANNING was a plain
+# commit, preceded by a twelve-point self-check the author ran on their own work.
+# That is the same construction B3 already rejected for invariant 0.4 — and the stakes
+# are higher here, because the plan is the one artefact the executor trusts blindly:
+# it arrives in a clean chat with no planner and no conversation to check it against.
+#
+# Seven of the twelve points are grep and test -e. Those move here. The other five —
+# is the criterion objectively verifiable, is the dependency list complete — are
+# judgment, and judgment is never a verb (AUDIT-VERBS 4.4).
+
+# A template placeholder is <...> with a space inside: that is how every placeholder
+# in our templates is written, and it is what keeps `List<T>`, `<html>` and `Vec<u8>`
+# in a real plan from reading as an unfilled blank.
+verb_has_placeholder() { grep -q '<[^>]* [^>]*>' "$1"; }
+
+verb_plan_required() {
+    _file=$1; _label=$2; shift 2
+    for _s in "$@"; do
+        grep -q "^## $_s" "$_file" || die "$_label: нет раздела '## $_s'"
+        _sec=$(awk -v h="$_s" 'index($0, "## " h) == 1 {f=1;next} /^## /{f=0} f' "$_file")
+        [ -n "$(printf '%s' "$_sec" | tr -d '[:space:]')" ] ||
+            die "$_label: раздел '## $_s' пуст"
+    done
+}
+
+verb_plan_seal() {
+    _root=$1; _slug=$2
+    _dir="$_root/ai/tasks/$_slug"
+    _ctx="$_dir/context.md"; _task="$_dir/task.md"
+    [ -d "$_dir" ] || die "нет такой задачи: ai/tasks/$_slug"
+    [ -s "$_ctx" ]  || die "нет ai/tasks/$_slug/context.md — план не написан"
+    [ -s "$_task" ] || die "нет ai/tasks/$_slug/task.md — план не написан"
+    [ -f "$_dir/result.md" ] &&
+        die "задача уже исполнена — план запечатывают до запуска, не после"
+
+    # 1. Stub and placeholders — the plan is a scaffold nobody filled in.
+    for _f in "$_ctx" "$_task"; do
+        grep -q "$SCAFFOLD_STUB" "$_f" &&
+            die "$(basename -- "$_f"): маркер $SCAFFOLD_STUB на месте — заготовка не заполнена"
+        verb_has_placeholder "$_f" &&
+            die "$(basename -- "$_f"): остались плейсхолдеры <…> — допиши их"
+    done
+
+    # 2. The provenance stamp, written by task-new and never by hand. Without it the
+    #    watchman cannot tell a plan that went stale in the queue from a fresh one.
+    grep -q '^## Plan provenance' "$_ctx" || die "context.md: нет '## Plan provenance' — папку задачи заводит fraim task-new"
+    grep -q '^- Planned: '        "$_ctx" || die "context.md: в provenance нет даты"
+    grep -q '^- Based on: '       "$_ctx" || die "context.md: в provenance нет базиса"
+    grep -q '^- System: fraim '   "$_ctx" || die "context.md: в provenance нет версии системы"
+
+    # 3. Self-containment (G1). The executor never sees the planning conversation, so a
+    #    phrase pointing back at it is a hole it will fall through.
+    # Both spellings of each Russian phrase are listed on purpose: in the C locale
+    # `grep -i` folds ASCII only, so «Как» would slip past a lower-case pattern.
+    _bad=$(grep -nE 'as (we )?[Dd]iscussed|[Aa]s discussed|[Tt]he plan above|approach we chose|per the conversation|as agreed above|[Кк]ак мы обсуждали|[Кк]ак договорились|[Вв]ыше по чату|[Мм]ы решили выше|[Кк]ак решили выше|[Вв] прошлом сообщении' \
+           "$_ctx" "$_task" | head -3)
+    [ -n "$_bad" ] && die "план ссылается на разговор, которого исполнитель не видел (G1):
+$_bad"
+
+    # 4. Every section the executor is told to read must exist and say something.
+    verb_plan_required "$_ctx" context.md Goal Why "Codebase Context" Constraints \
+        "Decisions and Rationale" "Known Pitfalls" "Out of Scope"
+    verb_plan_required "$_task" task.md Summary "Files to Change" \
+        "Step-by-step Implementation" "Acceptance Criteria" "Verification Commands" \
+        "Foundation updates" "Executor Rules"
+
+    # 5. Verification can never be empty (N8) — either a command or an explicit
+    #    Operator confirmed: line that hands the check to the human on purpose.
+    _ver=$(awk '/^## Verification Commands/{f=1;next} /^## /{f=0} f' "$_task" |
+           grep -v '^```' | grep '[^[:space:]]')
+    [ -n "$_ver" ] || die "task.md: '## Verification Commands' пуст (см. N8)"
+    printf '%s' "$_ver" | grep -q '^[[:space:]]*<' &&
+        die "task.md: в '## Verification Commands' остался плейсхолдер"
+
+    # 6. Addresses must resolve. A path that does not exist is the classic plan defect:
+    #    the executor pays a full run to discover a typo the planner could not see.
+    _missing=
+    _paths=$(awk '/^## Codebase Context/{f=1;next} /^## /{f=0} f' "$_ctx" |
+             grep -oE '`[^`]+`' | tr -d '`' | grep -E '/|\.[a-z]+$' | sort -u)
+    for _p in $_paths; do
+        case $_p in */) _p=${_p%/} ;; esac
+        [ -e "$_root/$_p" ] || _missing="$_missing $_p"
+    done
+    [ -n "$_missing" ] &&
+        die "context.md: путь из Codebase Context не существует:$_missing"
+
+    # The same for files being changed — except the ones the plan says to create.
+    _missing=$(awk '
+        /^### `/ { p = $0; sub(/^### `/, "", p); sub(/`.*$/, "", p); next }
+        /^- \*\*Action:\*\*/ {
+            if (p != "" && $0 !~ /create/) print p
+            p = ""
+        }
+    ' "$_task" | sort -u | while read -r _p; do
+        [ -n "$_p" ] || continue
+        [ -e "$_root/$_p" ] || printf ' %s' "$_p"
+    done)
+    [ -n "$_missing" ] &&
+        die "task.md: файл для изменения не существует (или Action должен быть create):$_missing"
+
+    ok "план $_slug проверен: провенанс, самодостаточность, разделы, проверка, пути"
+    verb_commit "$_root" plan "$_slug — план готов к исполнению" "ai/tasks/$_slug"
+    dim "  дальше: открой новый чат и запусти /run-task"
+}

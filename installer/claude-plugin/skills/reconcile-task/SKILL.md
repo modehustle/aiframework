@@ -3,7 +3,7 @@ name: reconcile-task
 description: "Close a /run-task session that drifted into live debugging — fold the unplanned changes back into the record and archive truthfully; but STOP and hand to /revise-task if the drift was structural, not surgical"
 metadata:
   tier: capable
-  version: 0.5.0
+  version: 0.6.0
   source: fraim
 ---
 # /reconcile-task — Seal a Drifted Execution Session
@@ -71,7 +71,9 @@ The drift was surgical. Make the archive honest, then close.
 List every edit that was NOT in the plan, or that broke a stated constraint. For each: **what** you changed · **which plan expectation / constraint** it overrode · **what was discovered live** that forced it. This list drives Steps 2–4.
 
 ### Step 2 — `DECISIONS.md` (append-only, English, newest on top)
-One entry per delta that **changed behavior**. If a delta reversed an earlier `DECISIONS.md` entry, **do not delete it** — append a new entry marking the old one superseded.
+One entry per delta that **changed behavior**, each written by the verb — `fraim decide "<title>"`
+with the body on stdin. A delta that reversed an earlier entry does **not** delete it: pass
+`--supersedes "<the entry being replaced>"` and both stay in the log.
 
 ### Step 3 — `result.md` + final report: the divergence section
 Run `fraim task-result <slug> --reconcile`. It lays down the report if the run never wrote one,

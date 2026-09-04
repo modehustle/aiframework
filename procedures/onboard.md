@@ -77,7 +77,7 @@ Organically-grown repos carry signals the code alone cannot resolve. Flag each a
 
 - `ARCHITECTURE.md` documents the **actual layout as it is** — not the standard one. The components table is **conceptual** (the real moving parts, pointing at where they live), not a file-by-file listing. Keep it ~half a page (invariant 0.7).
 - `CONVENTIONS.md` captures the conventions the code **already follows** (naming, structure, style) + the agent rules + the `## Known Pitfalls / Lessons` section, seeded with any gotchas the human names.
-- `DECISIONS.md` starts **near-empty**. You do not know the rationale behind past choices, so do **not** fabricate history. Seed one entry — `## <date> — onboarded: foundation derived from existing code` — plus any decisions the human wants to record going forward. The log accumulates from onboarding onward.
+- `DECISIONS.md` starts **near-empty**. You do not know the rationale behind past choices, so do **not** fabricate history. Seed exactly one entry with the verb — `fraim decide "onboarded: foundation derived from existing code"`, body on stdin, saying what the foundation was derived from — plus any decisions the human wants to record going forward. The log accumulates from onboarding onward.
 
 ### Step 4 — Ratify with the human, then stand up `ai/`
 

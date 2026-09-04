@@ -2,7 +2,7 @@
 name: fraim
 description: Control panel for the fraim workflow system. Use when the user asks where a project stands, what needs attention, what to do next, which projects have drifted, or how to install and update the workflow procedures. Routes to the right procedure and reads the deterministic project watchman.
 metadata:
-  version: 0.5.0
+  version: 0.6.0
   source: fraim
 ---
 # fraim — control panel
@@ -23,6 +23,15 @@ no network — so it is free to call every time.
 fraim status          # human-readable verdict for the current project
 fraim status --json   # same verdict, machine-readable
 ```
+
+The JSON answer carries three things, and procedures read them instead of probing the
+filesystem: `foundation` — each file as `missing` / `stub` / `filled` (a `stub` is an
+empty scaffold: reading it means guessing, so stop); `tasks` — every queued slug with
+`blocked` / `done` / `runnable`; `findings` — what needs a human, each with the action.
+
+A `shape` finding means the project's foundation predates the current standard — laid down
+before `AGENTS.md`/`CLAUDE.md`, before `ai/fraim.conf`, or before a section the verbs write
+into. `fraim upgrade` brings it up to standard: additive, never overwriting content.
 
 Exit codes: `0` healthy · `1` something needs the human · `2` project is not
 under the system.
@@ -58,7 +67,8 @@ whose shape appeared while doing it. **That is legitimate.** Do not force it int
 `/make-task`, and do not announce a procedure you are not running. What still holds:
 
 - invariant 0.4 — read the foundation first, fix it if the change made it wrong;
-- **behaviour changed → one line in `DECISIONS.md`**; pure cosmetics need no entry;
+- **behaviour changed → `fraim decide "<title>"`** with the body on stdin; pure cosmetics need
+  no entry. Do not hand-write the heading or the date — placement and format are the verb's;
 - **save as you go**: when a coherent piece is done, not at the end of the session,
   `fraim commit fix \"<what changed>\" <path> <path>`. Those commits are the record of
   reactive work; there is no second log to keep.
@@ -80,6 +90,9 @@ these, run it: the format, the paths, the timestamps and the commit are not your
 | `fraim task-block SLUG` | retyping the `blockers.md` shape |
 | `fraim task-result SLUG` | retyping the `result.md` shape (`--reconcile`, `--reset`) |
 | `fraim task-revise SLUG DEFECT FIX` | the revision record, the refreshed stamp, the consumed blocker |
+| `fraim plan-seal SLUG` | checking a finished plan before it goes to an executor — **it can refuse** |
+| `fraim decide "TITLE"` | writing an entry into `DECISIONS.md` (body on stdin, never argv) |
+| `fraim pitfall "LINE"…` | adding lessons to `## Known Pitfalls / Lessons` in `CONVENTIONS.md` |
 | `fraim task-seal SLUG` | archiving a finished task — **it can refuse** |
 | `fraim reconcile-seal SLUG` | archiving a drifted session — **it can refuse** |
 | `fraim investigate-new SLUG` | creating an investigation folder and its provenance stamp |
@@ -90,7 +103,9 @@ these, run it: the format, the paths, the timestamps and the commit are not your
 | `fraim undo [HASH]` | reaching for `git reset` / `git revert` |
 | `fraim restore PATH…` | `git restore` / deleting scratch files by hand |
 
-Three of them are **gates**: `task-seal` will not archive a task whose `result.md` leaves
+Four of them are **gates**: `plan-seal` will not release a plan with leftover placeholders, a
+phrase pointing back at the planning chat, an empty section, empty verification, or a path that
+does not exist; `task-seal` will not archive a task whose `result.md` leaves
 `## Foundation updated` empty or unfilled; `reconcile-seal` adds a filled
 `## Divergence from plan` to that; `investigate-seal` wants exactly one outcome branch and a
 report on the cleanup. A refusal is the check doing its job — fix what it names and run it again.
@@ -113,6 +128,7 @@ A deterministic action has exactly one implementation.
 | Command | What it does |
 |---|---|
 | `fraim init` | install / update / pick up a newly installed harness |
+| `fraim upgrade` | bring an existing project's foundation up to the current standard |
 | `fraim config` | what settings are in effect and where each came from |
 | `fraim projects` | list, add or remove projects in the registry |
 | `fraim doctor` | what is installed where, which version, what diverged |

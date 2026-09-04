@@ -3,7 +3,7 @@ name: bootstrap
 description: "Lay the development foundation of an authored project from a Design Brief: foundation documents plus a minimal running skeleton, so the project can be re-entered weeks later with full context instead of guesswork."
 metadata:
   tier: strong
-  version: 0.5.0
+  version: 0.6.0
   source: fraim
 ---
 # Project Bootstrap Workflow for AI Agents (universal)
@@ -132,7 +132,7 @@ No placeholders left as placeholders.
 - `README.md` — entry point: what it is, how to run it (dev), pointer to `STACK.md` for deploy, pointer to `ARCHITECTURE.md` and the `ai/` loop.
 - `ARCHITECTURE.md` — purpose/scope, stack, components, data model, data flow, interfaces. Carries the read-first/update-last directive.
 - `CONVENTIONS.md` — how we work here; the agent rules; the Known Pitfalls store; carries the load-every-session directive.
-- `DECISIONS.md` — append-only log, seeded with the founding decisions from Phase 1 (stack choice, key trade-offs).
+- `DECISIONS.md` — append-only log, seeded with the founding decisions from Phase 1 (stack choice, key trade-offs). Write each one with `fraim decide "<title>"`, body on stdin — the verb owns placement, heading and date, and it drops the `fraim:stub` marker once a real decision is in.
 - `.gitignore`, `.env.example` — per invariant 0.8.
 - `ai/` — the planner→executor structure (Appendix A).
 

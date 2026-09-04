@@ -18,7 +18,13 @@ SANDBOX=$(mktemp -d)
 trap 'rm -rf "$SANDBOX"' EXIT
 export HOME="$SANDBOX/home"
 export FRAIM_HOME="$HOME/.fraim"
-mkdir -p "$HOME"
+mkdir -p "$HOME" "$FRAIM_HOME"
+
+# Фикстуры ниже — намеренно минимальные каталоги: у них нет ни AGENTS.md, ни ai/fraim.conf,
+# потому что каждая проверяет что-то одно. Проверка соответствия стандарту сработала бы на
+# всех сразу и заглушила бы то, ради чего фикстура заведена. Выключаем её машинной настройкой
+# и включаем обратно в проекте, который её и проверяет (проект бьёт машину).
+printf 'check_shape = off\n' > "$FRAIM_HOME/config"
 
 # ---------------------------------------------------------------- procedures
 printf '\nprocedures/\n'
@@ -87,6 +93,29 @@ check "заголовки, которые читают гейты, есть в �
 GITHAND=$(grep -lE 'git (commit|add|init|restore|checkout|reset|stash|clean|push)' \
           "$REPO"/procedures/*.md | while read -r f; do basename "$f"; done | sort | tr '\n' ' ')
 check "процедуры не трогают git руками" "$GITHAND" ""
+
+# ---------------------------------------------------------------- menu
+printf '\nfraim menu (экран)\n'
+
+# Самое дорогое свойство меню — не то, как оно выглядит, а то, что его нет там,
+# где его быть не должно. Подавляющее большинство вызовов CLI делает агент через
+# пайп; команда, ждущая нажатия, повесила бы сессию молча.
+OUT=$(timeout 10 "$FRAIM" menu </dev/null 2>&1 | head -1)
+check "menu без терминала печатает usage, а не ждёт клавишу" \
+      "$(printf '%s' "$OUT" | cut -c1-6)" "fraim "
+
+OUT=$(timeout 10 "$FRAIM" </dev/null 2>&1 | head -1)
+check "голый fraim без терминала печатает usage" \
+      "$(printf '%s' "$OUT" | cut -c1-6)" "fraim "
+
+# Пункт меню и его действие живут в двух местах (menu_items и menu_exec). Рельс
+# ловит класс: добавили строку — забыли ветку. Последний пункт («Выход») ветки
+# не имеет по построению.
+ITEMS=$(sed -n '/^menu_items() {/,/^}/p' "$REPO/installer/lib/menu.sh" |
+        sed -n '/<<.ITEMS./,/^ITEMS$/p' | grep -c '	')
+BRANCH=$(sed -n '/^menu_exec() {/,/^}/p' "$REPO/installer/lib/menu.sh" |
+         grep -cE '^        [0-9]+\)')
+check "у каждого пункта меню есть действие" "$BRANCH" "$((ITEMS - 1))"
 
 # ---------------------------------------------------------------- build
 printf '\nfraim build\n'
@@ -701,6 +730,224 @@ check "commit_verbs = off отключает коммит" "$(git -C "$PROJ2" re
 "$FRAIM" config set commit_verbs on >/dev/null 2>&1
 
 cd "$REPO" || exit 1
+
+# --- decide / pitfall: запись в фундамент ------------------------------------
+cd "$PROJ2" || exit 1
+
+printf 'Decision: sqlite in WAL mode.\n' | "$FRAIM" decide "storage engine" >/dev/null 2>&1
+check "decide дописал запись" "$(grep -c '^## 20.* — storage engine$' "$PROJ2/DECISIONS.md")" "1"
+check "decide снял маркер заглушки" "$(grep -c 'fraim:stub' "$PROJ2/DECISIONS.md")" "0"
+
+printf 'Decision: retry with jitter.\n' | "$FRAIM" decide "retries" >/dev/null 2>&1
+check "новое решение легло сверху" \
+      "$(grep -m1 '^## 20' "$PROJ2/DECISIONS.md" | sed 's/.*— //')" "retries"
+check "старое решение осталось" "$(grep -c '— storage engine$' "$PROJ2/DECISIONS.md")" "1"
+
+printf 'Decision: postgres after all.\n' |
+    "$FRAIM" decide "storage engine, take two" --supersedes "storage engine" >/dev/null 2>&1
+check "supersede записан, старое не удалено" \
+      "$(grep -c '^> Supersedes: storage engine$' "$PROJ2/DECISIONS.md")$(grep -c '— storage engine$' "$PROJ2/DECISIONS.md")" "11"
+
+"$FRAIM" decide "empty" </dev/null >/dev/null 2>&1
+check "decide отвергает пустое тело" "$?" "2"
+check "decide не коммитит сам" \
+      "$(git -C "$PROJ2" log --oneline -1 --format=%s | grep -c '^decide')" "0"
+
+# Ранние тесты затёрли фундамент болванкой без разделов — сначала проверим, что
+# глагол на такой файл честно отказывается, а не дописывает в пустоту.
+"$FRAIM" pitfall "nowhere to put this" >/dev/null 2>&1
+check "pitfall отказывается без раздела Known Pitfalls" "$?" "2"
+cp "$REPO/installer/templates/foundation/CONVENTIONS.md" "$PROJ2/CONVENTIONS.md"
+
+"$FRAIM" pitfall "S3 client truncates keys over 1024 bytes." >/dev/null 2>&1
+check "pitfall дописал строку в свой раздел" \
+      "$(sed -n '/^## Known Pitfalls/,$p' "$PROJ2/CONVENTIONS.md" | grep -c 'S3 client truncates')" "1"
+check "заглушка «None yet» убрана" "$(grep -c '^- None yet\.$' "$PROJ2/CONVENTIONS.md")" "0"
+"$FRAIM" pitfall "Tests fail unless TZ=UTC." >/dev/null 2>&1
+check "вторая строка легла следом" \
+      "$(sed -n '/^## Known Pitfalls/,$p' "$PROJ2/CONVENTIONS.md" | grep -c '^- ')" "2"
+
+# --- plan-seal: четвёртая дверь ---------------------------------------------
+"$FRAIM" task-new add-cache >/dev/null 2>&1
+"$FRAIM" plan-seal add-cache >/dev/null 2>&1
+check "гейт плана: заготовку не выпускает" "$?" "2"
+
+python3 - "$PROJ2/ai/tasks/add-cache" <<'PYFILL'
+import pathlib, sys
+d = pathlib.Path(sys.argv[1])
+ctx = {'Goal': 'Cache price lookups for 60 seconds.',
+       'Why': 'The upstream is slow and rate limited.',
+       'Codebase Context': '- `app.py` — entry point, holds the price call',
+       'Constraints': '- Do NOT modify: `DECISIONS.md`',
+       'Decisions and Rationale': 'In-process TTL cache, not Redis: a service for 60 seconds does not pay.',
+       'Known Pitfalls': 'None known.',
+       'Out of Scope': 'Event-based invalidation.'}
+task = {'Summary': 'TTL cache around get_price().',
+        'Files to Change': '### `app.py`\n- **Action:** modify\n- **Must be true after:** get_price() serves from cache while the entry is under 60s old\n- **Pattern reference:** n/a',
+        'Step-by-step Implementation': '1. Add the cache dict next to get_price() in `app.py`.',
+        'Acceptance Criteria': '- [ ] Two calls in a row make one network request',
+        'Verification Commands': '```bash\npython3 -c "import sys"\n```',
+        'Foundation updates': "- `ARCHITECTURE.md`: no structural change",
+        'Executor Rules': '- Follow the plan literally.'}
+for name, fill in (('context.md', ctx), ('task.md', task)):
+    p = d / name
+    out = []
+    for line in p.read_text().splitlines():
+        if 'fraim:stub' in line:
+            continue
+        out.append(line)
+        head = line[3:].strip() if line.startswith('## ') else None
+        if head:
+            for k, v in fill.items():
+                if head.startswith(k):
+                    out.append(v)
+                    break
+    p.write_text('\n'.join(out) + '\n')
+PYFILL
+
+"$FRAIM" plan-seal add-cache >/dev/null 2>&1
+check "гейт плана: заполненный план проходит" "$?" "0"
+check "план сохранён точкой" "$(git -C "$PROJ2" log --oneline -1 --format=%s)" "plan: add-cache — план готов к исполнению"
+
+printf 'Как мы обсуждали, TTL держим на 60.\n' >> "$PROJ2/ai/tasks/add-cache/context.md"
+"$FRAIM" plan-seal add-cache >/dev/null 2>&1
+check "гейт плана: отсылку к разговору не пропускает" "$?" "2"
+python3 - "$PROJ2/ai/tasks/add-cache/context.md" <<'PYCUT'
+import pathlib, sys
+p = pathlib.Path(sys.argv[1])
+p.write_text("".join(l for l in p.read_text().splitlines(True) if "обсуждали" not in l))
+PYCUT
+
+python3 - "$PROJ2/ai/tasks/add-cache/context.md" <<'PYBAD'
+import pathlib, sys
+p = pathlib.Path(sys.argv[1])
+p.write_text(p.read_text().replace('`app.py` — entry point', '`src/pricing.py` — entry point'))
+PYBAD
+"$FRAIM" plan-seal add-cache >/dev/null 2>&1
+check "гейт плана: несуществующий путь не пропускает" "$?" "2"
+python3 - "$PROJ2/ai/tasks/add-cache/context.md" <<'PYFIX'
+import pathlib, sys
+p = pathlib.Path(sys.argv[1])
+p.write_text(p.read_text().replace('`src/pricing.py` — entry point', '`app.py` — entry point'))
+PYFIX
+
+python3 - "$PROJ2/ai/tasks/add-cache/task.md" <<'PYEMPTY'
+import pathlib, sys, re
+p = pathlib.Path(sys.argv[1])
+t = p.read_text()
+t = re.sub(r'## Verification Commands\n.*?\n## ', '## Verification Commands\n\n## ', t, flags=re.S)
+p.write_text(t)
+PYEMPTY
+"$FRAIM" plan-seal add-cache >/dev/null 2>&1
+check "гейт плана: пустую проверку не пропускает" "$?" "2"
+
+rm -rf "$PROJ2/ai/tasks/add-cache"
+
+# ------------------------------------------------- стандарт фундамента и upgrade
+printf '\nсоответствие стандарту (shape) и fraim upgrade\n'
+
+# Проект «старой версии»: фундамент есть, но заведён до AGENTS.md/CLAUDE.md, до
+# ai/fraim.conf и до раздела Known Pitfalls. Ни одна прежняя проверка на нём не
+# срабатывала — сторож говорил «всё чисто», а fraim pitfall при этом отказывался.
+OLD="$SANDBOX/oldproj"
+mkdir -p "$OLD/ai/tasks"
+git -C "$OLD" init -q
+git -C "$OLD" config user.email t@t; git -C "$OLD" config user.name t
+printf '# ARCHITECTURE\nmap\n'    > "$OLD/ARCHITECTURE.md"
+printf '# CONVENTIONS\nrules\n'   > "$OLD/CONVENTIONS.md"
+printf '# DECISIONS\n'            > "$OLD/DECISIONS.md"
+printf '# README\n'               > "$OLD/README.md"
+printf 'check_shape = on\n'       > "$OLD/ai/fraim.conf"
+git -C "$OLD" add -A >/dev/null 2>&1; git -C "$OLD" commit -qm base >/dev/null 2>&1
+
+OUT=$("$FRAIM" status "$OLD" 2>/dev/null)
+check "сторож видит отставание от стандарта" "$(printf '%s' "$OUT" | grep -c 'отстал от стандарта')" "1"
+check "названы AGENTS.md и CLAUDE.md" \
+      "$(printf '%s' "$OUT" | grep -c 'AGENTS.md')$(printf '%s' "$OUT" | grep -c 'CLAUDE.md')" "11"
+check "назван недостающий раздел" "$(printf '%s' "$OUT" | grep -c 'Known-Pitfalls')" "1"
+
+cd "$OLD" || exit 1
+"$FRAIM" pitfall "verb has nowhere to write" >/dev/null 2>&1
+check "до upgrade глагол pitfall отказывает" "$?" "2"
+
+"$FRAIM" upgrade >/dev/null 2>&1
+check "upgrade завершился успешно" "$?" "0"
+check "upgrade завёл AGENTS.md с блоком" "$(grep -c 'fraim:begin' "$OLD/AGENTS.md")" "1"
+check "upgrade завёл CLAUDE.md с указателем" "$(grep -c 'AGENTS.md' "$OLD/CLAUDE.md")" "2"
+check "upgrade дописал раздел Known Pitfalls" "$(grep -c '^## Known Pitfalls / Lessons$' "$OLD/CONVENTIONS.md")" "1"
+check "содержимое старого файла не тронуто" "$(grep -c '^rules$' "$OLD/CONVENTIONS.md")" "1"
+"$FRAIM" pitfall "now it lands" >/dev/null 2>&1
+check "после upgrade глагол pitfall работает" "$?" "0"
+"$FRAIM" status "$OLD" >/dev/null 2>&1
+check "после upgrade проверка стандарта молчит" "$("$FRAIM" status "$OLD" 2>/dev/null | grep -c 'отстал от стандарта')" "0"
+"$FRAIM" upgrade >/dev/null 2>&1
+check "upgrade идемпотентен" "$("$FRAIM" status "$OLD" 2>/dev/null | grep -c 'отстал от стандарта')" "0"
+
+# --- очередь и фундамент как данные -----------------------------------------
+QP="$SANDBOX/queueproj"
+mkdir -p "$QP"
+git -C "$QP" init -q; git -C "$QP" config user.email t@t; git -C "$QP" config user.name t
+cd "$QP" || exit 1
+"$FRAIM" scaffold >/dev/null 2>&1
+"$FRAIM" task-new blocked-one >/dev/null 2>&1; "$FRAIM" task-block blocked-one >/dev/null 2>&1
+"$FRAIM" task-new done-one    >/dev/null 2>&1; "$FRAIM" task-result done-one >/dev/null 2>&1
+"$FRAIM" task-new ready-one   >/dev/null 2>&1
+J=$("$FRAIM" status --json 2>/dev/null)
+
+check "json: состояние каждой задачи" \
+      "$(printf '%s' "$J" | grep -c '"slug": "blocked-one", "state": "blocked"')$(printf '%s' "$J" | grep -c '"slug": "done-one", "state": "done"')$(printf '%s' "$J" | grep -c '"slug": "ready-one", "state": "runnable"')" "111"
+# Раньше счётчик считал папки: три задачи, из которых исполнима одна, читались как
+# «3 задачи в очереди → /run-task». Это была неправда в самом читаемом месте вывода.
+check "счётчик считает исполнимые, а не папки" \
+      "$(printf '%s' "$J" | grep -c '1 задача готова к исполнению')" "1"
+check "json: заглушка отличима от заполненного" \
+      "$(printf '%s' "$J" | grep -c '"ARCHITECTURE.md": "stub"')" "1"
+check "json: отсутствующий файл виден как missing" \
+      "$(printf '%s' "$J" | grep -c '"STACK.md": "missing"')" "1"
+
+# Пустое состояние не должно ронять сторожа: grep -c на нуле совпадений возвращает 1,
+# и под set -e это тихо убивало весь прогон.
+EMPTY="$SANDBOX/emptyq"
+mkdir -p "$EMPTY"; cd "$EMPTY" || exit 1
+"$FRAIM" scaffold >/dev/null 2>&1
+check "сторож не умирает на пустой очереди" "$("$FRAIM" status "$EMPTY" 2>/dev/null | grep -c 'скелет развёрнут')" "1"
+
+cd "$PROJ2" || exit 1
+
+# ---------------------------------------------------------------- install.sh
+printf '\ninstall.sh (обновление и смена ветки)\n'
+
+# Клон делается с --depth 1 --branch, а это подразумевает --single-branch: refspec
+# упоминает только main. Поэтому документированный способ проверить неслитую ветку —
+# FRAIM_BRANCH=… sh install.sh — фетчил коммиты в FETCH_HEAD и падал на checkout
+# «pathspec did not match» на каждой машине, где fraim уже стоял. Рельс держит именно
+# этот путь: он документирован в README, значит он обязан работать.
+IREPO="$SANDBOX/origin.git"
+IWORK="$SANDBOX/iwork"
+git init -q --bare "$IREPO"
+git init -q "$IWORK"; git -C "$IWORK" config user.email t@t; git -C "$IWORK" config user.name t
+mkdir -p "$IWORK/installer/bin"; printf '#!/bin/sh\necho main\n' > "$IWORK/installer/bin/fraim"
+git -C "$IWORK" add -A >/dev/null; git -C "$IWORK" commit -qm base
+git -C "$IWORK" branch -M main; git -C "$IWORK" push -q "$IREPO" main
+git -C "$IWORK" checkout -q -b try/unmerged
+printf '#!/bin/sh\necho unmerged\n' > "$IWORK/installer/bin/fraim"
+git -C "$IWORK" commit -qam feature; git -C "$IWORK" push -q "$IREPO" try/unmerged
+
+IHOME="$SANDBOX/ihome"
+mkdir -p "$IHOME"
+FRAIM_HOME="$IHOME" FRAIM_REPO="file://$IREPO" FRAIM_BRANCH=main FRAIM_BIN_DIR="$IHOME/bin" \
+    sh "$REPO/installer/install.sh" >/dev/null 2>&1
+check "install: первый клон встал на main" "$(sh "$IHOME/src/installer/bin/fraim")" "main"
+
+FRAIM_HOME="$IHOME" FRAIM_REPO="file://$IREPO" FRAIM_BRANCH=try/unmerged FRAIM_BIN_DIR="$IHOME/bin" \
+    sh "$REPO/installer/install.sh" >/dev/null 2>&1
+check "install: переход на неслитую ветку" "$(sh "$IHOME/src/installer/bin/fraim")" "unmerged"
+
+FRAIM_HOME="$IHOME" FRAIM_REPO="file://$IREPO" FRAIM_BRANCH=main FRAIM_BIN_DIR="$IHOME/bin" \
+    sh "$REPO/installer/install.sh" >/dev/null 2>&1
+check "install: возврат на main" "$(sh "$IHOME/src/installer/bin/fraim")" "main"
+
+cd "$PROJ2" || exit 1
 
 # ---------------------------------------------------------------- registry
 printf '\nfraim projects (реестр)\n'

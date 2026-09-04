@@ -35,15 +35,19 @@ _libdir=$(cd -- "$(dirname -- "$_self")/../lib" 2>/dev/null && pwd -P) || {
 . "$_libdir/scaffold.sh"
 . "$_libdir/verbs.sh"
 . "$_libdir/watchman.sh"
+. "$_libdir/menu.sh"
 
 usage() {
     cat <<'USAGE'
 fraim — эксплуатационный слой для проектов на агентах
 
 Это набираешь ты
+  fraim                     меню (в терминале) — то же, что fraim menu
+  fraim menu                экран со сканом, обновлением, доктором, реестром
   fraim status [ПУТЬ]       что происходит в проекте (--json для машины)
   fraim undo [ХЕШ]          показать точки сохранения / вернуть, как было
   fraim scaffold [ПУТЬ]     завести проект под систему
+  fraim upgrade [ПУТЬ]      довести существующий фундамент до стандарта
   fraim init | update       поставить / обновить / подхватить новый харнес
   fraim doctor              что и куда установлено, что разошлось
   fraim config              что действует и откуда (set КЛЮЧ ЗНАЧЕНИЕ)
@@ -54,6 +58,9 @@ fraim — эксплуатационный слой для проектов на
   fraim task-block СЛАГ     завести blockers.md по шаблону
   fraim task-result СЛАГ    завести result.md (--reconcile / --reset)
   fraim task-revise СЛАГ ДЕФЕКТ ИСПРАВЛЕНО   ревизия плана
+  fraim plan-seal СЛАГ      проверить план перед выдачей исполнителю
+  fraim decide ЗАГОЛОВОК    запись в DECISIONS.md (тело — потоком)
+  fraim pitfall СТРОКА...   грабли в CONVENTIONS.md
   fraim task-seal СЛАГ      проверить и заархивировать исполненную задачу
   fraim reconcile-seal СЛАГ то же для дрейфнувшей сессии
   fraim investigate-new СЛАГ   папка расследования + findings.md
@@ -321,6 +328,27 @@ cmd_scaffold() {
     scaffold_copy_notice "$_root"
 }
 
+# --- upgrade ----------------------------------------------------------------
+# The twin of `scaffold`, for a project laid down by an older release. Same additive
+# machinery — nothing existing is ever overwritten — plus the repair of sections the
+# system reads by code. Separate name because the situations differ for the human:
+# `scaffold` is «завести проект», `upgrade` is «этот уже есть, доведи до стандарта».
+cmd_upgrade() {
+    _path=${1:-$(pwd -P)}
+    _root=$(cd -- "$_path" 2>/dev/null && pwd -P) || die "нет такого каталога: $_path"
+    project_is_managed "$_root" || wm_managed "$_root" ||
+        die "здесь нечего обновлять: это не проект под системой. Завести — fraim scaffold"
+    say "Довожу фундамент до стандарта fraim $(fraim_version) в $_root"
+    say ""
+    scaffold_run "$_root" || die "не удалось обновить фундамент"
+    scaffold_sections "$_root" || die "не удалось дописать разделы"
+    if [ "$SCAFFOLD_SECTIONS_ADDED" -gt 0 ]; then
+        verb_commit "$_root" upgrade "фундамент доведён до стандарта" CONVENTIONS.md
+    fi
+    say ""
+    ok "готово — проверить: fraim status"
+}
+
 # --- config -----------------------------------------------------------------
 cmd_config() {
     case ${1:-show} in
@@ -383,6 +411,24 @@ cmd_task_revise() {
     [ $# -ge 3 ] || die "нужно: fraim task-revise СЛАГ \"ДЕФЕКТ\" \"ЧТО ИСПРАВЛЕНО\""
     verb_task_revise "$(verb_root)" "$1" "$2" "$3"
 }
+cmd_plan_seal() { [ $# -ge 1 ] || die "нужен слаг задачи"; verb_plan_seal "$(verb_root)" "$1"; }
+
+# The body of a decision arrives on stdin, never through argv: a multi-line entry
+# squeezed into a command-line argument is how a verb starts shortening content it
+# has no business touching. The verb owns placement, heading and date — nothing else.
+cmd_decide() {
+    [ $# -ge 1 ] || die "нужно: fraim decide \"ЗАГОЛОВОК\" [--supersedes \"ЧТО ЗАМЕНЯЕТ\"] <<'EOF' … EOF"
+    _title=$1; shift
+    _sup=
+    if [ "${1:-}" = --supersedes ]; then
+        [ $# -ge 2 ] || die "--supersedes требует текста"
+        _sup=$2
+    fi
+    verb_decide "$(verb_root)" "$_title" "$_sup"
+}
+
+cmd_pitfall() { verb_pitfall "$(verb_root)" "$@"; }
+
 cmd_reconcile_seal() { [ $# -ge 1 ] || die "нужен слаг задачи"; verb_reconcile_seal "$(verb_root)" "$1"; }
 cmd_investigate_new()  { [ $# -ge 1 ] || die "нужен слаг расследования"; verb_investigate_new  "$(verb_root)" "$1"; }
 cmd_investigate_seal() { [ $# -ge 1 ] || die "нужен слаг расследования"; verb_investigate_seal "$(verb_root)" "$1"; }
@@ -410,17 +456,26 @@ cmd_undo() {
 cmd_restore() { verb_restore "$(pwd -P)" "$@"; }
 
 # --- dispatch ---------------------------------------------------------------
-[ $# -ge 1 ] || { usage; exit 0; }
+# A bare `fraim` is the most common thing typed by someone who does not know
+# what to type — answering it with a list of twenty commands is the worst
+# available reply. On a terminal it opens the menu; through a pipe (an agent,
+# cron, CI) it prints the usage exactly as before.
+[ $# -ge 1 ] || { menu_run; exit 0; }
 _cmd=$1; shift
 case $_cmd in
+    menu)          menu_run ;;
     init|update)   cmd_init "$@" ;;
     scaffold)      cmd_scaffold "$@" ;;
+    upgrade)       cmd_upgrade "$@" ;;
     config)        cmd_config "$@" ;;
     task-new)      cmd_task_new "$@" ;;
     task-block)    cmd_task_block "$@" ;;
     task-result)   cmd_task_result "$@" ;;
     task-revise)   cmd_task_revise "$@" ;;
     task-seal)     cmd_task_seal "$@" ;;
+    plan-seal)     cmd_plan_seal "$@" ;;
+    decide)        cmd_decide "$@" ;;
+    pitfall)       cmd_pitfall "$@" ;;
     reconcile-seal) cmd_reconcile_seal "$@" ;;
     investigate-new)  cmd_investigate_new "$@" ;;
     investigate-seal) cmd_investigate_seal "$@" ;;
