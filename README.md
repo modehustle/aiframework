@@ -104,6 +104,7 @@ fraim undo a1b2c3d    # отменяет одну — встречным ком�
 Почему механика отдана CLI, а не модели — [installer/DETERMINISM.md](installer/DETERMINISM.md).
 По каким правилам принимаются такие решения — [PRINCIPLES.md](PRINCIPLES.md).
 Что найдено, но отложено — [BACKLOG.md](BACKLOG.md).
+Последний дизайн-проход по находкам эксплуатации — [DESIGN-2026-09.md](DESIGN-2026-09.md).
 Последний прогон чек-листа по всем процедурам — [AUDIT-VERBS.md](AUDIT-VERBS.md).
 
 ---
