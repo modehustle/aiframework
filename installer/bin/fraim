@@ -47,6 +47,7 @@ fraim — эксплуатационный слой для проектов на
   fraim status [ПУТЬ]       что происходит в проекте (--json для машины)
   fraim undo [ХЕШ]          показать точки сохранения / вернуть, как было
   fraim scaffold [ПУТЬ]     завести проект под систему
+  fraim upgrade [ПУТЬ]      довести существующий фундамент до стандарта
   fraim init | update       поставить / обновить / подхватить новый харнес
   fraim doctor              что и куда установлено, что разошлось
   fraim config              что действует и откуда (set КЛЮЧ ЗНАЧЕНИЕ)
@@ -327,6 +328,27 @@ cmd_scaffold() {
     scaffold_copy_notice "$_root"
 }
 
+# --- upgrade ----------------------------------------------------------------
+# The twin of `scaffold`, for a project laid down by an older release. Same additive
+# machinery — nothing existing is ever overwritten — plus the repair of sections the
+# system reads by code. Separate name because the situations differ for the human:
+# `scaffold` is «завести проект», `upgrade` is «этот уже есть, доведи до стандарта».
+cmd_upgrade() {
+    _path=${1:-$(pwd -P)}
+    _root=$(cd -- "$_path" 2>/dev/null && pwd -P) || die "нет такого каталога: $_path"
+    project_is_managed "$_root" || wm_managed "$_root" ||
+        die "здесь нечего обновлять: это не проект под системой. Завести — fraim scaffold"
+    say "Довожу фундамент до стандарта fraim $(fraim_version) в $_root"
+    say ""
+    scaffold_run "$_root" || die "не удалось обновить фундамент"
+    scaffold_sections "$_root" || die "не удалось дописать разделы"
+    if [ "$SCAFFOLD_SECTIONS_ADDED" -gt 0 ]; then
+        verb_commit "$_root" upgrade "фундамент доведён до стандарта" CONVENTIONS.md
+    fi
+    say ""
+    ok "готово — проверить: fraim status"
+}
+
 # --- config -----------------------------------------------------------------
 cmd_config() {
     case ${1:-show} in
@@ -444,6 +466,7 @@ case $_cmd in
     menu)          menu_run ;;
     init|update)   cmd_init "$@" ;;
     scaffold)      cmd_scaffold "$@" ;;
+    upgrade)       cmd_upgrade "$@" ;;
     config)        cmd_config "$@" ;;
     task-new)      cmd_task_new "$@" ;;
     task-block)    cmd_task_block "$@" ;;

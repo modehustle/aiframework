@@ -24,6 +24,15 @@ fraim status          # human-readable verdict for the current project
 fraim status --json   # same verdict, machine-readable
 ```
 
+The JSON answer carries three things, and procedures read them instead of probing the
+filesystem: `foundation` — each file as `missing` / `stub` / `filled` (a `stub` is an
+empty scaffold: reading it means guessing, so stop); `tasks` — every queued slug with
+`blocked` / `done` / `runnable`; `findings` — what needs a human, each with the action.
+
+A `shape` finding means the project's foundation predates the current standard — laid down
+before `AGENTS.md`/`CLAUDE.md`, before `ai/fraim.conf`, or before a section the verbs write
+into. `fraim upgrade` brings it up to standard: additive, never overwriting content.
+
 Exit codes: `0` healthy · `1` something needs the human · `2` project is not
 under the system.
 
@@ -119,6 +128,7 @@ A deterministic action has exactly one implementation.
 | Command | What it does |
 |---|---|
 | `fraim init` | install / update / pick up a newly installed harness |
+| `fraim upgrade` | bring an existing project's foundation up to the current standard |
 | `fraim config` | what settings are in effect and where each came from |
 | `fraim projects` | list, add or remove projects in the registry |
 | `fraim doctor` | what is installed where, which version, what diverged |

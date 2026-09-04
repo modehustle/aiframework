@@ -49,26 +49,33 @@ shape of both files you write.
 
 ### Step 0 — Load the foundation
 
+0.0 Run `fraim status --json` once and keep the answer: `foundation` gives each file's state
+    (`missing` / `stub` / `filled`), `tasks` gives the queue, and the findings say what needs a
+    human. Steps 0.5 and 1.2 read from it instead of probing the filesystem. (why: N15)
 0.1 Read `ARCHITECTURE.md` — the map; its components and data model anchor Codebase Context and
     Constraints.
 0.2 Read `CONVENTIONS.md` — the house rules the executor must follow.
 0.3 Read `## Known Pitfalls / Lessons` in `CONVENTIONS.md` and fold every entry relevant to this
     task into its Constraints or Known Pitfalls. (why: N4)
 0.4 Read `DECISIONS.md`. Do not contradict a recorded decision silently.
-0.5 No foundation files exist → tell the user the project was never bootstrapped, and continue
-    only if they confirm that is intentional.
+0.5 A foundation file is `missing` → tell the user the project was never bootstrapped, and
+    continue only if they confirm that is intentional. A file is `stub` → it is an empty
+    scaffold, not a foundation: stop, because planning against it means planning for a project
+    nobody has described yet. A `shape` finding → the foundation predates the current standard;
+    offer `fraim upgrade`, which is additive and never overwrites content.
 
 ### Step 1 — Name the task, check the queue
 
 1.1 Derive a slug for THIS task from its goal: lowercase, hyphens, ascii, ≤40 chars
     (e.g. `add-rate-limiter`).
-1.2 List every folder in `ai/tasks/`.
+1.2 Read `tasks` from the Step 0.0 answer: every slug with its state (`blocked` / `done` /
+    `runnable`). Do not walk `ai/tasks/` to work this out.
 1.3 `ai/tasks/<slug>/` already exists and this is a different task → pick a more specific slug.
 1.4 `ai/tasks/<slug>/` already exists and this is the SAME task being reworked → STOP. Tell the
     user this is `/revise-task`, or that the old task must be finished or archived first.
-1.5 Another folder holds a `blockers.md` → do not touch it, and say:
+1.5 Another task is `blocked` → do not touch it, and say:
     *\"Задача `<other-slug>` ждёт `/revise-task`.\"*
-1.6 Another folder holds a `result.md` and no `blockers.md` → do not touch it, and say:
+1.6 Another task is `done` → do not touch it, and say:
     *\"Задача `<other-slug>` ждёт архивации.\"*
 1.7 This task touches files another queued task also touches → they are not independent.
     Either state the ordering inside this plan (\"assumes `<other-slug>` has NOT yet landed\"),
@@ -291,6 +298,14 @@ under-specified when it leaves the executor a decision it does not answer. Retel
 executor will read anyway answers no decision — it is not specification, it is duplication, and
 duplication has a price on both sides plus a shelf life (G6, N13). Over-specify decisions;
 never duplicate contents.
+
+**N15 — Why the state is asked for, not probed.** Which files make up the foundation, whether
+each is real or an unfilled scaffold, and what state every queued task is in — all of it is
+file-system arithmetic, and it used to be re-derived here, again in `/run-task`, and a third
+time by the watchman in code. Three implementations of one calculation drift, and this one had
+already drifted in fact. The `stub` case is the sharper half: the marker that distinguishes an
+empty scaffold from a written document was understood only by the watchman, so a procedure that
+checked "the file exists" could read a blank template and plan against a guess.
 
 **N14 — Why planning needs a gate at all.** Three gates guard the exits from execution; until
 this one, the exit from planning was a plain commit preceded by a self-check the author ran on

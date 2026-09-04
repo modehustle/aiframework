@@ -230,3 +230,37 @@ scaffold_copy_notice() {
 
 # Is a foundation file still an unfilled scaffold?
 scaffold_is_stub() { [ -f "$1" ] && grep -q "$SCAFFOLD_STUB" "$1" 2>/dev/null; }
+
+# --- bringing an existing project up to the current standard ------------------
+# Scaffolding is additive, so re-running it already lands the FILES a newer release
+# added. What it could not do is repair a file that exists but predates a section the
+# system now reads: `## Known Pitfalls / Lessons` is where `fraim pitfall` writes and
+# what /make-task reads before planning, and a CONVENTIONS.md from before it existed
+# breaks both — silently, because every other check passes.
+#
+# Only sections that CODE depends on are repaired here. Everything else about the
+# contents belongs to /bootstrap, /onboard and /prune: the verb owns form, not text.
+scaffold_section_source() {
+    _tpl=$(scaffold_templates) || return 1
+    awk -v h="$2" '$0 == h {f=1} f' "$_tpl/$1"
+}
+
+# The count comes back in a global, not on stdout: this function also PRINTS progress,
+# and mixing a return value into the same stream is how `[ "$n" -gt 0 ]` starts reading
+# a tick mark as a number.
+SCAFFOLD_SECTIONS_ADDED=0
+scaffold_sections() {
+    _root=$1
+    SCAFFOLD_SECTIONS_ADDED=0
+    _f="$_root/CONVENTIONS.md"
+    _head='## Known Pitfalls / Lessons'
+    if [ -f "$_f" ] && ! grep -q "^$_head\$" "$_f"; then
+        {
+            printf '\n'
+            scaffold_section_source CONVENTIONS.md "$_head"
+        } >> "$_f" || return 1
+        ok "CONVENTIONS.md — дописан раздел «$_head»"
+        SCAFFOLD_SECTIONS_ADDED=$((SCAFFOLD_SECTIONS_ADDED + 1))
+    fi
+    return 0
+}

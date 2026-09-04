@@ -18,7 +18,13 @@ SANDBOX=$(mktemp -d)
 trap 'rm -rf "$SANDBOX"' EXIT
 export HOME="$SANDBOX/home"
 export FRAIM_HOME="$HOME/.fraim"
-mkdir -p "$HOME"
+mkdir -p "$HOME" "$FRAIM_HOME"
+
+# Фикстуры ниже — намеренно минимальные каталоги: у них нет ни AGENTS.md, ни ai/fraim.conf,
+# потому что каждая проверяет что-то одно. Проверка соответствия стандарту сработала бы на
+# всех сразу и заглушила бы то, ради чего фикстура заведена. Выключаем её машинной настройкой
+# и включаем обратно в проекте, который её и проверяет (проект бьёт машину).
+printf 'check_shape = off\n' > "$FRAIM_HOME/config"
 
 # ---------------------------------------------------------------- procedures
 printf '\nprocedures/\n'
@@ -836,6 +842,77 @@ PYEMPTY
 check "гейт плана: пустую проверку не пропускает" "$?" "2"
 
 rm -rf "$PROJ2/ai/tasks/add-cache"
+
+# ------------------------------------------------- стандарт фундамента и upgrade
+printf '\nсоответствие стандарту (shape) и fraim upgrade\n'
+
+# Проект «старой версии»: фундамент есть, но заведён до AGENTS.md/CLAUDE.md, до
+# ai/fraim.conf и до раздела Known Pitfalls. Ни одна прежняя проверка на нём не
+# срабатывала — сторож говорил «всё чисто», а fraim pitfall при этом отказывался.
+OLD="$SANDBOX/oldproj"
+mkdir -p "$OLD/ai/tasks"
+git -C "$OLD" init -q
+git -C "$OLD" config user.email t@t; git -C "$OLD" config user.name t
+printf '# ARCHITECTURE\nmap\n'    > "$OLD/ARCHITECTURE.md"
+printf '# CONVENTIONS\nrules\n'   > "$OLD/CONVENTIONS.md"
+printf '# DECISIONS\n'            > "$OLD/DECISIONS.md"
+printf '# README\n'               > "$OLD/README.md"
+printf 'check_shape = on\n'       > "$OLD/ai/fraim.conf"
+git -C "$OLD" add -A >/dev/null 2>&1; git -C "$OLD" commit -qm base >/dev/null 2>&1
+
+OUT=$("$FRAIM" status "$OLD" 2>/dev/null)
+check "сторож видит отставание от стандарта" "$(printf '%s' "$OUT" | grep -c 'отстал от стандарта')" "1"
+check "названы AGENTS.md и CLAUDE.md" \
+      "$(printf '%s' "$OUT" | grep -c 'AGENTS.md')$(printf '%s' "$OUT" | grep -c 'CLAUDE.md')" "11"
+check "назван недостающий раздел" "$(printf '%s' "$OUT" | grep -c 'Known-Pitfalls')" "1"
+
+cd "$OLD" || exit 1
+"$FRAIM" pitfall "verb has nowhere to write" >/dev/null 2>&1
+check "до upgrade глагол pitfall отказывает" "$?" "2"
+
+"$FRAIM" upgrade >/dev/null 2>&1
+check "upgrade завершился успешно" "$?" "0"
+check "upgrade завёл AGENTS.md с блоком" "$(grep -c 'fraim:begin' "$OLD/AGENTS.md")" "1"
+check "upgrade завёл CLAUDE.md с указателем" "$(grep -c 'AGENTS.md' "$OLD/CLAUDE.md")" "2"
+check "upgrade дописал раздел Known Pitfalls" "$(grep -c '^## Known Pitfalls / Lessons$' "$OLD/CONVENTIONS.md")" "1"
+check "содержимое старого файла не тронуто" "$(grep -c '^rules$' "$OLD/CONVENTIONS.md")" "1"
+"$FRAIM" pitfall "now it lands" >/dev/null 2>&1
+check "после upgrade глагол pitfall работает" "$?" "0"
+"$FRAIM" status "$OLD" >/dev/null 2>&1
+check "после upgrade проверка стандарта молчит" "$("$FRAIM" status "$OLD" 2>/dev/null | grep -c 'отстал от стандарта')" "0"
+"$FRAIM" upgrade >/dev/null 2>&1
+check "upgrade идемпотентен" "$("$FRAIM" status "$OLD" 2>/dev/null | grep -c 'отстал от стандарта')" "0"
+
+# --- очередь и фундамент как данные -----------------------------------------
+QP="$SANDBOX/queueproj"
+mkdir -p "$QP"
+git -C "$QP" init -q; git -C "$QP" config user.email t@t; git -C "$QP" config user.name t
+cd "$QP" || exit 1
+"$FRAIM" scaffold >/dev/null 2>&1
+"$FRAIM" task-new blocked-one >/dev/null 2>&1; "$FRAIM" task-block blocked-one >/dev/null 2>&1
+"$FRAIM" task-new done-one    >/dev/null 2>&1; "$FRAIM" task-result done-one >/dev/null 2>&1
+"$FRAIM" task-new ready-one   >/dev/null 2>&1
+J=$("$FRAIM" status --json 2>/dev/null)
+
+check "json: состояние каждой задачи" \
+      "$(printf '%s' "$J" | grep -c '"slug": "blocked-one", "state": "blocked"')$(printf '%s' "$J" | grep -c '"slug": "done-one", "state": "done"')$(printf '%s' "$J" | grep -c '"slug": "ready-one", "state": "runnable"')" "111"
+# Раньше счётчик считал папки: три задачи, из которых исполнима одна, читались как
+# «3 задачи в очереди → /run-task». Это была неправда в самом читаемом месте вывода.
+check "счётчик считает исполнимые, а не папки" \
+      "$(printf '%s' "$J" | grep -c '1 задача готова к исполнению')" "1"
+check "json: заглушка отличима от заполненного" \
+      "$(printf '%s' "$J" | grep -c '"ARCHITECTURE.md": "stub"')" "1"
+check "json: отсутствующий файл виден как missing" \
+      "$(printf '%s' "$J" | grep -c '"STACK.md": "missing"')" "1"
+
+# Пустое состояние не должно ронять сторожа: grep -c на нуле совпадений возвращает 1,
+# и под set -e это тихо убивало весь прогон.
+EMPTY="$SANDBOX/emptyq"
+mkdir -p "$EMPTY"; cd "$EMPTY" || exit 1
+"$FRAIM" scaffold >/dev/null 2>&1
+check "сторож не умирает на пустой очереди" "$("$FRAIM" status "$EMPTY" 2>/dev/null | grep -c 'скелет развёрнут')" "1"
+
+cd "$PROJ2" || exit 1
 
 # ---------------------------------------------------------------- registry
 printf '\nfraim projects (реестр)\n'

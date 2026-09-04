@@ -250,17 +250,98 @@ wm_check_dirty() {
 }
 
 # 5. Queue depth. Informational — a full queue is normal, an empty one is too.
+# The queue as DATA, not as a sentence. Three places used to walk ai/tasks/ and label
+# each folder — /run-task 1.3-1.10 and /make-task 1.2-1.6 by prose, the watchman in code.
+# Three implementations of one arithmetic drift; this is the one, and the procedures ask
+# it instead of re-deriving it (A3).
+#
+# It also fixes a verdict that was simply wrong: the count used to be "folders holding a
+# task.md", so a queue of one runnable task, one blocked and one awaiting archival read
+# "3 задачи в очереди → /run-task". Two of those three cannot be run at all.
+WM_TASKS=
+wm_scan_tasks() {
+    _root=$1
+    WM_TASKS=
+    [ -d "$_root/ai/tasks" ] || return 0
+    for _t in "$_root"/ai/tasks/*/; do
+        [ -d "$_t" ] || continue
+        _slug=$(basename -- "$_t")
+        [ -f "$_t/task.md" ] || continue
+        if   [ -f "$_t/blockers.md" ]; then _state=blocked
+        elif [ -f "$_t/result.md" ];   then _state=done
+        else _state=runnable
+        fi
+        WM_TASKS="$WM_TASKS$_slug	$_state
+"
+    done
+    return 0
+}
+
+# awk counts and prints, deliberately: `grep -c` exits 1 on zero matches, and under
+# `set -e` that ends the whole run — a watchman that dies quietly on an empty queue.
+wm_tasks_in_state() {
+    printf '%s' "$WM_TASKS" | awk -F'	' -v s="$1" '$2 == s { n++ } END { print n + 0 }'
+}
+
 wm_check_queue() {
     _root=$1
-    [ -d "$_root/ai/tasks" ] || return 0
-    _n=0
-    for _t in "$_root"/ai/tasks/*/task.md; do
-        [ -f "$_t" ] || continue
-        _n=$((_n + 1))
-    done
+    _n=$(wm_tasks_in_state runnable)
     if [ "$_n" -gt 0 ]; then
-        wm_add queue info "$_n $(wm_plural "$_n" задача задачи задач) в очереди" "/run-task"
+        wm_add queue info "$_n $(wm_plural "$_n" задача задачи задач) готова к исполнению" "/run-task"
     fi
+    return 0
+}
+
+# The foundation as DATA: missing / stub / filled, per file. The marker was understood by
+# the watchman alone, so a procedure that checks "file exists → read it" could honestly
+# read an empty scaffold and start guessing — D1 held at the reporting end and leaked at
+# the reading end. Now the reading end can ask.
+WM_FOUNDATION=
+wm_scan_foundation() {
+    _root=$1
+    WM_FOUNDATION=
+    for _f in README.md ARCHITECTURE.md CONVENTIONS.md DECISIONS.md STACK.md; do
+        if   [ ! -f "$_root/$_f" ];            then _s=missing
+        elif scaffold_is_stub "$_root/$_f";    then _s=stub
+        else _s=filled
+        fi
+        WM_FOUNDATION="$WM_FOUNDATION$_f	$_s
+"
+    done
+    return 0
+}
+
+# Conformance to the CURRENT standard, checked by shape rather than by a version number.
+# A project laid down by an older release is missing whatever that release did not have
+# yet — AGENTS.md and CLAUDE.md, ai/fraim.conf, the Known Pitfalls section the pitfall
+# verb writes into — and nothing ever said so: `fraim status` reported it healthy because
+# every check it ran passed. Shape is checked instead of a stamped version because shape
+# is the truth: a version number stays right while someone deletes a section by hand.
+wm_check_shape() {
+    _root=$1
+    _missing=
+    for _f in README.md ARCHITECTURE.md CONVENTIONS.md DECISIONS.md ai/fraim.conf; do
+        [ -e "$_root/$_f" ] || _missing="$_missing $_f"
+    done
+    for _d in ai/tasks ai/archive ai/investigations; do
+        [ -d "$_root/$_d" ] || _missing="$_missing $_d/"
+    done
+    # The repository has to describe itself to whoever clones it: AGENTS.md carries the
+    # rules, CLAUDE.md points at them. A project from before that existed has neither, and
+    # a cloud session or a second machine then opens the foundation with no reason to read it.
+    for _f in AGENTS.md CLAUDE.md; do
+        if [ ! -f "$_root/$_f" ]; then _missing="$_missing $_f"
+        elif ! grep -qF "$CTX_BEGIN" "$_root/$_f" 2>/dev/null; then _missing="$_missing $_f(без блока)"
+        fi
+    done
+    # Sections that CODE reads. Known Pitfalls is where `fraim pitfall` writes and what
+    # /make-task 0.3 reads before planning; without it both are broken, silently.
+    if [ -f "$_root/CONVENTIONS.md" ] &&
+       ! grep -q '^## Known Pitfalls / Lessons$' "$_root/CONVENTIONS.md"; then
+        _missing="$_missing CONVENTIONS.md:Known-Pitfalls"
+    fi
+    [ -n "$_missing" ] &&
+        wm_add shape attention "фундамент отстал от стандарта:$_missing" "fraim upgrade"
     return 0
 }
 
@@ -332,6 +413,9 @@ wm_managed() {
 wm_run() {
     _root=$1
     WM_FINDINGS=
+    wm_scan_tasks "$_root"
+    wm_scan_foundation "$_root"
+    config_is_on check_shape        "$_root" && wm_check_shape "$_root"
     config_is_on check_blockers     "$_root" && wm_check_blockers "$_root"
     config_is_on check_stale_plans  "$_root" && wm_check_stale_plans "$_root"
     config_is_on check_plan_version "$_root" && wm_check_plan_version "$_root"
@@ -379,6 +463,28 @@ wm_report_json() {
     printf '  "project": "%s",\n' "$(wm_json_escape "$_root")"
     printf '  "status": "%s",\n' "$_status"
     printf '  "version": "%s",\n' "$(fraim_version)"
+    printf '  "foundation": {'
+    _first=1
+    printf '%s' "$WM_FOUNDATION" | while IFS='	' read -r _f _s; do
+        [ -n "$_f" ] || continue
+        [ "$_first" = 1 ] || printf ','
+        _first=0
+        printf ' "%s": "%s"' "$_f" "$_s"
+    done
+    printf ' },\n'
+    printf '  "tasks": ['
+    if [ -n "$WM_TASKS" ]; then
+        printf '\n'
+        _first=1
+        printf '%s' "$WM_TASKS" | while IFS='	' read -r _slug _state; do
+            [ -n "$_slug" ] || continue
+            [ "$_first" = 1 ] || printf ',\n'
+            _first=0
+            printf '    { "slug": "%s", "state": "%s" }' "$(wm_json_escape "$_slug")" "$_state"
+        done
+        printf '\n  '
+    fi
+    printf '],\n'
     printf '  "findings": ['
     if [ -z "$WM_FINDINGS" ]; then
         printf ']\n}\n'
