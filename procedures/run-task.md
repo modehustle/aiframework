@@ -128,8 +128,21 @@ Enter here from 1.14, 2.2, 4.8, 9.3, or gate G6/G7.
 ### Step 7 — Update the foundation
 
 7.1 The change altered structure, components, data flow, or interfaces → update `ARCHITECTURE.md`.
-7.2 You made, or the plan recorded, a non-obvious choice → append an entry to `DECISIONS.md`,
-     newest on top.
+7.2 You made, or the plan recorded, a non-obvious choice → record it with the verb, body on
+     stdin (placement, heading and date are not yours to retype):
+
+    ```sh
+    fraim decide "<one-line title of the decision>" <<'EOF'
+    Context: <what forced the choice>
+    Decision: <what was chosen>
+    Alternatives: <what was rejected, and why>
+    Consequences: <what this costs later>
+    EOF
+    ```
+
+    Reversing an earlier entry → add `--supersedes "<the entry being replaced>"`. The verb never
+    deletes; the old entry stays. It also does not commit — `DECISIONS.md` is saved in Step 8.3
+    with the rest of the paths you touched.
 7.3 Nothing structural changed → say so explicitly in the report. (why: N7)
 
 ### Step 8 — Save
@@ -157,7 +170,9 @@ Enter here from 1.14, 2.2, 4.8, 9.3, or gate G6/G7.
 9.5 Take each `(pitfall)` from your `## Out-of-plan observations`.
 9.6 Propose each one as a single line for `## Known Pitfalls / Lessons` in `CONVENTIONS.md`.
 9.7 Ask the user to approve each line: yes / edit / skip.
-9.8 One or more lines approved → append them to `CONVENTIONS.md`.
+9.8 One or more lines approved → `fraim pitfall "<approved line>" ["<approved line>"…]`. The verb
+    puts them at the end of `## Known Pitfalls / Lessons` — the section `/make-task` reads before
+    planning — and nowhere else. A lesson filed under the wrong heading is never shown again.
 9.9 One or more lines approved → save them separately: `fraim commit task "<slug> — pitfalls to CONVENTIONS" CONVENTIONS.md`. (why: N11)
 9.10 Nothing approved → make no commit, and say so.
 9.11 Leave every `(bug)` item for the user to schedule. Fix none of them.

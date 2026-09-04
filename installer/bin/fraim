@@ -57,6 +57,9 @@ fraim — эксплуатационный слой для проектов на
   fraim task-block СЛАГ     завести blockers.md по шаблону
   fraim task-result СЛАГ    завести result.md (--reconcile / --reset)
   fraim task-revise СЛАГ ДЕФЕКТ ИСПРАВЛЕНО   ревизия плана
+  fraim plan-seal СЛАГ      проверить план перед выдачей исполнителю
+  fraim decide ЗАГОЛОВОК    запись в DECISIONS.md (тело — потоком)
+  fraim pitfall СТРОКА...   грабли в CONVENTIONS.md
   fraim task-seal СЛАГ      проверить и заархивировать исполненную задачу
   fraim reconcile-seal СЛАГ то же для дрейфнувшей сессии
   fraim investigate-new СЛАГ   папка расследования + findings.md
@@ -386,6 +389,24 @@ cmd_task_revise() {
     [ $# -ge 3 ] || die "нужно: fraim task-revise СЛАГ \"ДЕФЕКТ\" \"ЧТО ИСПРАВЛЕНО\""
     verb_task_revise "$(verb_root)" "$1" "$2" "$3"
 }
+cmd_plan_seal() { [ $# -ge 1 ] || die "нужен слаг задачи"; verb_plan_seal "$(verb_root)" "$1"; }
+
+# The body of a decision arrives on stdin, never through argv: a multi-line entry
+# squeezed into a command-line argument is how a verb starts shortening content it
+# has no business touching. The verb owns placement, heading and date — nothing else.
+cmd_decide() {
+    [ $# -ge 1 ] || die "нужно: fraim decide \"ЗАГОЛОВОК\" [--supersedes \"ЧТО ЗАМЕНЯЕТ\"] <<'EOF' … EOF"
+    _title=$1; shift
+    _sup=
+    if [ "${1:-}" = --supersedes ]; then
+        [ $# -ge 2 ] || die "--supersedes требует текста"
+        _sup=$2
+    fi
+    verb_decide "$(verb_root)" "$_title" "$_sup"
+}
+
+cmd_pitfall() { verb_pitfall "$(verb_root)" "$@"; }
+
 cmd_reconcile_seal() { [ $# -ge 1 ] || die "нужен слаг задачи"; verb_reconcile_seal "$(verb_root)" "$1"; }
 cmd_investigate_new()  { [ $# -ge 1 ] || die "нужен слаг расследования"; verb_investigate_new  "$(verb_root)" "$1"; }
 cmd_investigate_seal() { [ $# -ge 1 ] || die "нужен слаг расследования"; verb_investigate_seal "$(verb_root)" "$1"; }
@@ -429,6 +450,9 @@ case $_cmd in
     task-result)   cmd_task_result "$@" ;;
     task-revise)   cmd_task_revise "$@" ;;
     task-seal)     cmd_task_seal "$@" ;;
+    plan-seal)     cmd_plan_seal "$@" ;;
+    decide)        cmd_decide "$@" ;;
+    pitfall)       cmd_pitfall "$@" ;;
     reconcile-seal) cmd_reconcile_seal "$@" ;;
     investigate-new)  cmd_investigate_new "$@" ;;
     investigate-seal) cmd_investigate_seal "$@" ;;

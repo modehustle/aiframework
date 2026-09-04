@@ -120,7 +120,8 @@ whose shape appeared while doing it. **That is legitimate.** Do not force it int
 \`/make-task\`, and do not announce a procedure you are not running. What still holds:
 
 - invariant 0.4 — read the foundation first, fix it if the change made it wrong;
-- **behaviour changed → one line in \`DECISIONS.md\`**; pure cosmetics need no entry;
+- **behaviour changed → \`fraim decide "<title>"\`** with the body on stdin; pure cosmetics need
+  no entry. Do not hand-write the heading or the date — placement and format are the verb's;
 - **save as you go**: when a coherent piece is done, not at the end of the session,
   \`fraim commit fix \"<what changed>\" <path> <path>\`. Those commits are the record of
   reactive work; there is no second log to keep.
@@ -142,6 +143,9 @@ these, run it: the format, the paths, the timestamps and the commit are not your
 | \`fraim task-block SLUG\` | retyping the \`blockers.md\` shape |
 | \`fraim task-result SLUG\` | retyping the \`result.md\` shape (\`--reconcile\`, \`--reset\`) |
 | \`fraim task-revise SLUG DEFECT FIX\` | the revision record, the refreshed stamp, the consumed blocker |
+| \`fraim plan-seal SLUG\` | checking a finished plan before it goes to an executor — **it can refuse** |
+| \`fraim decide "TITLE"\` | writing an entry into \`DECISIONS.md\` (body on stdin, never argv) |
+| \`fraim pitfall "LINE"…\` | adding lessons to \`## Known Pitfalls / Lessons\` in \`CONVENTIONS.md\` |
 | \`fraim task-seal SLUG\` | archiving a finished task — **it can refuse** |
 | \`fraim reconcile-seal SLUG\` | archiving a drifted session — **it can refuse** |
 | \`fraim investigate-new SLUG\` | creating an investigation folder and its provenance stamp |
@@ -152,7 +156,9 @@ these, run it: the format, the paths, the timestamps and the commit are not your
 | \`fraim undo [HASH]\` | reaching for \`git reset\` / \`git revert\` |
 | \`fraim restore PATH…\` | \`git restore\` / deleting scratch files by hand |
 
-Three of them are **gates**: \`task-seal\` will not archive a task whose \`result.md\` leaves
+Four of them are **gates**: \`plan-seal\` will not release a plan with leftover placeholders, a
+phrase pointing back at the planning chat, an empty section, empty verification, or a path that
+does not exist; \`task-seal\` will not archive a task whose \`result.md\` leaves
 \`## Foundation updated\` empty or unfilled; \`reconcile-seal\` adds a filled
 \`## Divergence from plan\` to that; \`investigate-seal\` wants exactly one outcome branch and a
 report on the cleanup. A refusal is the check doing its job — fix what it names and run it again.

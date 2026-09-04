@@ -34,6 +34,11 @@ shape of both files you write.
 - **G3 — Add, never replace.** The queue may already hold tasks. You add one. Other task folders
   are not yours to touch, edit, or clean up.
 - **G4 — Never execute.** You write the plan. Running it is `/run-task`'s job, in another chat.
+- **G6 — Addresses, not contents.** The plan says WHAT to read and WHAT must become true. It
+  does not retell what the executor will read in the source: file contents, current
+  implementations, signatures, how an existing function works. Where you are tempted to retell,
+  write the path and the symbol instead. What a strong model is bought for here is reasoning,
+  nuance and boundaries — not a second copy of the code. (why: N13)
 - **G5 — A defective plan is `/revise-task`.** If an existing task came back blocked, it is
   repaired in place — not replaced by a fresh `/make-task`. (why: N3)
 
@@ -89,9 +94,13 @@ shape of both files you write.
 2.2 Write `ai/tasks/<slug>/task.md` from TEMPLATE T.
 2.3 Fill every section of both templates. Leave no `<...>` placeholder in the final files.
 
-### Step 3 — Self-check before saving
+### Step 3 — Self-check before sealing
 
 Verify each line against the files you just wrote. Any failure → fix the file before continuing.
+
+The mechanical half of this list is also checked by `fraim plan-seal` in Step 4 — placeholders,
+banned phrases, missing sections, empty verification, paths that do not exist. Run the list
+anyway: the gate cannot judge 3.4, 3.6, 3.8 or 3.9, and those are the ones that cost a run.
 
 3.1 No reference to \"this chat\", \"above\", \"discussed\", or \"we decided\" — all rationale is inline.
 3.2 Every path mentioned is concrete; no placeholders remain.
@@ -100,7 +109,7 @@ Verify each line against the files you just wrote. Any failure → fix the file 
     folder was not created by the verb, and that is a defect to fix rather than to patch.
 3.4 For a change to existing code: the Step 1b scan was run, and **every** dependent it found is
     in Files to Change or in Constraints.
-3.5 Every `Files to Change` entry has Action, What, and Pattern reference.
+3.5 Every `Files to Change` entry has Action, `Must be true after`, and Pattern reference.
 3.6 Every Acceptance Criterion is objectively verifiable.
 3.7 Verification Commands run as-is from the repo root.
 3.8 Codebase Context lists every file the executor must read to understand the patterns — not
@@ -109,21 +118,29 @@ Verify each line against the files you just wrote. Any failure → fix the file 
 3.10 The Decisions section says why the rejected alternatives were rejected. (why: N7)
 3.11 `Foundation updates` names which `ARCHITECTURE.md` section to refresh, or states that no
      structural change is expected.
+3.13 No section retells the contents of an existing file. Every such statement is either an
+     address (path + symbol) or an obligation (\"after this change, X must hold\"). (see G6)
 3.12 `Verification Commands` holds at least one command that exits non-zero on failure — or, if
      this change genuinely cannot be checked by a command, the manual check is written out AND
      an `Operator confirmed:` line is in Acceptance Criteria. The section is never empty. (why: N8)
 
 ### Step 4 — Save the plan, then confirm to the user
 
-4.0 Save the plan as its own point:
+4.0 Seal the plan. This is the only door out of planning, and it is ours:
 
 ```sh
-fraim commit plan "<slug> — <one-line goal>" ai/tasks/<slug>
+fraim plan-seal <slug>
 ```
 
-    A plan that exists only in the working tree dies with the session that wrote it, and the
-    whole point of this procedure is that it survives into a different chat. This is also
-    what stops the watchman reporting the folder as unsaved work until `/run-task` picks it up.
+    It checks what can be checked mechanically — no leftover placeholders or `fraim:stub`, an
+    intact provenance stamp, no phrase pointing back at this conversation (G1), every required
+    section present and non-empty, verification that is not empty, and every path in
+    `Codebase Context` and `Files to Change` actually existing (unless its Action is `create`).
+    Then it makes the save point. (why: N14)
+
+4.0a It refused → it named the defect. Fix that and run it again. Do **not** commit by hand
+     instead: the refusal is the check doing its job, and a plan that goes out unchecked is
+     executed blindly by someone who cannot see this chat.
 
 4.1 Print both file paths: `ai/tasks/<slug>/context.md` and `ai/tasks/<slug>/task.md`.
 4.2 Summarize what got captured, in 3–5 bullets.
@@ -158,7 +175,9 @@ visible — the same staleness detection the system already applies to code, app
 executor can make small judgment calls correctly without re-deriving intent.>
 
 ## Codebase Context
-<Files the executor MUST read before writing code, each with a reason. Exact repo-relative paths.>
+<Files the executor MUST read before writing code, each with a reason. Exact repo-relative paths.
+Addresses only — one line saying why each matters. Do NOT summarize what they contain: the
+executor reads them in full anyway, and a summary written today is wrong after the next commit.>
 - `ARCHITECTURE.md` — the project map; read first (invariant 0.4)
 - `CONVENTIONS.md` — house rules + Known Pitfalls the executor must follow
 - `path/to/file.ext` — existing pattern for X; mirror its structure
@@ -198,12 +217,14 @@ and write \"None known.\" if empty.>
 
 ### `path/to/file1.ext`
 - **Action:** create | modify | delete
-- **What:** <specific, surgical description of the change>
+- **Must be true after:** <the obligation this file carries once the change lands — not a
+  retelling of what the file does today. \"Returns 429 with Retry-After when the bucket is
+  empty\", not \"this file holds the handler, which currently…\". (G6)>
 - **Pattern reference:** <file from Codebase Context to mirror, or \"n/a\">
 
 ### `path/to/file2.ext`
 - **Action:** ...
-- **What:** ...
+- **Must be true after:** ...
 - **Pattern reference:** ...
 
 ## Step-by-step Implementation
@@ -263,6 +284,30 @@ an over-specified plan loses almost nothing; a weak model executing an under-spe
 fails. This is also why the executor follows the plan literally: authority comes from the plan
 being explicit, self-contained, and mechanically verifiable — not from who wrote it. Make it
 worthy of that authority.
+
+Note what \"under-specified\" means, because it is not the same as \"short\": a plan is
+under-specified when it leaves the executor a decision it does not answer. Retelling code the
+executor will read anyway answers no decision — it is not specification, it is duplication, and
+duplication has a price on both sides plus a shelf life (G6, N13). Over-specify decisions;
+never duplicate contents.
+
+**N14 — Why planning needs a gate at all.** Three gates guard the exits from execution; until
+this one, the exit from planning was a plain commit preceded by a self-check the author ran on
+their own work — the same construction B3 rejected for invariant 0.4, where the one asked to
+comply also reported the compliance. The stakes are higher here: the plan is the single artefact
+the executor trusts blindly, in a fresh chat, with no conversation to check it against. Seven of
+the twelve points in Step 3 are `grep` and `test -e`, so they stop being a promise. The other
+five are judgment and stay yours.
+
+**N13 — Why the plan never retells the code.** The executor reads the code regardless — it
+must (`/run-task` G7: where the plan and reality disagree, reality wins), and its reading is
+fresher than yours. So a paragraph describing what a file currently does is paid for twice:
+once by the strong model writing it, once by the cheap model reading it. It is also the only
+part of a plan that rots silently — the provenance stamp catches a moved git ref, nothing
+catches a paragraph describing a function that was rewritten yesterday. What the strong model
+is bought for is precisely what the code cannot show: intent, the alternatives you rejected and
+why, the boundary of the change, the pitfalls already paid for once, and the addresses that
+took a full reference scan to find. Carry those. Point at the rest.
 
 **N3 — Why a blocked task is not a new task.** A fresh `/make-task` would throw away the
 `blockers.md` and everything the executor paid to learn, along with the parts of the plan that

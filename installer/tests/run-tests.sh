@@ -725,6 +725,118 @@ check "commit_verbs = off отключает коммит" "$(git -C "$PROJ2" re
 
 cd "$REPO" || exit 1
 
+# --- decide / pitfall: запись в фундамент ------------------------------------
+cd "$PROJ2" || exit 1
+
+printf 'Decision: sqlite in WAL mode.\n' | "$FRAIM" decide "storage engine" >/dev/null 2>&1
+check "decide дописал запись" "$(grep -c '^## 20.* — storage engine$' "$PROJ2/DECISIONS.md")" "1"
+check "decide снял маркер заглушки" "$(grep -c 'fraim:stub' "$PROJ2/DECISIONS.md")" "0"
+
+printf 'Decision: retry with jitter.\n' | "$FRAIM" decide "retries" >/dev/null 2>&1
+check "новое решение легло сверху" \
+      "$(grep -m1 '^## 20' "$PROJ2/DECISIONS.md" | sed 's/.*— //')" "retries"
+check "старое решение осталось" "$(grep -c '— storage engine$' "$PROJ2/DECISIONS.md")" "1"
+
+printf 'Decision: postgres after all.\n' |
+    "$FRAIM" decide "storage engine, take two" --supersedes "storage engine" >/dev/null 2>&1
+check "supersede записан, старое не удалено" \
+      "$(grep -c '^> Supersedes: storage engine$' "$PROJ2/DECISIONS.md")$(grep -c '— storage engine$' "$PROJ2/DECISIONS.md")" "11"
+
+"$FRAIM" decide "empty" </dev/null >/dev/null 2>&1
+check "decide отвергает пустое тело" "$?" "2"
+check "decide не коммитит сам" \
+      "$(git -C "$PROJ2" log --oneline -1 --format=%s | grep -c '^decide')" "0"
+
+# Ранние тесты затёрли фундамент болванкой без разделов — сначала проверим, что
+# глагол на такой файл честно отказывается, а не дописывает в пустоту.
+"$FRAIM" pitfall "nowhere to put this" >/dev/null 2>&1
+check "pitfall отказывается без раздела Known Pitfalls" "$?" "2"
+cp "$REPO/installer/templates/foundation/CONVENTIONS.md" "$PROJ2/CONVENTIONS.md"
+
+"$FRAIM" pitfall "S3 client truncates keys over 1024 bytes." >/dev/null 2>&1
+check "pitfall дописал строку в свой раздел" \
+      "$(sed -n '/^## Known Pitfalls/,$p' "$PROJ2/CONVENTIONS.md" | grep -c 'S3 client truncates')" "1"
+check "заглушка «None yet» убрана" "$(grep -c '^- None yet\.$' "$PROJ2/CONVENTIONS.md")" "0"
+"$FRAIM" pitfall "Tests fail unless TZ=UTC." >/dev/null 2>&1
+check "вторая строка легла следом" \
+      "$(sed -n '/^## Known Pitfalls/,$p' "$PROJ2/CONVENTIONS.md" | grep -c '^- ')" "2"
+
+# --- plan-seal: четвёртая дверь ---------------------------------------------
+"$FRAIM" task-new add-cache >/dev/null 2>&1
+"$FRAIM" plan-seal add-cache >/dev/null 2>&1
+check "гейт плана: заготовку не выпускает" "$?" "2"
+
+python3 - "$PROJ2/ai/tasks/add-cache" <<'PYFILL'
+import pathlib, sys
+d = pathlib.Path(sys.argv[1])
+ctx = {'Goal': 'Cache price lookups for 60 seconds.',
+       'Why': 'The upstream is slow and rate limited.',
+       'Codebase Context': '- `app.py` — entry point, holds the price call',
+       'Constraints': '- Do NOT modify: `DECISIONS.md`',
+       'Decisions and Rationale': 'In-process TTL cache, not Redis: a service for 60 seconds does not pay.',
+       'Known Pitfalls': 'None known.',
+       'Out of Scope': 'Event-based invalidation.'}
+task = {'Summary': 'TTL cache around get_price().',
+        'Files to Change': '### `app.py`\n- **Action:** modify\n- **Must be true after:** get_price() serves from cache while the entry is under 60s old\n- **Pattern reference:** n/a',
+        'Step-by-step Implementation': '1. Add the cache dict next to get_price() in `app.py`.',
+        'Acceptance Criteria': '- [ ] Two calls in a row make one network request',
+        'Verification Commands': '```bash\npython3 -c "import sys"\n```',
+        'Foundation updates': "- `ARCHITECTURE.md`: no structural change",
+        'Executor Rules': '- Follow the plan literally.'}
+for name, fill in (('context.md', ctx), ('task.md', task)):
+    p = d / name
+    out = []
+    for line in p.read_text().splitlines():
+        if 'fraim:stub' in line:
+            continue
+        out.append(line)
+        head = line[3:].strip() if line.startswith('## ') else None
+        if head:
+            for k, v in fill.items():
+                if head.startswith(k):
+                    out.append(v)
+                    break
+    p.write_text('\n'.join(out) + '\n')
+PYFILL
+
+"$FRAIM" plan-seal add-cache >/dev/null 2>&1
+check "гейт плана: заполненный план проходит" "$?" "0"
+check "план сохранён точкой" "$(git -C "$PROJ2" log --oneline -1 --format=%s)" "plan: add-cache — план готов к исполнению"
+
+printf 'Как мы обсуждали, TTL держим на 60.\n' >> "$PROJ2/ai/tasks/add-cache/context.md"
+"$FRAIM" plan-seal add-cache >/dev/null 2>&1
+check "гейт плана: отсылку к разговору не пропускает" "$?" "2"
+python3 - "$PROJ2/ai/tasks/add-cache/context.md" <<'PYCUT'
+import pathlib, sys
+p = pathlib.Path(sys.argv[1])
+p.write_text("".join(l for l in p.read_text().splitlines(True) if "обсуждали" not in l))
+PYCUT
+
+python3 - "$PROJ2/ai/tasks/add-cache/context.md" <<'PYBAD'
+import pathlib, sys
+p = pathlib.Path(sys.argv[1])
+p.write_text(p.read_text().replace('`app.py` — entry point', '`src/pricing.py` — entry point'))
+PYBAD
+"$FRAIM" plan-seal add-cache >/dev/null 2>&1
+check "гейт плана: несуществующий путь не пропускает" "$?" "2"
+python3 - "$PROJ2/ai/tasks/add-cache/context.md" <<'PYFIX'
+import pathlib, sys
+p = pathlib.Path(sys.argv[1])
+p.write_text(p.read_text().replace('`src/pricing.py` — entry point', '`app.py` — entry point'))
+PYFIX
+
+python3 - "$PROJ2/ai/tasks/add-cache/task.md" <<'PYEMPTY'
+import pathlib, sys, re
+p = pathlib.Path(sys.argv[1])
+t = p.read_text()
+t = re.sub(r'## Verification Commands\n.*?\n## ', '## Verification Commands\n\n## ', t, flags=re.S)
+p.write_text(t)
+PYEMPTY
+"$FRAIM" plan-seal add-cache >/dev/null 2>&1
+check "гейт плана: пустую проверку не пропускает" "$?" "2"
+
+rm -rf "$PROJ2/ai/tasks/add-cache"
+
 # ---------------------------------------------------------------- registry
 printf '\nfraim projects (реестр)\n'
 
