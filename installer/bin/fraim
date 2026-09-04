@@ -35,12 +35,15 @@ _libdir=$(cd -- "$(dirname -- "$_self")/../lib" 2>/dev/null && pwd -P) || {
 . "$_libdir/scaffold.sh"
 . "$_libdir/verbs.sh"
 . "$_libdir/watchman.sh"
+. "$_libdir/menu.sh"
 
 usage() {
     cat <<'USAGE'
 fraim — эксплуатационный слой для проектов на агентах
 
 Это набираешь ты
+  fraim                     меню (в терминале) — то же, что fraim menu
+  fraim menu                экран со сканом, обновлением, доктором, реестром
   fraim status [ПУТЬ]       что происходит в проекте (--json для машины)
   fraim undo [ХЕШ]          показать точки сохранения / вернуть, как было
   fraim scaffold [ПУТЬ]     завести проект под систему
@@ -410,9 +413,14 @@ cmd_undo() {
 cmd_restore() { verb_restore "$(pwd -P)" "$@"; }
 
 # --- dispatch ---------------------------------------------------------------
-[ $# -ge 1 ] || { usage; exit 0; }
+# A bare `fraim` is the most common thing typed by someone who does not know
+# what to type — answering it with a list of twenty commands is the worst
+# available reply. On a terminal it opens the menu; through a pipe (an agent,
+# cron, CI) it prints the usage exactly as before.
+[ $# -ge 1 ] || { menu_run; exit 0; }
 _cmd=$1; shift
 case $_cmd in
+    menu)          menu_run ;;
     init|update)   cmd_init "$@" ;;
     scaffold)      cmd_scaffold "$@" ;;
     config)        cmd_config "$@" ;;

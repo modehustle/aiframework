@@ -88,6 +88,29 @@ GITHAND=$(grep -lE 'git (commit|add|init|restore|checkout|reset|stash|clean|push
           "$REPO"/procedures/*.md | while read -r f; do basename "$f"; done | sort | tr '\n' ' ')
 check "процедуры не трогают git руками" "$GITHAND" ""
 
+# ---------------------------------------------------------------- menu
+printf '\nfraim menu (экран)\n'
+
+# Самое дорогое свойство меню — не то, как оно выглядит, а то, что его нет там,
+# где его быть не должно. Подавляющее большинство вызовов CLI делает агент через
+# пайп; команда, ждущая нажатия, повесила бы сессию молча.
+OUT=$(timeout 10 "$FRAIM" menu </dev/null 2>&1 | head -1)
+check "menu без терминала печатает usage, а не ждёт клавишу" \
+      "$(printf '%s' "$OUT" | cut -c1-6)" "fraim "
+
+OUT=$(timeout 10 "$FRAIM" </dev/null 2>&1 | head -1)
+check "голый fraim без терминала печатает usage" \
+      "$(printf '%s' "$OUT" | cut -c1-6)" "fraim "
+
+# Пункт меню и его действие живут в двух местах (menu_items и menu_exec). Рельс
+# ловит класс: добавили строку — забыли ветку. Последний пункт («Выход») ветки
+# не имеет по построению.
+ITEMS=$(sed -n '/^menu_items() {/,/^}/p' "$REPO/installer/lib/menu.sh" |
+        sed -n '/<<.ITEMS./,/^ITEMS$/p' | grep -c '	')
+BRANCH=$(sed -n '/^menu_exec() {/,/^}/p' "$REPO/installer/lib/menu.sh" |
+         grep -cE '^        [0-9]+\)')
+check "у каждого пункта меню есть действие" "$BRANCH" "$((ITEMS - 1))"
+
 # ---------------------------------------------------------------- build
 printf '\nfraim build\n'
 
