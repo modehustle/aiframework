@@ -914,6 +914,41 @@ check "сторож не умирает на пустой очереди" "$("$F
 
 cd "$PROJ2" || exit 1
 
+# ---------------------------------------------------------------- install.sh
+printf '\ninstall.sh (обновление и смена ветки)\n'
+
+# Клон делается с --depth 1 --branch, а это подразумевает --single-branch: refspec
+# упоминает только main. Поэтому документированный способ проверить неслитую ветку —
+# FRAIM_BRANCH=… sh install.sh — фетчил коммиты в FETCH_HEAD и падал на checkout
+# «pathspec did not match» на каждой машине, где fraim уже стоял. Рельс держит именно
+# этот путь: он документирован в README, значит он обязан работать.
+IREPO="$SANDBOX/origin.git"
+IWORK="$SANDBOX/iwork"
+git init -q --bare "$IREPO"
+git init -q "$IWORK"; git -C "$IWORK" config user.email t@t; git -C "$IWORK" config user.name t
+mkdir -p "$IWORK/installer/bin"; printf '#!/bin/sh\necho main\n' > "$IWORK/installer/bin/fraim"
+git -C "$IWORK" add -A >/dev/null; git -C "$IWORK" commit -qm base
+git -C "$IWORK" branch -M main; git -C "$IWORK" push -q "$IREPO" main
+git -C "$IWORK" checkout -q -b try/unmerged
+printf '#!/bin/sh\necho unmerged\n' > "$IWORK/installer/bin/fraim"
+git -C "$IWORK" commit -qam feature; git -C "$IWORK" push -q "$IREPO" try/unmerged
+
+IHOME="$SANDBOX/ihome"
+mkdir -p "$IHOME"
+FRAIM_HOME="$IHOME" FRAIM_REPO="file://$IREPO" FRAIM_BRANCH=main FRAIM_BIN_DIR="$IHOME/bin" \
+    sh "$REPO/installer/install.sh" >/dev/null 2>&1
+check "install: первый клон встал на main" "$(sh "$IHOME/src/installer/bin/fraim")" "main"
+
+FRAIM_HOME="$IHOME" FRAIM_REPO="file://$IREPO" FRAIM_BRANCH=try/unmerged FRAIM_BIN_DIR="$IHOME/bin" \
+    sh "$REPO/installer/install.sh" >/dev/null 2>&1
+check "install: переход на неслитую ветку" "$(sh "$IHOME/src/installer/bin/fraim")" "unmerged"
+
+FRAIM_HOME="$IHOME" FRAIM_REPO="file://$IREPO" FRAIM_BRANCH=main FRAIM_BIN_DIR="$IHOME/bin" \
+    sh "$REPO/installer/install.sh" >/dev/null 2>&1
+check "install: возврат на main" "$(sh "$IHOME/src/installer/bin/fraim")" "main"
+
+cd "$PROJ2" || exit 1
+
 # ---------------------------------------------------------------- registry
 printf '\nfraim projects (реестр)\n'
 

@@ -22,10 +22,21 @@ command -v git >/dev/null 2>&1 || die "нужен git"
 mkdir -p "$FRAIM_HOME" "$BIN_DIR"
 
 if [ -d "$SRC/.git" ]; then
-    say "обновляю $SRC"
-    git -C "$SRC" fetch --quiet origin "$BRANCH"
-    git -C "$SRC" checkout --quiet "$BRANCH"
-    git -C "$SRC" reset --hard --quiet "origin/$BRANCH"
+    say "обновляю $SRC ($BRANCH)"
+    # Explicit refspec, then `checkout -B` from the remote-tracking ref. The clone below
+    # is made with --depth 1 --branch, which implies --single-branch: its fetch refspec
+    # mentions main and nothing else. So the documented way to try an unmerged branch —
+    # FRAIM_BRANCH=… sh install.sh — used to fetch the commits into FETCH_HEAD and then
+    # fail on `checkout <branch>` with "pathspec did not match", on every machine that
+    # already had fraim installed.
+    git -C "$SRC" fetch --quiet origin "+refs/heads/$BRANCH:refs/remotes/origin/$BRANCH" ||
+        die "не удалось получить ветку $BRANCH из $REPO"
+    # --force because $SRC is our copy of the source tree, never the user's work: a stray
+    # mode bit or a poked-at file there must not turn an update into a git lecture about
+    # stashing, addressed to someone the product promises never has to know git.
+    git -C "$SRC" checkout --quiet --force -B "$BRANCH" "refs/remotes/origin/$BRANCH" ||
+        die "не удалось переключиться на $BRANCH"
+    git -C "$SRC" reset --hard --quiet "refs/remotes/origin/$BRANCH"
 else
     say "клонирую $REPO"
     rm -rf "$SRC"
