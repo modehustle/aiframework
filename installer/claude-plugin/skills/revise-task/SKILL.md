@@ -3,7 +3,7 @@ name: revise-task
 description: "Repair a task plan the executor found defective, in place, without losing what was learned"
 metadata:
   tier: strong
-  version: 0.7.1
+  version: 0.7.2
   source: fraim
 ---
 # /revise-task — Repair a Defective Plan
@@ -36,6 +36,7 @@ From the blockers, state plainly **what was wrong and why**, then converge with 
 - If the defect is a wrong/missing path or a small ambiguity → likely a surgical edit.
 - If the defect is \"the approach won't work\" or scope changed → the fix may touch decisions in `context.md`, not just steps.
 - If the defect is \"the plan went stale\" (the code moved under it while it waited in the queue) → re-run the reference scan against the current code; the fix is to realign Codebase Context / Files to Change with reality and refresh the provenance stamp.
+  First confirm the staleness is real: `fraim status --json` names the files that moved under this plan. A `stale-plan` finding at severity `info`, or none at all with HEAD simply further along, means the queue moved and this plan's files did not — there is nothing to realign, and re-stamping provenance to hide the distance is the one repair that makes the next check lie.
 - If the change reverses a recorded decision → note that `DECISIONS.md` will need a superseding entry (the executor appends it as its final step; record the intent under \"Foundation updates\").
 
 > If the user's answer reveals the goal itself changed, say so — that may be a *new* task (`/make-task`), not a revision. Do not silently expand scope.

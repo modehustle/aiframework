@@ -3,7 +3,7 @@ name: reconcile-task
 description: "Close a /run-task session that drifted into live debugging — fold the unplanned changes back into the record and archive truthfully; but STOP and hand to /revise-task if the drift was structural, not surgical"
 metadata:
   tier: capable
-  version: 0.7.1
+  version: 0.7.2
   source: fraim
 ---
 # /reconcile-task — Seal a Drifted Execution Session

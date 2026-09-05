@@ -16,7 +16,7 @@
 config_table() {
     cat <<'TBL'
 foundation_lag_commits|10|Сколько коммитов кода без обновления ARCHITECTURE.md считать дрейфом
-stale_plan_commits|1|Сколько коммитов вперёд делают план протухшим
+stale_plan_commits|1|Сколько коммитов кода (мимо ai/) сверять с файлами плана
 unpushed_threshold|5|Сколько точек сохранения без удалённой копии считать проблемой
 check_blockers|on|Проверять заблокированные задачи
 check_stale_plans|on|Проверять протухшие планы

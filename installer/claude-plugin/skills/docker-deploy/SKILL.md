@@ -3,7 +3,7 @@ name: docker-deploy
 description: "Build and run a Docker stack securely — one isolated network, non-root containers, dropped capabilities, resource limits, healthchecks, secrets in .env — verify it on loopback, and write the STACK.md passport. Making it reachable from outside is /expose."
 metadata:
   tier: capable
-  version: 0.7.1
+  version: 0.7.2
   source: fraim
 ---
 # /docker-deploy — Build and Box a Stack
