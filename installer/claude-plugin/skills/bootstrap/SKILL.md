@@ -3,7 +3,7 @@ name: bootstrap
 description: "Lay the development foundation of an authored project from a Design Brief: foundation documents plus a minimal running skeleton, so the project can be re-entered weeks later with full context instead of guesswork."
 metadata:
   tier: strong
-  version: 0.7.0
+  version: 0.7.1
   source: fraim
 ---
 # Project Bootstrap Workflow for AI Agents (universal)

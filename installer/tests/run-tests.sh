@@ -141,6 +141,34 @@ check "длинная находка режется по смыслу" \
       "$(printf '%s' "$CARDOUT" | grep -c 'скелет развёрнут, но не заполнен: …')" "1"
 cd "$SANDBOX" || exit 1
 
+# Навигация после сторожа. В POSIX sh нет локальных переменных, а menu_card зовёт
+# сторожа, который пишет собственный `_n` (счётчик очереди). Счётчик пунктов меню жил
+# в такой же `_n`, и после первой же отрисовки карточки становился нулём: стрелка вниз
+# честно двигала выбор и тут же возвращала его на первую строку, а цифры 1-8 не
+# срабатывали вовсе. Рельс воспроизводит ровно эту последовательность.
+NAV=$(sh -c '
+    . "'"$REPO"'/installer/lib/core.sh"; . "'"$REPO"'/installer/lib/config.sh"
+    . "'"$REPO"'/installer/lib/registry.sh"; . "'"$REPO"'/installer/lib/context.sh"
+    . "'"$REPO"'/installer/lib/scaffold.sh"; . "'"$REPO"'/installer/lib/verbs.sh"
+    . "'"$REPO"'/installer/lib/watchman.sh"; . "'"$REPO"'/installer/lib/menu.sh"
+    cd "'"$CARD"'" || exit 1
+    MENU_N=$(menu_count); MENU_SEL=1
+    menu_card
+    MENU_SEL=$((MENU_SEL + 1)); [ "$MENU_SEL" -gt "$MENU_N" ] && MENU_SEL=1
+    printf "%s/%s\n" "$MENU_SEL" "$MENU_N"' 2>&1)
+ITEMS_N=$(sh -c '. "'"$REPO"'/installer/lib/menu.sh"; menu_count')
+check "стрелка вниз двигает выбор после сторожа" "$NAV" "2/$ITEMS_N"
+
+# Меню обязано пережить код возврата каждого своего пункта. CLI работает под `set -e`,
+# а `fraim status` выходит с 1, как только в проекте есть что показать человеку, — то
+# есть в самом обычном случае. Без защиты выбор «Скан проекта» печатал вердикт и убивал
+# процесс посреди экрана, оставляя терминал без эха и без курсора.
+MBR=$(sed -n '/^menu_exec() {/,/^    esac$/p' "$REPO/installer/lib/menu.sh" |
+      grep -cE '^        [0-9]+\)')
+MGUARD=$(sed -n '/^menu_exec() {/,/^    esac$/p' "$REPO/installer/lib/menu.sh" |
+      grep -c '|| true')
+check "каждое действие меню переживает свой код возврата" "$MGUARD" "$MBR"
+
 # Пункт меню и его действие живут в двух местах (menu_items и menu_exec). Рельс
 # ловит класс: добавили строку — забыли ветку. Последний пункт («Выход») ветки
 # не имеет по построению.
@@ -924,6 +952,15 @@ done
 touch -d '40 days ago' "$CL/ai/investigations/abandoned-one/findings.md" 2>/dev/null ||
     touch -t "$(date -v-40d +%Y%m%d0000 2>/dev/null || echo 202001010000)" \
         "$CL/ai/investigations/abandoned-one/findings.md"
+# папка расследования без findings.md — ни исхода, ни отчёта; была невидима обоим
+mkdir -p "$CL/ai/investigations/no-report"
+printf 'заметки на коленке\n' > "$CL/ai/investigations/no-report/notes.md"
+touch -d '40 days ago' "$CL/ai/investigations/no-report/notes.md" "$CL/ai/investigations/no-report" 2>/dev/null ||
+    touch -t "$(date -v-40d +%Y%m%d0000 2>/dev/null || echo 202001010000)" \
+        "$CL/ai/investigations/no-report/notes.md" "$CL/ai/investigations/no-report"
+# и такая же папка, но свежая: её трогать нельзя — это работа, которая идёт
+mkdir -p "$CL/ai/investigations/fresh-no-report"
+printf 'начали сегодня\n' > "$CL/ai/investigations/fresh-no-report/notes.md"
 "$FRAIM" investigate-new solved-one >/dev/null 2>&1
 python3 - "$CL/ai/investigations/solved-one/findings.md" <<'PYSOLVE'
 import pathlib, sys
@@ -946,6 +983,14 @@ check "clean показывает план" "$(printf '%s' "$PLAN" | grep -c 'Ч
 check "план включает фундамент" "$(printf '%s' "$PLAN" | grep -c 'до стандарта')" "1"
 check "план включает брошенное расследование" "$(printf '%s' "$PLAN" | grep -c 'abandoned-one')" "1"
 check "план включает доведённое расследование" "$(printf '%s' "$PLAN" | grep -c 'solved-one')" "1"
+# Папка без findings.md переживала любое число чисток молча: обход шёл по файлу, а не
+# по папке. Теперь её видит и сторож, и чистка — но только когда она действительно
+# перестала двигаться, иначе чистка уносила бы в архив работу, которая идёт.
+check "план включает папку без findings.md" "$(printf '%s' "$PLAN" | grep -c 'no-report')" "1"
+check "план НЕ трогает свежую папку без findings.md" \
+      "$(printf '%s' "$PLAN" | grep -c 'fresh-no-report')" "0"
+check "сторож называет папку без findings.md" \
+      "$("$FRAIM" status "$CL" 2>/dev/null | grep -c 'без findings.md')" "2"
 check "план включает незапечатанную задачу" "$(printf '%s' "$PLAN" | grep -c 'done-task')" "1"
 check "план НЕ трогает протухший план" "$(printf '%s' "$PLAN" | grep -c 'stale-plan')" "0"
 
@@ -964,7 +1009,18 @@ check "и что уборка не проверялась" \
 check "исполненная задача запечатана" "$([ -d "$CL/ai/tasks/done-task" ] && echo yes || echo no)" "no"
 # Гейт остаётся гейтом внутри чистки: задача без отчёта о фундаменте не уезжает в архив.
 check "задача без отчёта о фундаменте осталась" "$([ -d "$CL/ai/tasks/bad-task" ] && echo yes || echo no)" "yes"
-check "чистка честно сказала, что осталось" "$(printf '%s' "$OUT" | grep -c 'осталось требующего тебя')" "1"
+check "папка без findings.md заархивирована" \
+      "$(find "$CL/ai/archive" -maxdepth 1 -name '*investigate_no-report' | wc -l | tr -d ' ')" "1"
+check "и получила отчёт, а не уехала в архив молча" \
+      "$(cat "$CL"/ai/archive/*investigate_no-report/findings.md 2>/dev/null | grep -c '^## Abandoned$')" "1"
+check "свежая папка без findings.md не тронута" \
+      "$([ -d "$CL/ai/investigations/fresh-no-report" ] && echo yes || echo no)" "yes"
+# Хвост чистки называет, ЧТО осталось и ПОЧЕМУ. Раньше в конце стояло одно число, а
+# причина отказа уезжала вверх экрана посреди списка — человек видел папки на месте и
+# ни одного слова о том, что от него требуется.
+check "чистка честно сказала, что осталось" "$(printf '%s' "$OUT" | grep -c 'Осталось требующего тебя')" "1"
+check "хвост называет оставшееся по имени" "$(printf '%s' "$OUT" | tail -6 | grep -c 'bad-task')" "1"
+check "хвост называет причину отказа" "$(printf '%s' "$OUT" | tail -6 | grep -c 'Foundation updated')" "1"
 check "протухший план не тронут" "$([ -d "$CL/ai/tasks/stale-plan" ] && echo yes || echo no)" "yes"
 
 # Повторный заход не должен находить работу там, где её уже нет.
