@@ -18,6 +18,16 @@ else
     C_DIM=; C_RED=; C_YEL=; C_GRN=; C_BLD=; C_OFF=
 fi
 
+# Display width in CHARACTERS, in any locale. `wc -m` counts characters only when the
+# locale says the input is multibyte; under LC_ALL=C — cron, CI, a server with no locale
+# set — it counts bytes, and every Cyrillic character counts twice. That silently halved
+# every column and clipped Russian messages mid-sentence. Dropping UTF-8 continuation
+# bytes (10xxxxxx) leaves exactly one byte per character, and octal ranges in `tr` are
+# POSIX, so this needs no locale at all.
+str_len() {
+    printf '%s' "$1" | LC_ALL=C tr -d '\200-\277' | LC_ALL=C wc -c | tr -d ' '
+}
+
 say()  { printf '%s\n' "$*"; }
 dim()  { printf '%s%s%s\n' "$C_DIM" "$*" "$C_OFF"; }
 ok()   { printf '%s✓%s %s\n' "$C_GRN" "$C_OFF" "$*"; }

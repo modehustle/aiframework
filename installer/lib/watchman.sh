@@ -53,7 +53,7 @@ wm_plural() {
 # Cyrillic character is two of them, so byte padding shears the columns apart.
 wm_pad() {
     _s=$1; _w=$2
-    _len=$(printf '%s' "$_s" | wc -m | tr -d ' ')
+    _len=$(str_len "$_s")
     printf '%s' "$_s"
     while [ "$_len" -lt "$_w" ]; do printf ' '; _len=$((_len + 1)); done
 }
