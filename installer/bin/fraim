@@ -36,6 +36,7 @@ _libdir=$(cd -- "$(dirname -- "$_self")/../lib" 2>/dev/null && pwd -P) || {
 . "$_libdir/verbs.sh"
 . "$_libdir/watchman.sh"
 . "$_libdir/clean.sh"
+. "$_libdir/publish.sh"
 . "$_libdir/menu.sh"
 
 usage() {
@@ -50,6 +51,8 @@ fraim — эксплуатационный слой для проектов на
   fraim scaffold [ПУТЬ]     завести проект под систему
   fraim upgrade [ПУТЬ]      довести существующий фундамент до стандарта
   fraim clean [--yes]       прибрать всё, что чинится без суждения
+  fraim publish [--check]   копия проекта вне этой машины: создать, отправить, сверить
+                            (--brief — задание агенту вычистить найденное)
   fraim init | update       поставить / обновить / подхватить новый харнес
   fraim doctor              что и куда установлено, что разошлось
   fraim config              что действует и откуда (set КЛЮЧ ЗНАЧЕНИЕ)
@@ -273,6 +276,9 @@ cmd_doctor() {
     done
     say ""
 
+    publish_deps_report
+    say ""
+
     say "${C_BLD}Реестр проектов${C_OFF}"
     registry_init
     _total=$(registry_list | wc -l | tr -d ' ')
@@ -375,6 +381,204 @@ cmd_version() {
         printf '%s\n' "$_ver"
         [ -n "$_root" ] && dim "  источник: $_root (не git-клон)"
     fi
+}
+
+# --- publish ----------------------------------------------------------------
+# Вывести проект с этой машины. Развилка «какой хост, приватный или публичный» остаётся
+# вопросом к человеку — а всё вокруг неё (чем это делать, что при этом уедет, дошло ли)
+# перестаёт быть его заботой. Логика — в installer/lib/publish.sh, здесь только разбор
+# флагов, ратификация и порядок шагов.
+cmd_publish() {
+    _prov=; _name=; _url=; _vis=; _yes=0; _check=0; _force=0; _brief=0
+    while [ $# -gt 0 ]; do
+        case $1 in
+            --provider) shift; [ $# -ge 1 ] || die "--provider требует имени"; _prov=$1 ;;
+            --provider=*) _prov=${1#--provider=} ;;
+            --url) shift; [ $# -ge 1 ] || die "--url требует ссылки"; _url=$1; _prov=url ;;
+            --url=*) _url=${1#--url=}; _prov=url ;;
+            --name) shift; [ $# -ge 1 ] || die "--name требует имени"; _name=$1 ;;
+            --name=*) _name=${1#--name=} ;;
+            --private) _vis=private ;;
+            --public)  _vis=public ;;
+            --yes|-y)  _yes=1 ;;
+            --check|--dry-run) _check=1 ;;
+            --brief) _brief=1 ;;
+            --force)   _force=1 ;;
+            -*) die "неизвестный флаг: $1 (см. fraim help)" ;;
+            *)  die "лишний аргумент: $1 — имя задаётся через --name" ;;
+        esac
+        shift
+    done
+    [ -z "$_prov" ] || publish_provider_known "$_prov" ||
+        die "неизвестный провайдер: $_prov (github, gitlab, url)"
+
+    _root=$(pwd -P)
+    command -v git >/dev/null 2>&1 || die "git не установлен — отправлять нечем"
+    verb_is_git "$_root" ||
+        die "здесь нет репозитория — заводится командой fraim scaffold"
+
+    # --brief: то же задание для агента, но по требованию, а не только в отказе. После
+    # принятого риска чистку обычно заказывают позже — и тогда её надо чем-то заказать.
+    if [ "$_brief" = 1 ]; then
+        publish_scan "$_root"
+        if [ "$(pub_count "$PUB_STOP")" -eq 0 ]; then
+            ok "нечего вычищать: проверка ничего не нашла"
+            exit 0
+        fi
+        publish_brief_secret "$_root"
+        exit 0
+    fi
+
+    # --check: разведка без сети. Это же режим для агента: он может посмотреть и
+    # рассказать, но отправку по-прежнему начинает человек.
+    if [ "$_check" = 1 ]; then
+        publish_deps_report
+        say ""
+        if [ -z "$(publish_head "$_root")" ]; then
+            warn "нет ни одной точки сохранения — отправлять пока нечего"
+            exit 1
+        fi
+        _have=$(publish_remote_url "$_root")
+        if [ -n "$_have" ]; then
+            say "Копия: $_have"
+            # Всё, что здесь известно, — это память ЭТОЙ машины о прошлых отправках.
+            # Разведка идёт без сети (её запускает и агент, и она не должна ни висеть на
+            # недоступном хосте, ни ходить наружу без спроса), поэтому граница названа вслух.
+            if [ -z "$(git -C "$_root" for-each-ref --count=1 refs/remotes 2>/dev/null)" ]; then
+                warn "туда ни разу ничего не уезжало — настройку начали и не довели"
+            else
+                _n=$(publish_unpushed "$_root")
+                if [ "$_n" -gt 0 ]; then
+                    say "  не уехало точек: $_n"
+                else
+                    say "  по записям этой машины — всё уехало"
+                fi
+            fi
+            dim "  что лежит на хосте на самом деле, сверяет fraim publish: для этого нужна сеть"
+        else
+            say "Копии вне этой машины нет."
+        fi
+        say ""
+        publish_scan "$_root"
+        publish_scan_show
+        _stops=$(pub_count "$PUB_STOP")
+        if [ "$_stops" -gt 0 ]; then
+            say ""
+            dim "  в приватную копию это отправляется с принятием риска (fraim publish --private),"
+            dim "  в публичную — нет; вычистить вместо этого — fraim publish --brief"
+            exit 1
+        fi
+        exit 0
+    fi
+
+    [ -n "$(publish_head "$_root")" ] ||
+        die "нет ни одной точки сохранения — отправлять пока нечего
+    сохрани работу и повтори: fraim clean, либо fraim commit ВИД ТЕКСТ ПУТЬ..."
+
+    # Ремоут есть — значит вопрос «всё ли уехало» решает ХОСТ, а не наши refs/remotes.
+    # Ровно здесь ловится незаконченная настройка: репозиторий создали, адрес прописали,
+    # а истории там нет. Локальная бухгалтерия в этом случае молчит или врёт.
+    _have=$(publish_remote_url "$_root")
+    if [ -n "$_have" ]; then
+        _branch=$(publish_branch "$_root")
+        dim "  спрашиваю хост, что там лежит…"
+        publish_host_state "$_root" "$_branch"
+        case $PUB_HOST in
+            synced)
+                ok "копия на месте и совпадает с этой машиной: $_have"
+                exit 0 ;;
+            diverged)
+                publish_refuse_diverged "$_root" "$_have" "$_branch"
+                exit 2 ;;
+            # empty / behind / unreachable говорит строка «на хосте» в самом плане —
+            # одно место, где человек и так читает состояние. Второй раз то же самое
+            # сверху — шум, а шум учат пролистывать.
+        esac
+    fi
+
+    # Развилка. Спрашиваем только там, где ответа у нас нет и быть не может.
+    if [ -z "$_have" ]; then
+        if [ -z "$_prov" ]; then
+            if [ -t 0 ] && [ -t 1 ]; then
+                _prov=$(publish_ask_provider) || die "не понял выбор"
+            else
+                publish_deps_report
+                say ""
+                die "не сказано, куда публиковать: --provider github|gitlab | --url ССЫЛКА"
+            fi
+        fi
+        if [ "$_prov" = url ] && [ -z "$_url" ]; then
+            if [ -t 0 ] && [ -t 1 ]; then
+                _url=$(publish_ask_url) || die "без ссылки отправлять некуда"
+            else
+                die "для --provider url нужна ссылка: --url ССЫЛКА"
+            fi
+        fi
+        if [ "$_prov" != url ] && [ -z "$_vis" ]; then
+            if [ -t 0 ] && [ -t 1 ]; then
+                _vis=$(publish_ask_visibility)
+            else
+                # Умолчание одно и оно приватное: публичность не должна получаться
+                # молчанием — только явным --public (P0, D3).
+                _vis=private
+            fi
+        fi
+    fi
+    [ -n "$_vis" ] || _vis=host
+    if [ -z "$_name" ]; then
+        _name=$(publish_repo_name "$(basename -- "$_root")")
+        [ "$_name" = "$(basename -- "$_root")" ] ||
+            dim "  имя репозитория «$_name»: хосты принимают только латиницу, цифры, точку, дефис"
+    fi
+
+    publish_scan "$_root"
+    say ""
+    publish_plan_show "$_root" "$_prov" "$_name" "$_url" "$_vis"
+    say ""
+
+    # Решает не находка, а то, кто её прочитает. Публичный репозиторий — стоп: принимать
+    # такой риск пришлось бы не одному человеку. Приватный — ратификация: находки названы
+    # поимённо, «да» отдельное и каждый раз, но стены нет.
+    _stops=$(pub_count "$PUB_STOP")
+    _accept=0
+    if [ "$_stops" -gt 0 ] && [ "$_force" = 0 ]; then
+        publish_visibility_effective "$_root" "$_vis" "$_prov"
+        if [ "$PUB_VIS" = unknown ] && [ -t 0 ] && [ -t 1 ]; then
+            PUB_VIS=$(publish_ask_private)
+            PUB_VIS_SRC="с твоих слов"
+        fi
+        case $PUB_VIS in
+            private)
+                publish_accept_notice "$_stops"
+                _accept=1 ;;
+            *)
+                # Не совет, а готовое задание: «убери файл из истории» — это просьба об
+                # экспертизе, которой у пользователя может не быть, то есть ровно то, что
+                # P0 запрещает процедуре предполагать.
+                publish_refuse_secret "$_root" "$PUB_VIS"
+                exit 2 ;;
+        esac
+    elif [ "$_stops" -gt 0 ]; then
+        warn "--force: находки выше уедут на хост вместе с историей, и это необратимо"
+    fi
+
+    if [ "$_yes" = 0 ]; then
+        if [ -t 0 ]; then
+            if [ "$_accept" = 1 ]; then
+                printf '  Публикуем ВМЕСТЕ с находками в приватную копию? [y/N] '
+            else
+                printf '  Публикуем? [y/N] '
+            fi
+            read -r _ans || _ans=
+            case $_ans in y|Y|д|Д|yes|да) ;; *) say "  отменено"; exit 0 ;; esac
+        else
+            dim "  это был только план. Выполнить: fraim publish --yes"
+            exit 0
+        fi
+    fi
+
+    publish_do "$_root" "$_prov" "$_name" "$_url" "$_vis" || exit 1
+    exit 0
 }
 
 # --- clean ------------------------------------------------------------------
@@ -526,6 +730,7 @@ case $_cmd in
     scaffold)      cmd_scaffold "$@" ;;
     upgrade)       cmd_upgrade "$@" ;;
     clean)         cmd_clean "$@" ;;
+    publish)       cmd_publish "$@" ;;
     config)        cmd_config "$@" ;;
     task-new)      cmd_task_new "$@" ;;
     task-block)    cmd_task_block "$@" ;;

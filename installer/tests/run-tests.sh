@@ -542,6 +542,19 @@ check "отслеживаемый .env вызывает предупрежден
 rm -f "$LEGACY/.env2"
 
 # Save points that never left this machine: detection only, never a reach for the network.
+#
+# Две разные величины, и мерить их одной было бы враньём (D5). Здесь адрес прописан, а
+# отправляли по нему ни разу — это незакрытая настройка, а не отставание копии, и на хосте
+# в этот момент обычно лежит пустой репозиторий, который снаружи выглядит существующим.
+"$FRAIM" status "$LEGACY" 2>/dev/null | grep -q 'ни разу ничего не уезжало'
+check "сторож видит незаконченную настройку копии" "$?" "0"
+
+# А вот это уже отставание: копия наполнена, и после неё легли новые точки.
+git -C "$LEGACY" push -q origin HEAD >/dev/null 2>&1
+printf 'y\n' >> "$LEGACY/src/index.js"
+git -C "$LEGACY" commit -qam "fix: y" >/dev/null 2>&1
+printf 'z\n' >> "$LEGACY/src/index.js"
+git -C "$LEGACY" commit -qam "fix: z" >/dev/null 2>&1
 "$FRAIM" status "$LEGACY" 2>/dev/null | grep -q 'не уехали в удалённую копию'
 check "сторож видит неуехавшие точки сохранения" "$?" "0"
 "$FRAIM" config set unpushed_threshold 1 >/dev/null 2>&1
@@ -1177,6 +1190,253 @@ mkdir -p "$EMPTY"; cd "$EMPTY" || exit 1
 check "сторож не умирает на пустой очереди" "$("$FRAIM" status "$EMPTY" 2>/dev/null | grep -c 'скелет развёрнут')" "1"
 
 cd "$PROJ2" || exit 1
+
+# ---------------------------------------------------------------- publish
+printf '\nfraim publish (копия вне машины)\n'
+
+# Всё здесь работает без сети и без gh: «хостом» служит локальный bare-репозиторий.
+# Это не упрощение ради теста — это тот же путь, которым идёт --url, то есть пол,
+# на который падает любой провайдер, когда его CLI нет или он повёл себя не так.
+PUB="$SANDBOX/pub"
+mkdir -p "$PUB"
+cd "$PUB" || exit 1
+"$FRAIM" scaffold >/dev/null 2>&1
+printf 'print(1)\n' > app.py
+git -C "$PUB" add app.py >/dev/null; git -C "$PUB" commit -qm "feat: app" >/dev/null
+
+OUT=$("$FRAIM" publish --check 2>&1); RC=$?
+check "check на чистом проекте проходит" "$RC" "0"
+check "check говорит, что копии нет" "$(printf '%s' "$OUT" | grep -c 'Копии вне этой машины нет')" "1"
+check "check перечисляет, чем можно опубликовать" \
+      "$(printf '%s' "$OUT" | grep -c 'Чем можно опубликовать')" "1"
+check "отсутствующий CLI объясняется, а не просто отмечается" \
+      "$(printf '%s' "$OUT" | grep -c 'gh auth login')" "1"
+
+# Ратификация. Под пайпом без --yes команда обязана напечатать план и НЕ ТРОНУТЬ ничего:
+# это тот же контракт, что у `fraim clean`, и проверяется он по состоянию, а не по тексту.
+git init -q --bare "$SANDBOX/pub-remote.git"
+OUT=$("$FRAIM" publish --url "$SANDBOX/pub-remote.git" 2>&1)
+check "план без --yes ничего не отправляет" "$(git -C "$PUB" remote | wc -l | tr -d ' ')" "0"
+check "план называет, что уедет" "$(printf '%s' "$OUT" | grep -c 'что едет')" "1"
+
+OUT=$("$FRAIM" publish --url "$SANDBOX/pub-remote.git" --yes 2>&1); RC=$?
+check "публикация с --yes проходит" "$RC" "0"
+check "ремоут прописан" "$(git -C "$PUB" remote get-url origin)" "$SANDBOX/pub-remote.git"
+check "сверка с хостом сошлась" "$(printf '%s' "$OUT" | grep -c 'на хосте лежит ровно то')" "1"
+check "на хосте та же точка" \
+      "$(git -C "$SANDBOX/pub-remote.git" rev-parse HEAD)" "$(git -C "$PUB" rev-parse HEAD)"
+
+OUT=$("$FRAIM" publish 2>&1)
+check "повторный запуск ничего не делает" \
+      "$(printf '%s' "$OUT" | grep -c 'совпадает с этой машиной')" "1"
+
+printf 'print(2)\n' >> app.py
+git -C "$PUB" commit -qam "fix: more" >/dev/null
+"$FRAIM" publish --yes >/dev/null 2>&1
+check "следующая точка уезжает той же командой" \
+      "$(git -C "$SANDBOX/pub-remote.git" rev-parse HEAD)" "$(git -C "$PUB" rev-parse HEAD)"
+
+# --- проверка безопасности --------------------------------------------------
+# Главное свойство: она смотрит на то, что УЕДЕТ, а не на то, что лежит в папке.
+# Файл, удалённый из дерева, остаётся в паке и уезжает с первым же push.
+PUBS="$SANDBOX/pubsec"
+mkdir -p "$PUBS"
+cd "$PUBS" || exit 1
+"$FRAIM" scaffold >/dev/null 2>&1
+printf 'DB_PASSWORD=hunter2\n' > .env
+git -C "$PUBS" add -f .env >/dev/null; git -C "$PUBS" commit -qm "oops" >/dev/null
+git -C "$PUBS" rm -q --cached .env >/dev/null; git -C "$PUBS" commit -qm "убрал" >/dev/null
+
+OUT=$("$FRAIM" publish --check 2>&1); RC=$?
+check "секрет, стёртый из дерева, но живой в истории — найден" \
+      "$(printf '%s' "$OUT" | grep -c '\.env')" "1"
+check "находка в истории роняет код возврата" "$RC" "1"
+
+OUT=$("$FRAIM" publish --url "$SANDBOX/pub-remote2.git" --yes 2>&1); RC=$?
+check "гейт останавливает публикацию" "$RC" "2"
+check "ремоут при отказе не прописан" "$(git -C "$PUBS" remote | wc -l | tr -d ' ')" "0"
+check "отказ называет обход" "$(printf '%s' "$OUT" | grep -c 'находка ложная')" "1"
+# Отказ отдаёт готовое задание, а не совет: «убери файл из истории» — это просьба об
+# экспертизе, которой у пользователя может не быть.
+check "отказ печатает задание агенту" \
+      "$(printf '%s' "$OUT" | grep -c 'Отдай это агенту')" "1"
+check "задание самодостаточно: в нём путь проекта" \
+      "$(printf '%s' "$OUT" | grep -c "Проект: $PUBS")" "1"
+check "задание называет найденное поимённо" "$(printf '%s' "$OUT" | grep -c '  - \.env')" "1"
+check "задание ставит границы агенту" "$(printf '%s' "$OUT" | grep -c 'Границы:')" "1"
+check "задание не советует переписывать историю молча" \
+      "$(printf '%s' "$OUT" | grep -c 'Не запускай без моего')" "1"
+
+git init -q --bare "$SANDBOX/pub-remote2.git"
+OUT=$("$FRAIM" publish --url "$SANDBOX/pub-remote2.git" --yes --force 2>&1); RC=$?
+check "--force проходит и говорит, что делает" "$RC" "0"
+check "--force называет необратимость" "$(printf '%s' "$OUT" | grep -c 'необратимо')" "1"
+
+# --- находка решается не сама по себе, а тем, кто её прочитает ------------------
+# Своя фикстура: предыдущему проекту ремоут уже прописан, а вопрос «кто это прочитает»
+# встаёт ровно до того, как копия появилась.
+PUBV="$SANDBOX/pubvis"
+mkdir -p "$PUBV"
+cd "$PUBV" || exit 1
+"$FRAIM" scaffold >/dev/null 2>&1
+printf 'API = "ghp_abcdefghijklmnopqrstuvwxyz0123456789"\n' > conf.py
+git -C "$PUBV" add conf.py >/dev/null; git -C "$PUBV" commit -qm "feat: conf" >/dev/null
+
+# Одинаковый ответ на публичный и приватный репозиторий неверен в обе стороны: для
+# публичного «стоп» единственно верен, для приватного он превращается в стену на ровном
+# месте — человек знает, что копию видит только он, и переписывание истории не защищает
+# его ни от чего. Поэтому приватный получает ратификацию, публичный остаётся стопом.
+OUT=$("$FRAIM" publish --provider github --public --yes 2>&1); RC=$?
+check "публичный репозиторий: стоп остаётся стопом" "$RC" "2"
+check "стоп объясняет, что дело в видимости" \
+      "$(printf '%s' "$OUT" | grep -c 'Репозиторий публичный')" "1"
+check "публичному не предлагается «приму риск»" \
+      "$(printf '%s' "$OUT" | grep -c 'нет варианта')" "1"
+
+# Под пайпом без утверждения о приватности — тоже стоп, но с выходом, а не в стену.
+OUT=$("$FRAIM" publish --url "$SANDBOX/pub-remote3.git" --yes 2>&1); RC=$?
+check "неизвестная видимость: не додумываем за человека" "$RC" "2"
+check "отказ называет, чем разблокировать" \
+      "$(printf '%s' "$OUT" | grep -c 'publish --private')" "1"
+
+# Приватная копия: находки уезжают, но названы поимённо и приняты явно.
+git init -q --bare "$SANDBOX/pub-priv.git"
+OUT=$("$FRAIM" publish --url "$SANDBOX/pub-priv.git" --private --yes 2>&1); RC=$?
+check "приватная копия: работа не встаёт" "$RC" "0"
+check "принятие риска сказано вслух" "$(printf '%s' "$OUT" | grep -c 'принято')" "1"
+check "сказано, откуда известно про приватность" \
+      "$(printf '%s' "$OUT" | grep -c 'с твоих слов')" "1"
+# Обещать «в приватном ничего не страшно» продукт не имеет права: приватный репозиторий
+# переключается в публичный одной кнопкой, и история едет вместе с ним.
+check "принятие не обещает, чего не гарантирует" \
+      "$(printf '%s' "$OUT" | grep -c 'станет публичным')" "1"
+check "находки действительно уехали" \
+      "$(git -C "$SANDBOX/pub-priv.git" rev-parse HEAD)" "$(git -C "$PUBV" rev-parse HEAD)"
+
+# Задание на чистку не привязано к отказу: приняв риск однажды, чистку заказывают позже.
+OUT=$("$FRAIM" publish --brief 2>&1); RC=$?
+check "--brief печатает задание по требованию" "$RC" "0"
+check "--brief даёт тот же самодостаточный блок" \
+      "$(printf '%s' "$OUT" | grep -c 'Отдай это агенту')" "1"
+OUT=$(cd "$PUB" && "$FRAIM" publish --brief 2>&1)
+check "--brief на чистом проекте не выдумывает работу" \
+      "$(printf '%s' "$OUT" | grep -c 'нечего вычищать')" "1"
+
+
+# Значение ключа не должно попасть в вывод: он уедет в скроллбек, в лог сессии агента
+# и в чужой чат. Сканер печатает файл и строку, и на этом останавливается.
+PUBT="$SANDBOX/pubtok"
+mkdir -p "$PUBT"
+cd "$PUBT" || exit 1
+"$FRAIM" scaffold >/dev/null 2>&1
+printf 'TOKEN = "ghp_abcdefghijklmnopqrstuvwxyz0123456789"\n' > conf.py
+head -c 6000000 /dev/urandom > big.bin 2>/dev/null
+mkdir -p node_modules/pkg; printf '1\n' > node_modules/pkg/index.js
+git -C "$PUBT" add -A -f >/dev/null; git -C "$PUBT" commit -qm "feat: conf" >/dev/null
+OUT=$("$FRAIM" publish --check 2>&1)
+check "токен в файле найден по форме" "$(printf '%s' "$OUT" | grep -c 'conf.py:1')" "1"
+check "само значение ключа не печатается" \
+      "$(printf '%s' "$OUT" | grep -c 'ghp_abcdefghijklmnopqrstuvwxyz')" "0"
+check "тяжёлый файл — предупреждение, а не отказ" "$(printf '%s' "$OUT" | grep -c 'МБ в истории')" "1"
+check "зависимости в истории свёрнуты в один каталог" \
+      "$(printf '%s' "$OUT" | grep -c 'node_modules/ ')" "1"
+
+# --- рассинхрон с хостом ----------------------------------------------------
+# Локальная бухгалтерия («уехало / не уехало») — это память ЭТОЙ машины о прошлых
+# отправках. Она врёт ровно там, где ошибка дороже всего: репозиторий создан и пуст,
+# ветку на хосте снесли, историю туда положили из другого места. Поэтому publish
+# спрашивает хост, а не свои refs — три случая ниже проверяют каждую из этих форм.
+PUBH="$SANDBOX/pubhost"
+mkdir -p "$PUBH"
+cd "$PUBH" || exit 1
+"$FRAIM" scaffold >/dev/null 2>&1
+printf 'print(1)\n' > app.py
+git -C "$PUBH" add app.py >/dev/null; git -C "$PUBH" commit -qm "feat: app" >/dev/null
+
+# 1. Создан, но пуст: адрес прописан руками, история туда не доехала. Снаружи копия
+#    выглядит существующей — это худшее из состояний, и молчать о нём нельзя.
+git init -q --bare "$SANDBOX/pub-host.git"
+git -C "$PUBH" remote add origin "$SANDBOX/pub-host.git"
+"$FRAIM" status "$PUBH" 2>/dev/null | grep -q 'ни разу ничего не уезжало'
+check "сторож видит недоведённую настройку без сети" "$?" "0"
+
+OUT=$("$FRAIM" publish 2>&1)
+check "publish называет пустой репозиторий на хосте" \
+      "$(printf '%s' "$OUT" | grep -c 'ПУСТ')" "1"
+# Состояние хоста живёт в плане одной строкой и больше нигде: второй раз то же самое
+# сверху — шум, а шум учат пролистывать.
+check "состояние хоста сказано ровно один раз" \
+      "$(printf '%s' "$OUT" | grep -c 'история туда не доехала')" "1"
+"$FRAIM" publish --yes >/dev/null 2>&1
+check "та же команда доводит работу до конца" \
+      "$(git -C "$SANDBOX/pub-host.git" rev-parse HEAD)" "$(git -C "$PUBH" rev-parse HEAD)"
+
+# 2. Ветку на хосте снесли, а refs/remotes здесь остались. По записям этой машины «всё
+#    уехало» — и это ровно то враньё, ради которого сверка и существует.
+BR=$(git -C "$PUBH" rev-parse --abbrev-ref HEAD)
+git -C "$SANDBOX/pub-host.git" update-ref -d "refs/heads/$BR"
+check "локальные записи всё ещё говорят «уехало»" \
+      "$(git -C "$PUBH" rev-list --count HEAD --not --remotes)" "0"
+OUT=$("$FRAIM" publish 2>&1)
+check "publish не верит своим записям против хоста" \
+      "$(printf '%s' "$OUT" | grep -c 'совпадает с этой машиной')" "0"
+"$FRAIM" publish --yes >/dev/null 2>&1
+check "копия восстановлена" \
+      "$(git -C "$SANDBOX/pub-host.git" rev-parse HEAD)" "$(git -C "$PUBH" rev-parse HEAD)"
+
+# 3. На хосте появилась работа, которой здесь нет. Единственный способ «свести одной
+#    кнопкой» — затереть чужое, поэтому команда обязана остановиться и отдать задание.
+OTHER="$SANDBOX/pubother"
+git clone -q "$SANDBOX/pub-host.git" "$OTHER"
+git -C "$OTHER" config user.email t@t; git -C "$OTHER" config user.name t
+printf 'from another machine\n' > "$OTHER/other.py"
+git -C "$OTHER" add other.py >/dev/null; git -C "$OTHER" commit -qm "feat: other" >/dev/null
+git -C "$OTHER" push -q origin HEAD >/dev/null 2>&1
+printf 'print(2)\n' >> "$PUBH/app.py"
+git -C "$PUBH" commit -qam "fix: local" >/dev/null
+
+OUT=$("$FRAIM" publish --yes 2>&1); RC=$?
+check "расхождение останавливает отправку" "$RC" "2"
+check "на хосте ничего не затёрто" \
+      "$(git -C "$SANDBOX/pub-host.git" log --oneline | grep -c 'feat: other')" "1"
+check "расхождение объяснено, а не названо ошибкой" \
+      "$(printf '%s' "$OUT" | grep -c 'работа, которой нет здесь')" "1"
+check "расхождение отдаёт задание агенту" \
+      "$(printf '%s' "$OUT" | grep -c 'свести расхождение')" "1"
+check "задание запрещает force-push" "$(printf '%s' "$OUT" | grep -c 'force-push не предлагать')" "1"
+
+# Провайдер, которого нет, отвечает инструкцией и полом — а не «нельзя». Проект здесь
+# чистый нарочно: иначе до провайдера дело не дойдёт, его остановит гейт безопасности.
+PUBP="$SANDBOX/pubprov"
+mkdir -p "$PUBP"
+cd "$PUBP" || exit 1
+"$FRAIM" scaffold >/dev/null 2>&1
+OUT=$("$FRAIM" publish --provider github --yes 2>&1); RC=$?
+if command -v gh >/dev/null 2>&1; then
+    check "github без gh: пропущено (gh установлен)" "skip" "skip"
+else
+    check "github без gh отказывает, не отправляя" "$(git -C "$PUBP" remote | wc -l | tr -d ' ')" "0"
+    check "отказ показывает, как поставить gh" \
+          "$(printf '%s' "$OUT" | grep -cE 'cli.github.com|install gh')" "1"
+    check "отказ показывает пол: создать руками и дать ссылку" \
+          "$(printf '%s' "$OUT" | grep -c 'publish --url')" "1"
+fi
+OUT=$("$FRAIM" publish --provider нетакого 2>&1); RC=$?
+check "неизвестный провайдер отвергается" "$RC" "2"
+
+cd "$SANDBOX" || exit 1
+
+# Рельс: publish отправляет то, что уже сохранено, и ничего не сохраняет сам. Стоит
+# появиться `git add` в этом модуле — и глагол начнёт решать, что забрать в историю,
+# то есть ровно то, чего в системе не делает ни один глагол (B6).
+ADDS=$(grep -vE '^[[:space:]]*#' "$REPO/installer/lib/publish.sh" |
+       grep -cE 'git (-C [^ ]+ )?(add|commit)' || true)
+check "publish ничего не коммитит сам" "$ADDS" "0"
+
+# Сторож называет команду, а не голый git: пользователю обещано, что ни одна процедура
+# не попросит его выполнить git-команду.
+check "сторож зовёт fraim publish, а не git push" \
+      "$(grep -c 'wm_add remote .*git push' "$REPO/installer/lib/watchman.sh" || true)" "0"
 
 # ---------------------------------------------------------------- install.sh
 printf '\ninstall.sh (обновление и смена ветки)\n'

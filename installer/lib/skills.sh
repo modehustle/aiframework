@@ -199,7 +199,29 @@ A deterministic action has exactly one implementation.
 | \`fraim config\` | what settings are in effect and where each came from |
 | \`fraim projects\` | list, add or remove projects in the registry |
 | \`fraim doctor\` | what is installed where, which version, what diverged |
+| \`fraim publish\` | a copy of the project off this machine: check, create, push, verify |
 | \`fraim show NAME\` | print a procedure's text (for environments without skills) |
+
+\`fraim publish\` is the one command here that reaches the network, and what it does cannot be
+taken back — a repository that was public for a minute was public. \`fraim publish --check\` is
+yours to run freely: no network call, it reports what is installed, whether a copy exists,
+whether the setup was ever finished, and whether the history carries a secret that must not
+leave the machine. The publish itself is the human's: it prints a plan and asks, and through a
+pipe without \`--yes\` it deliberately does nothing. **Never pass \`--yes\`, \`--force\` or
+\`--private\` on your own initiative** — where the copy lives and who may read it is the user's
+decision, not a default. \`--private\` in particular is an assertion about the world ("this
+repository is private, and I accept that the findings travel into it"); only the person who owns
+the repository can make it. What the command does with a secret found in the history depends on
+exactly that: into a private copy it goes with an explicit acceptance, into a public one it does
+not go at all.
+
+Two of its refusals hand you a **ready-made brief** — a secret already in the history, and a
+remote that carries work this machine does not have. When the user pastes one to you, it is
+self-contained and it states its own limits; honour them. Both end in a rewrite or a merge the
+system deliberately does not perform for anyone: \`fraim\` never rewrites history (\`fraim undo\`
+is a counter-commit for exactly that reason), so cleaning a secret out of the past is an
+external tool, run once, with the user's explicit yes — and the first step is never git at all,
+it is rotating the key that was exposed.
 
 ## The one rule for you
 

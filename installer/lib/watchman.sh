@@ -312,15 +312,30 @@ wm_check_git() {
 #     machine. All of them start by cloning. A foundation that never left this disk does not
 #     exist for any of them.
 #
-#     Detection only, per D4. Choosing a host, private or public, and authorising it is a
-#     fork with real content in it, so it stays a conversation with the agent — the watchman
-#     says the copy is missing and never reaches for the network to fix it.
+#     Detection only, per D4 — and that has not changed now that `fraim publish` exists. The
+#     watchman names the command; it never runs it. Choosing a host, private or public, and
+#     authorising it is a fork with real content in it, and the answer belongs to the human
+#     standing in front of the plan `fraim publish` prints.
 wm_check_remote() {
     _root=$1
     wm_is_git "$_root" || return 0
 
     if [ -z "$(git -C "$_root" remote 2>/dev/null)" ]; then
-        wm_add remote info "нет удалённой копии — проект живёт только на этой машине" ""
+        wm_add remote info "нет удалённой копии — проект живёт только на этой машине" "fraim publish"
+        return 0
+    fi
+
+    # Настройку начали и не довели: адрес прописан, а remote-tracking веток нет ни одной —
+    # значит туда ни разу ничего не отправляли. Репозиторий на хосте в этот момент обычно
+    # создан и пуст, и это худшее из состояний: снаружи копия выглядит существующей, а
+    # внутри её нет. Видно без сети — сторож читает собственные refs, а не спрашивает хост.
+    #
+    # Отдельная находка, а не «N точек не уехали», потому что величина другая: не
+    # отставание копии, а незаконченная работа (D5). Порог сюда не применяется — незакрытая
+    # настройка не становится нормой от того, что точек в проекте всего две.
+    if [ -n "$(git -C "$_root" rev-parse -q --verify HEAD 2>/dev/null)" ] &&
+       [ -z "$(git -C "$_root" for-each-ref --count=1 refs/remotes 2>/dev/null)" ]; then
+        wm_add remote attention "адрес копии прописан, но туда ни разу ничего не уезжало" "fraim publish"
         return 0
     fi
 
@@ -334,7 +349,7 @@ wm_check_remote() {
     _w=$(wm_plural "$_n" "точка сохранения" "точки сохранения" "точек сохранения")
     _v=$(wm_plural "$_n" "не уехала" "не уехали" "не уехали")
     if [ "$_n" -ge "$_max" ]; then
-        wm_add remote attention "$_n $_w $_v в удалённую копию" "git push"
+        wm_add remote attention "$_n $_w $_v в удалённую копию" "fraim publish"
     else
         wm_add remote info "$_n $_w $_v в удалённую копию" ""
     fi
