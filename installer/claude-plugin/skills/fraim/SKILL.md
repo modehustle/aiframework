@@ -2,7 +2,7 @@
 name: fraim
 description: Control panel for the fraim workflow system. Use when the user asks where a project stands, what needs attention, what to do next, which projects have drifted, or how to install and update the workflow procedures. Routes to the right procedure and reads the deterministic project watchman.
 metadata:
-  version: 0.7.2
+  version: 0.8.0
   source: fraim
 ---
 # fraim — control panel
@@ -137,7 +137,16 @@ A deterministic action has exactly one implementation.
 | `fraim config` | what settings are in effect and where each came from |
 | `fraim projects` | list, add or remove projects in the registry |
 | `fraim doctor` | what is installed where, which version, what diverged |
+| `fraim publish` | a copy of the project off this machine: check, create, push, verify |
 | `fraim show NAME` | print a procedure's text (for environments without skills) |
+
+`fraim publish` is the one command here that reaches the network, and what it does cannot be
+taken back — a repository that was public for a minute was public. `fraim publish --check` is
+yours to run freely: no network call, it reports what is installed, whether a copy exists, how
+much has not travelled, and whether the history carries a secret that must not leave the
+machine. The publish itself is the human's: it prints a plan and asks, and through a pipe
+without `--yes` it deliberately does nothing. **Never pass `--yes` or `--force` on your own
+initiative** — where the copy lives and who may read it is the user's decision, not a default.
 
 ## The one rule for you
 

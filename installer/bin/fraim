@@ -36,6 +36,7 @@ _libdir=$(cd -- "$(dirname -- "$_self")/../lib" 2>/dev/null && pwd -P) || {
 . "$_libdir/verbs.sh"
 . "$_libdir/watchman.sh"
 . "$_libdir/clean.sh"
+. "$_libdir/publish.sh"
 . "$_libdir/menu.sh"
 
 usage() {
@@ -50,6 +51,7 @@ fraim — эксплуатационный слой для проектов на
   fraim scaffold [ПУТЬ]     завести проект под систему
   fraim upgrade [ПУТЬ]      довести существующий фундамент до стандарта
   fraim clean [--yes]       прибрать всё, что чинится без суждения
+  fraim publish [--check]   копия проекта вне этой машины: создать, отправить, сверить
   fraim init | update       поставить / обновить / подхватить новый харнес
   fraim doctor              что и куда установлено, что разошлось
   fraim config              что действует и откуда (set КЛЮЧ ЗНАЧЕНИЕ)
@@ -273,6 +275,9 @@ cmd_doctor() {
     done
     say ""
 
+    publish_deps_report
+    say ""
+
     say "${C_BLD}Реестр проектов${C_OFF}"
     registry_init
     _total=$(registry_list | wc -l | tr -d ' ')
@@ -375,6 +380,140 @@ cmd_version() {
         printf '%s\n' "$_ver"
         [ -n "$_root" ] && dim "  источник: $_root (не git-клон)"
     fi
+}
+
+# --- publish ----------------------------------------------------------------
+# Вывести проект с этой машины. Развилка «какой хост, приватный или публичный» остаётся
+# вопросом к человеку — а всё вокруг неё (чем это делать, что при этом уедет, дошло ли)
+# перестаёт быть его заботой. Логика — в installer/lib/publish.sh, здесь только разбор
+# флагов, ратификация и порядок шагов.
+cmd_publish() {
+    _prov=; _name=; _url=; _vis=; _yes=0; _check=0; _force=0
+    while [ $# -gt 0 ]; do
+        case $1 in
+            --provider) shift; [ $# -ge 1 ] || die "--provider требует имени"; _prov=$1 ;;
+            --provider=*) _prov=${1#--provider=} ;;
+            --url) shift; [ $# -ge 1 ] || die "--url требует ссылки"; _url=$1; _prov=url ;;
+            --url=*) _url=${1#--url=}; _prov=url ;;
+            --name) shift; [ $# -ge 1 ] || die "--name требует имени"; _name=$1 ;;
+            --name=*) _name=${1#--name=} ;;
+            --private) _vis=private ;;
+            --public)  _vis=public ;;
+            --yes|-y)  _yes=1 ;;
+            --check|--dry-run) _check=1 ;;
+            --force)   _force=1 ;;
+            -*) die "неизвестный флаг: $1 (см. fraim help)" ;;
+            *)  die "лишний аргумент: $1 — имя задаётся через --name" ;;
+        esac
+        shift
+    done
+    [ -z "$_prov" ] || publish_provider_known "$_prov" ||
+        die "неизвестный провайдер: $_prov (github, gitlab, url)"
+
+    _root=$(pwd -P)
+    command -v git >/dev/null 2>&1 || die "git не установлен — отправлять нечем"
+    verb_is_git "$_root" ||
+        die "здесь нет репозитория — заводится командой fraim scaffold"
+
+    # --check: разведка без сети. Это же режим для агента: он может посмотреть и
+    # рассказать, но отправку по-прежнему начинает человек.
+    if [ "$_check" = 1 ]; then
+        publish_deps_report
+        say ""
+        if [ -z "$(publish_head "$_root")" ]; then
+            warn "нет ни одной точки сохранения — отправлять пока нечего"
+            exit 1
+        fi
+        _have=$(publish_remote_url "$_root")
+        if [ -n "$_have" ]; then
+            _n=$(publish_unpushed "$_root")
+            if [ "$_n" -gt 0 ]; then
+                say "Копия: $_have — не уехало точек: $_n"
+            else
+                say "Копия: $_have — всё уехало"
+            fi
+        else
+            say "Копии вне этой машины нет."
+        fi
+        say ""
+        publish_scan "$_root"
+        publish_scan_show
+        [ "$(pub_count "$PUB_STOP")" -eq 0 ] || exit 1
+        exit 0
+    fi
+
+    [ -n "$(publish_head "$_root")" ] ||
+        die "нет ни одной точки сохранения — отправлять пока нечего
+    сохрани работу и повтори: fraim clean, либо fraim commit ВИД ТЕКСТ ПУТЬ..."
+
+    _have=$(publish_remote_url "$_root")
+    if [ -n "$_have" ] && [ "$(publish_unpushed "$_root")" -eq 0 ]; then
+        ok "копия на месте, всё уехало: $_have"
+        exit 0
+    fi
+
+    # Развилка. Спрашиваем только там, где ответа у нас нет и быть не может.
+    if [ -z "$_have" ]; then
+        if [ -z "$_prov" ]; then
+            if [ -t 0 ] && [ -t 1 ]; then
+                _prov=$(publish_ask_provider) || die "не понял выбор"
+            else
+                publish_deps_report
+                say ""
+                die "не сказано, куда публиковать: --provider github|gitlab | --url ССЫЛКА"
+            fi
+        fi
+        if [ "$_prov" = url ] && [ -z "$_url" ]; then
+            if [ -t 0 ] && [ -t 1 ]; then
+                _url=$(publish_ask_url) || die "без ссылки отправлять некуда"
+            else
+                die "для --provider url нужна ссылка: --url ССЫЛКА"
+            fi
+        fi
+        if [ "$_prov" != url ] && [ -z "$_vis" ]; then
+            if [ -t 0 ] && [ -t 1 ]; then
+                _vis=$(publish_ask_visibility)
+            else
+                # Умолчание одно и оно приватное: публичность не должна получаться
+                # молчанием — только явным --public (P0, D3).
+                _vis=private
+            fi
+        fi
+    fi
+    [ -n "$_vis" ] || _vis=host
+    if [ -z "$_name" ]; then
+        _name=$(publish_repo_name "$(basename -- "$_root")")
+        [ "$_name" = "$(basename -- "$_root")" ] ||
+            dim "  имя репозитория «$_name»: хосты принимают только латиницу, цифры, точку, дефис"
+    fi
+
+    publish_scan "$_root"
+    say ""
+    publish_plan_show "$_root" "$_prov" "$_name" "$_url" "$_vis"
+    say ""
+
+    _stops=$(pub_count "$PUB_STOP")
+    if [ "$_stops" -gt 0 ]; then
+        if [ "$_force" = 0 ]; then
+            die "публикация остановлена: $_stops $(wm_plural "$_stops" находка находки находок) $(wm_plural "$_stops" "не должна" "не должны" "не должны") уезжать с этой машины
+    убери файл из истории и повтори — или, если это не секрет, fraim publish --force"
+        fi
+        warn "--force: находки выше уедут на хост вместе с историей, и это необратимо"
+    fi
+
+    if [ "$_yes" = 0 ]; then
+        if [ -t 0 ]; then
+            printf '  Публикуем? [y/N] '
+            read -r _ans || _ans=
+            case $_ans in y|Y|д|Д|yes|да) ;; *) say "  отменено"; exit 0 ;; esac
+        else
+            dim "  это был только план. Выполнить: fraim publish --yes"
+            exit 0
+        fi
+    fi
+
+    publish_do "$_root" "$_prov" "$_name" "$_url" "$_vis" || exit 1
+    exit 0
 }
 
 # --- clean ------------------------------------------------------------------
@@ -526,6 +665,7 @@ case $_cmd in
     scaffold)      cmd_scaffold "$@" ;;
     upgrade)       cmd_upgrade "$@" ;;
     clean)         cmd_clean "$@" ;;
+    publish)       cmd_publish "$@" ;;
     config)        cmd_config "$@" ;;
     task-new)      cmd_task_new "$@" ;;
     task-block)    cmd_task_block "$@" ;;

@@ -1,5 +1,5 @@
 {
-  "version": "0.7.2",
+  "version": "0.8.0",
   "procedures": [
     { "name": "design-session", "file": "procedures/design-session.md", "tier": "strong", "order": 1, "description": "Run the thinking session that comes first: decide WHAT you are about to build and WHY, before any folder, code, or container exists. Converge with the human and produce one artifact for the next workflow (a Design Brief, or a per-stack prompt) — never code." },
     { "name": "bootstrap", "file": "procedures/bootstrap.md", "tier": "strong", "order": 2, "description": "Lay the development foundation of an authored project from a Design Brief: foundation documents plus a minimal running skeleton, so the project can be re-entered weeks later with full context instead of guesswork." },

@@ -1178,6 +1178,127 @@ check "сторож не умирает на пустой очереди" "$("$F
 
 cd "$PROJ2" || exit 1
 
+# ---------------------------------------------------------------- publish
+printf '\nfraim publish (копия вне машины)\n'
+
+# Всё здесь работает без сети и без gh: «хостом» служит локальный bare-репозиторий.
+# Это не упрощение ради теста — это тот же путь, которым идёт --url, то есть пол,
+# на который падает любой провайдер, когда его CLI нет или он повёл себя не так.
+PUB="$SANDBOX/pub"
+mkdir -p "$PUB"
+cd "$PUB" || exit 1
+"$FRAIM" scaffold >/dev/null 2>&1
+printf 'print(1)\n' > app.py
+git -C "$PUB" add app.py >/dev/null; git -C "$PUB" commit -qm "feat: app" >/dev/null
+
+OUT=$("$FRAIM" publish --check 2>&1); RC=$?
+check "check на чистом проекте проходит" "$RC" "0"
+check "check говорит, что копии нет" "$(printf '%s' "$OUT" | grep -c 'Копии вне этой машины нет')" "1"
+check "check перечисляет, чем можно опубликовать" \
+      "$(printf '%s' "$OUT" | grep -c 'Чем можно опубликовать')" "1"
+check "отсутствующий CLI объясняется, а не просто отмечается" \
+      "$(printf '%s' "$OUT" | grep -c 'gh auth login')" "1"
+
+# Ратификация. Под пайпом без --yes команда обязана напечатать план и НЕ ТРОНУТЬ ничего:
+# это тот же контракт, что у `fraim clean`, и проверяется он по состоянию, а не по тексту.
+git init -q --bare "$SANDBOX/pub-remote.git"
+OUT=$("$FRAIM" publish --url "$SANDBOX/pub-remote.git" 2>&1)
+check "план без --yes ничего не отправляет" "$(git -C "$PUB" remote | wc -l | tr -d ' ')" "0"
+check "план называет, что уедет" "$(printf '%s' "$OUT" | grep -c 'что едет')" "1"
+
+OUT=$("$FRAIM" publish --url "$SANDBOX/pub-remote.git" --yes 2>&1); RC=$?
+check "публикация с --yes проходит" "$RC" "0"
+check "ремоут прописан" "$(git -C "$PUB" remote get-url origin)" "$SANDBOX/pub-remote.git"
+check "сверка с хостом сошлась" "$(printf '%s' "$OUT" | grep -c 'на хосте лежит ровно то')" "1"
+check "на хосте та же точка" \
+      "$(git -C "$SANDBOX/pub-remote.git" rev-parse HEAD)" "$(git -C "$PUB" rev-parse HEAD)"
+
+OUT=$("$FRAIM" publish 2>&1)
+check "повторный запуск ничего не делает" "$(printf '%s' "$OUT" | grep -c 'всё уехало')" "1"
+
+printf 'print(2)\n' >> app.py
+git -C "$PUB" commit -qam "fix: more" >/dev/null
+"$FRAIM" publish --yes >/dev/null 2>&1
+check "следующая точка уезжает той же командой" \
+      "$(git -C "$SANDBOX/pub-remote.git" rev-parse HEAD)" "$(git -C "$PUB" rev-parse HEAD)"
+
+# --- проверка безопасности --------------------------------------------------
+# Главное свойство: она смотрит на то, что УЕДЕТ, а не на то, что лежит в папке.
+# Файл, удалённый из дерева, остаётся в паке и уезжает с первым же push.
+PUBS="$SANDBOX/pubsec"
+mkdir -p "$PUBS"
+cd "$PUBS" || exit 1
+"$FRAIM" scaffold >/dev/null 2>&1
+printf 'DB_PASSWORD=hunter2\n' > .env
+git -C "$PUBS" add -f .env >/dev/null; git -C "$PUBS" commit -qm "oops" >/dev/null
+git -C "$PUBS" rm -q --cached .env >/dev/null; git -C "$PUBS" commit -qm "убрал" >/dev/null
+
+OUT=$("$FRAIM" publish --check 2>&1); RC=$?
+check "секрет, стёртый из дерева, но живой в истории — найден" \
+      "$(printf '%s' "$OUT" | grep -c '\.env')" "1"
+check "находка в истории роняет код возврата" "$RC" "1"
+
+OUT=$("$FRAIM" publish --url "$SANDBOX/pub-remote2.git" --yes 2>&1); RC=$?
+check "гейт останавливает публикацию" "$RC" "2"
+check "ремоут при отказе не прописан" "$(git -C "$PUBS" remote | wc -l | tr -d ' ')" "0"
+check "отказ называет обход" "$(printf '%s' "$OUT" | grep -c 'publish --force')" "1"
+
+git init -q --bare "$SANDBOX/pub-remote2.git"
+OUT=$("$FRAIM" publish --url "$SANDBOX/pub-remote2.git" --yes --force 2>&1); RC=$?
+check "--force проходит и говорит, что делает" "$RC" "0"
+check "--force называет необратимость" "$(printf '%s' "$OUT" | grep -c 'необратимо')" "1"
+
+# Значение ключа не должно попасть в вывод: он уедет в скроллбек, в лог сессии агента
+# и в чужой чат. Сканер печатает файл и строку, и на этом останавливается.
+PUBT="$SANDBOX/pubtok"
+mkdir -p "$PUBT"
+cd "$PUBT" || exit 1
+"$FRAIM" scaffold >/dev/null 2>&1
+printf 'TOKEN = "ghp_abcdefghijklmnopqrstuvwxyz0123456789"\n' > conf.py
+head -c 6000000 /dev/urandom > big.bin 2>/dev/null
+mkdir -p node_modules/pkg; printf '1\n' > node_modules/pkg/index.js
+git -C "$PUBT" add -A -f >/dev/null; git -C "$PUBT" commit -qm "feat: conf" >/dev/null
+OUT=$("$FRAIM" publish --check 2>&1)
+check "токен в файле найден по форме" "$(printf '%s' "$OUT" | grep -c 'conf.py:1')" "1"
+check "само значение ключа не печатается" \
+      "$(printf '%s' "$OUT" | grep -c 'ghp_abcdefghijklmnopqrstuvwxyz')" "0"
+check "тяжёлый файл — предупреждение, а не отказ" "$(printf '%s' "$OUT" | grep -c 'МБ в истории')" "1"
+check "зависимости в истории свёрнуты в один каталог" \
+      "$(printf '%s' "$OUT" | grep -c 'node_modules/ ')" "1"
+
+# Провайдер, которого нет, отвечает инструкцией и полом — а не «нельзя». Проект здесь
+# чистый нарочно: иначе до провайдера дело не дойдёт, его остановит гейт безопасности.
+PUBP="$SANDBOX/pubprov"
+mkdir -p "$PUBP"
+cd "$PUBP" || exit 1
+"$FRAIM" scaffold >/dev/null 2>&1
+OUT=$("$FRAIM" publish --provider github --yes 2>&1); RC=$?
+if command -v gh >/dev/null 2>&1; then
+    check "github без gh: пропущено (gh установлен)" "skip" "skip"
+else
+    check "github без gh отказывает, не отправляя" "$(git -C "$PUBP" remote | wc -l | tr -d ' ')" "0"
+    check "отказ показывает, как поставить gh" \
+          "$(printf '%s' "$OUT" | grep -cE 'cli.github.com|install gh')" "1"
+    check "отказ показывает пол: создать руками и дать ссылку" \
+          "$(printf '%s' "$OUT" | grep -c 'publish --url')" "1"
+fi
+OUT=$("$FRAIM" publish --provider нетакого 2>&1); RC=$?
+check "неизвестный провайдер отвергается" "$RC" "2"
+
+cd "$SANDBOX" || exit 1
+
+# Рельс: publish отправляет то, что уже сохранено, и ничего не сохраняет сам. Стоит
+# появиться `git add` в этом модуле — и глагол начнёт решать, что забрать в историю,
+# то есть ровно то, чего в системе не делает ни один глагол (B6).
+ADDS=$(grep -vE '^[[:space:]]*#' "$REPO/installer/lib/publish.sh" |
+       grep -cE 'git (-C [^ ]+ )?(add|commit)' || true)
+check "publish ничего не коммитит сам" "$ADDS" "0"
+
+# Сторож называет команду, а не голый git: пользователю обещано, что ни одна процедура
+# не попросит его выполнить git-команду.
+check "сторож зовёт fraim publish, а не git push" \
+      "$(grep -c 'wm_add remote .*git push' "$REPO/installer/lib/watchman.sh" || true)" "0"
+
 # ---------------------------------------------------------------- install.sh
 printf '\ninstall.sh (обновление и смена ветки)\n'
 

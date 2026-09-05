@@ -212,19 +212,19 @@ scaffold_git() {
 
 # Said once, at setup, and never again: the history lives in this same folder.
 #
-# A copy outside this machine is NOT this product's job — where it lives (a hosting
-# service, another disk, a synced folder) is an environment choice with no single right
-# answer, and setting one up happens once per project. That is a conversation with the
-# agent, not a verb: verbs exist for mechanics that repeat. What we owe the user is only
-# the truth about the boundary of the guarantee we do give — and the truth includes what
-# git does not carry: the data and the secrets were never in it, by our own rule.
+# WHERE the copy lives is still not ours to decide — a hosting service, a self-hosted one,
+# somebody else's — and that fork is asked, not defaulted. What changed with `fraim publish`
+# is only who carries the mechanics around the fork, so this notice now names a command
+# instead of asking the user to open a conversation they may not know how to start. The
+# boundary of the guarantee stays in the text: git carries code and history, and the data
+# and the secrets were never in it, by our own rule.
 scaffold_copy_notice() {
     _root=$1
     verb_is_git "$_root" 2>/dev/null || return 0
     [ -z "$(git -C "$_root" remote 2>/dev/null)" ] || return 0
     say ""
     dim "История проекта лежит в этой же папке — копии вне этой машины нет."
-    dim "Нужна копия кода и истории (данные и секреты в неё не попадают) — попроси агента настроить."
+    dim "Нужна копия кода и истории (данные и секреты в неё не попадают) — fraim publish."
     return 0
 }
 
