@@ -207,8 +207,13 @@ taken back — a repository that was public for a minute was public. \`fraim pub
 yours to run freely: no network call, it reports what is installed, whether a copy exists,
 whether the setup was ever finished, and whether the history carries a secret that must not
 leave the machine. The publish itself is the human's: it prints a plan and asks, and through a
-pipe without \`--yes\` it deliberately does nothing. **Never pass \`--yes\` or \`--force\` on your
-own initiative** — where the copy lives and who may read it is the user's decision, not a default.
+pipe without \`--yes\` it deliberately does nothing. **Never pass \`--yes\`, \`--force\` or
+\`--private\` on your own initiative** — where the copy lives and who may read it is the user's
+decision, not a default. \`--private\` in particular is an assertion about the world ("this
+repository is private, and I accept that the findings travel into it"); only the person who owns
+the repository can make it. What the command does with a secret found in the history depends on
+exactly that: into a private copy it goes with an explicit acceptance, into a public one it does
+not go at all.
 
 Two of its refusals hand you a **ready-made brief** — a secret already in the history, and a
 remote that carries work this machine does not have. When the user pastes one to you, it is

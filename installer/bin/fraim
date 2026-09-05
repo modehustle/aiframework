@@ -52,6 +52,7 @@ fraim — эксплуатационный слой для проектов на
   fraim upgrade [ПУТЬ]      довести существующий фундамент до стандарта
   fraim clean [--yes]       прибрать всё, что чинится без суждения
   fraim publish [--check]   копия проекта вне этой машины: создать, отправить, сверить
+                            (--brief — задание агенту вычистить найденное)
   fraim init | update       поставить / обновить / подхватить новый харнес
   fraim doctor              что и куда установлено, что разошлось
   fraim config              что действует и откуда (set КЛЮЧ ЗНАЧЕНИЕ)
@@ -388,7 +389,7 @@ cmd_version() {
 # перестаёт быть его заботой. Логика — в installer/lib/publish.sh, здесь только разбор
 # флагов, ратификация и порядок шагов.
 cmd_publish() {
-    _prov=; _name=; _url=; _vis=; _yes=0; _check=0; _force=0
+    _prov=; _name=; _url=; _vis=; _yes=0; _check=0; _force=0; _brief=0
     while [ $# -gt 0 ]; do
         case $1 in
             --provider) shift; [ $# -ge 1 ] || die "--provider требует имени"; _prov=$1 ;;
@@ -401,6 +402,7 @@ cmd_publish() {
             --public)  _vis=public ;;
             --yes|-y)  _yes=1 ;;
             --check|--dry-run) _check=1 ;;
+            --brief) _brief=1 ;;
             --force)   _force=1 ;;
             -*) die "неизвестный флаг: $1 (см. fraim help)" ;;
             *)  die "лишний аргумент: $1 — имя задаётся через --name" ;;
@@ -414,6 +416,18 @@ cmd_publish() {
     command -v git >/dev/null 2>&1 || die "git не установлен — отправлять нечем"
     verb_is_git "$_root" ||
         die "здесь нет репозитория — заводится командой fraim scaffold"
+
+    # --brief: то же задание для агента, но по требованию, а не только в отказе. После
+    # принятого риска чистку обычно заказывают позже — и тогда её надо чем-то заказать.
+    if [ "$_brief" = 1 ]; then
+        publish_scan "$_root"
+        if [ "$(pub_count "$PUB_STOP")" -eq 0 ]; then
+            ok "нечего вычищать: проверка ничего не нашла"
+            exit 0
+        fi
+        publish_brief_secret "$_root"
+        exit 0
+    fi
 
     # --check: разведка без сети. Это же режим для агента: он может посмотреть и
     # рассказать, но отправку по-прежнему начинает человек.
@@ -447,7 +461,13 @@ cmd_publish() {
         say ""
         publish_scan "$_root"
         publish_scan_show
-        [ "$(pub_count "$PUB_STOP")" -eq 0 ] || exit 1
+        _stops=$(pub_count "$PUB_STOP")
+        if [ "$_stops" -gt 0 ]; then
+            say ""
+            dim "  в приватную копию это отправляется с принятием риска (fraim publish --private),"
+            dim "  в публичную — нет; вычистить вместо этого — fraim publish --brief"
+            exit 1
+        fi
         exit 0
     fi
 
@@ -516,21 +536,39 @@ cmd_publish() {
     publish_plan_show "$_root" "$_prov" "$_name" "$_url" "$_vis"
     say ""
 
+    # Решает не находка, а то, кто её прочитает. Публичный репозиторий — стоп: принимать
+    # такой риск пришлось бы не одному человеку. Приватный — ратификация: находки названы
+    # поимённо, «да» отдельное и каждый раз, но стены нет.
     _stops=$(pub_count "$PUB_STOP")
-    if [ "$_stops" -gt 0 ]; then
-        if [ "$_force" = 0 ]; then
-            # Не совет, а готовое задание: «убери файл из истории» — это просьба об
-            # экспертизе, которой у пользователя может не быть, то есть ровно то, что
-            # P0 запрещает процедуре предполагать.
-            publish_refuse_secret "$_root"
-            exit 2
+    _accept=0
+    if [ "$_stops" -gt 0 ] && [ "$_force" = 0 ]; then
+        publish_visibility_effective "$_root" "$_vis" "$_prov"
+        if [ "$PUB_VIS" = unknown ] && [ -t 0 ] && [ -t 1 ]; then
+            PUB_VIS=$(publish_ask_private)
+            PUB_VIS_SRC="с твоих слов"
         fi
+        case $PUB_VIS in
+            private)
+                publish_accept_notice "$_stops"
+                _accept=1 ;;
+            *)
+                # Не совет, а готовое задание: «убери файл из истории» — это просьба об
+                # экспертизе, которой у пользователя может не быть, то есть ровно то, что
+                # P0 запрещает процедуре предполагать.
+                publish_refuse_secret "$_root" "$PUB_VIS"
+                exit 2 ;;
+        esac
+    elif [ "$_stops" -gt 0 ]; then
         warn "--force: находки выше уедут на хост вместе с историей, и это необратимо"
     fi
 
     if [ "$_yes" = 0 ]; then
         if [ -t 0 ]; then
-            printf '  Публикуем? [y/N] '
+            if [ "$_accept" = 1 ]; then
+                printf '  Публикуем ВМЕСТЕ с находками в приватную копию? [y/N] '
+            else
+                printf '  Публикуем? [y/N] '
+            fi
             read -r _ans || _ans=
             case $_ans in y|Y|д|Д|yes|да) ;; *) say "  отменено"; exit 0 ;; esac
         else
