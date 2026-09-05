@@ -3,7 +3,7 @@ name: run-task
 description: "Pick a task from the ai/tasks/ queue, execute it literally, then archive on user approval"
 metadata:
   tier: cheap
-  version: 0.8.1
+  version: 0.8.2
   source: fraim
 ---
 # /run-task — Execute Prepared Task

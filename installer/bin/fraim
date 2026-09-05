@@ -577,7 +577,18 @@ cmd_publish() {
                 printf '  Публикуем? [y/N] '
             fi
             read -r _ans || _ans=
-            case $_ans in y|Y|д|Д|yes|да) ;; *) say "  отменено"; exit 0 ;; esac
+            case $_ans in
+                y|Y|д|Д|yes|да) ;;
+                *)
+                    # «Нет» именно на вопросе о находках означает «хочу, но чистым», и
+                    # ответ на это — задание агенту, а не одно слово «отменено».
+                    if [ "$_stops" -gt 0 ]; then
+                        publish_cancel_findings "$_root"
+                    else
+                        say "  отменено"
+                    fi
+                    exit 0 ;;
+            esac
         else
             dim "  это был только план. Выполнить: fraim publish --yes"
             exit 0
