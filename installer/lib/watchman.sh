@@ -85,27 +85,120 @@ wm_check_blockers() {
     done
 }
 
-# 3. Stale plan: the queue moved on while the plan sat in it. `Based on` is the
-#    snapshot make-task wrote; if HEAD has since moved, the executor would be
-#    working against a codebase the plan never saw.
+# 3. Stale plan: the queue moved on while the plan sat in it.
+#
+#    The question is not «did HEAD move» — it is «did anything the plan STANDS ON move».
+#    Counting commits answered the first one, and in this system the two diverge by
+#    construction: every verb ends in a commit of its own, so sealing six plans moves HEAD
+#    six times and each of those commits touches nothing but `ai/`. The queue then reported
+#    every plan in it as stale — six alarms over zero lines of changed code — and the
+#    executor's Step 4.6 turned each one into a blocker and a round of /revise-task. A
+#    detector whose loudest signal is its own bookkeeping teaches the human to ignore it.
+#
+#    So the measurement is now over the plan's own surface, taken from the sections the
+#    plan already has to fill: `## Codebase Context` (what the executor must read) and
+#    `## Files to Change` (what it must write). Three outcomes, and the middle one is new:
+#
+#      · a file from the surface moved     → attention, and the message NAMES the files
+#      · code moved, but past the surface  → info: worth a glance, not a defect
+#      · only `ai/` moved                  → nothing at all. Bookkeeping is not divergence.
+#
+#    A plan whose surface cannot be read — no sections, or a hand-written stub — falls back
+#    to the commit count minus `ai/`: with nothing to compare against, silence is the wrong
+#    default. `stale_plan_commits` still gates the whole check, so a project can go on
+#    tolerating N commits before any of this is reported.
+
+# The plan's surface as repo-relative paths, one per line. Two things are dropped from it.
+#
+# `ai/…` — that is where the plan itself lives, and a plan is never stale because of itself.
+#
+# ARCHITECTURE.md and CONVENTIONS.md on the READ side — `/run-task` opens both in full at
+# Step 1.1–1.2, before it so much as looks at the plan, so they are the one kind of file that
+# cannot reach the executor as a stale snapshot. They are also in every plan by template, so
+# counting them would flag the whole queue at once on a single typo in the map: the same
+# alarm-per-plan shape this check was just cured of. On the WRITE side they stay — a plan out
+# to change the map, against a map somebody already changed, is a real collision.
+wm_plan_surface() {
+    _dir=$1
+    {
+        verb_plan_context_paths "$_dir/context.md" |
+            grep -vx -e ARCHITECTURE.md -e CONVENTIONS.md || :
+        verb_plan_change_paths  "$_dir/task.md"
+    } 2>/dev/null |
+        sed 's#^\./##; s#/*$##' |
+        grep -v '^ai/' | grep -v '[[:space:]]' | grep '[^[:space:]]' | sort -u
+}
+
+# Which of the changed files the plan stands on. A surface entry naming a directory
+# matches everything under it, which is how the plans write it: `src/api/` — the module
+# being extended.
+wm_surface_hits() {
+    _surface=$1; _changed=$2
+    printf '%s\n' "$_changed" | awk -v s="$_surface" '
+        BEGIN { n = split(s, a, "\n") }
+        NF {
+            for (i = 1; i <= n; i++) {
+                if (a[i] == "") continue
+                if ($0 == a[i] || index($0, a[i] "/") == 1) { print; break }
+            }
+        }'
+}
+
+# «a, b, c и ещё 4» — the evidence, not the whole diff. A finding is one line in a verdict
+# read daily; what it owes the reader is enough to judge without running git themselves.
+wm_name_some() {
+    _items=$1; _max=$2
+    _n=$(printf '%s\n' "$_items" | awk 'NF{n++} END{print n+0}')
+    _head=$(printf '%s\n' "$_items" | grep '[^[:space:]]' | head -"$_max" |
+            tr '\n' ',' | sed 's/,$//; s/,/, /g')
+    if [ "$_n" -gt "$_max" ]; then
+        printf '%s и ещё %s\n' "$_head" "$((_n - _max))"
+    else
+        printf '%s\n' "$_head"
+    fi
+}
+
 wm_check_stale_plans() {
     _root=$1
     [ -d "$_root/ai/tasks" ] || return 0
     wm_is_git "$_root" || return 0
+    _min=$(config_get stale_plan_commits "$_root")
     for _c in "$_root"/ai/tasks/*/context.md; do
         [ -f "$_c" ] || continue
-        _slug=$(basename -- "$(dirname -- "$_c")")
+        _dir=$(dirname -- "$_c")
+        _slug=$(basename -- "$_dir")
         # Pull the first 7+ hex chars off the `Based on:` line.
         _ref=$(sed -n 's/^-\{0,1\}[[:space:]]*Based on:.*/&/p' "$_c" | head -1 |
                grep -oE '[0-9a-f]{7,40}' | head -1)
         [ -n "$_ref" ] || continue
         git -C "$_root" cat-file -e "$_ref^{commit}" 2>/dev/null || continue
-        _behind=$(git -C "$_root" rev-list --count "$_ref"..HEAD 2>/dev/null) || continue
+
+        # Everything under ai/ is the system writing its own queue — plans, blockers,
+        # results, the archive. It moves HEAD and changes nothing the executor works on.
+        _behind=$(git -C "$_root" rev-list --count "$_ref"..HEAD -- ':!ai' 2>/dev/null) || continue
         [ -n "$_behind" ] || continue
-        _min=$(config_get stale_plan_commits "$_root")
-        if [ "$_behind" -ge "$_min" ] && [ "$_behind" -gt 0 ]; then
-            _w=$(wm_plural "$_behind" коммит коммита коммитов)
-            wm_add stale-plan attention "план «$_slug» отстал от HEAD на $_behind $_w" "/revise-task"
+        [ "$_behind" -ge "$_min" ] && [ "$_behind" -gt 0 ] || continue
+        _w=$(wm_plural "$_behind" коммит коммита коммитов)
+
+        _surface=$(wm_plan_surface "$_dir")
+        if [ -z "$_surface" ]; then
+            wm_add stale-plan attention \
+                "план «$_slug» отстал от HEAD на $_behind $_w кода, а свои файлы не перечислил" \
+                "/revise-task"
+            continue
+        fi
+        # --no-renames on purpose: a rename shows as delete + add, so a plan standing on the
+        # old path still sees its ground move. Rename detection would hide exactly that.
+        _changed=$(git -C "$_root" diff --no-renames --name-only "$_ref"..HEAD -- ':!ai' 2>/dev/null)
+        _hits=$(wm_surface_hits "$_surface" "$_changed")
+        _nh=$(printf '%s\n' "$_hits" | awk 'NF{n++} END{print n+0}')
+        if [ "$_nh" -gt 0 ]; then
+            _v=$(wm_plural "$_nh" изменился изменились изменились)
+            wm_add stale-plan attention \
+                "план «$_slug» отстал: $_v $(wm_name_some "$_hits" 3)" "/revise-task"
+        else
+            wm_add stale-plan info \
+                "план «$_slug»: $_behind $_w кода мимо его файлов — план в силе" ""
         fi
     done
 }

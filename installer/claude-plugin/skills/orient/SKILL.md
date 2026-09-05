@@ -3,7 +3,7 @@ name: orient
 description: "Re-enter a project after a break — load the foundation and report current state and the next move"
 metadata:
   tier: any
-  version: 0.7.1
+  version: 0.7.2
   source: fraim
 ---
 # /orient — Re-enter With Context
@@ -44,7 +44,7 @@ If none of these exist, this project has not been bootstrapped:
 
 ## Step 2 — Read the task queue and the drift signals
 
-- `ai/tasks/<slug>/` — list every task folder in the queue. For each: its `task.md` Summary line; its state — **blocked** (has `blockers.md`, awaiting `/revise-task`), **done, awaiting archive** (has `result.md` and no `blockers.md`), or **runnable**; and for runnable tasks check `## Plan provenance` — if the code has moved since it was planned (other tasks landed on overlapping files), flag the plan as **possibly stale**.
+- `ai/tasks/<slug>/` — list every task folder in the queue. For each: its `task.md` Summary line; its state — **blocked** (has `blockers.md`, awaiting `/revise-task`), **done, awaiting archive** (has `result.md` and no `blockers.md`), or **runnable**; and for runnable tasks read the watchman's `stale-plan` finding from Step 0 rather than re-deriving it: `attention` means a file the plan stands on moved after it was written, `info` means the code moved past those files. No CLI → compare `git diff --name-only <Based on>..HEAD` against the plan's `## Codebase Context` and `## Files to Change`, and flag **possibly stale** only on an overlap. A diff that lands entirely in `ai/` is the queue sealing itself, not divergence — every verb commits, so queued plans push each other away from HEAD with no code changing.
 - `ai/archive/` — list the few most recent archived tasks (by directory timestamp) to show recent history.
 - **Foundation drift** — count the code commits since `ARCHITECTURE.md` last changed (`git log -1 --format=%H -- ARCHITECTURE.md`, then commits after it touching anything but `*.md`). The count resets at the nearer of two anchors: the map itself moving, and the last `prune: ` commit. The threshold is not a constant to remember: `fraim config` holds `foundation_lag_commits` and the watchman already compared against it in Step 0 — this manual count is only for when the CLI is absent.
 

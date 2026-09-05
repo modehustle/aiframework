@@ -275,6 +275,85 @@ check "HEAD ушёл вперёд → exit 1" "$?" "1"
 "$FRAIM" status "$PROJ" 2>/dev/null | grep -q 'отстал'
 check "вердикт называет протухший план" "$?" "0"
 
+# Протухание меряется по ПОВЕРХНОСТИ плана, а не по счётчику коммитов. Три исхода —
+# и первый из них тот, из-за которого проверка была бесполезна: очередь, запечатывая
+# сама себя, двигала HEAD и объявляла протухшими все планы в себе.
+STALE="$SANDBOX/stale"
+mkdir -p "$STALE/ai/tasks" "$STALE/src"
+git -C "$STALE" init -q
+git -C "$STALE" config user.email t@t; git -C "$STALE" config user.name t
+printf '# Arch\n' > "$STALE/ARCHITECTURE.md"
+printf '# Conv\n' > "$STALE/CONVENTIONS.md"
+printf 'app\n' > "$STALE/src/app.py"
+printf 'other\n' > "$STALE/src/other.py"
+git -C "$STALE" add -A >/dev/null 2>&1
+git -C "$STALE" commit -qm init >/dev/null 2>&1
+
+stale_plan() { # slug base surface-file
+    mkdir -p "$STALE/ai/tasks/$1"
+    printf '# Task Context\n\n## Plan provenance\n- Based on: HEAD %s\n\n## Codebase Context\n- `%s` — образец\n' \
+        "$2" "$3" > "$STALE/ai/tasks/$1/context.md"
+    printf '# Task\n\n## Files to Change\n\n### `%s`\n- **Action:** modify\n' "$3" > "$STALE/ai/tasks/$1/task.md"
+}
+
+BASE=$(git -C "$STALE" rev-parse --short HEAD)
+stale_plan alpha "$BASE" src/app.py
+stale_plan beta  "$BASE" src/app.py
+git -C "$STALE" add -A >/dev/null 2>&1
+git -C "$STALE" commit -qm "plan: alpha — план готов к исполнению" >/dev/null 2>&1
+printf 'x\n' >> "$STALE/ai/tasks/beta/task.md"
+git -C "$STALE" add -A >/dev/null 2>&1
+git -C "$STALE" commit -qm "plan: beta — план готов к исполнению" >/dev/null 2>&1
+
+"$FRAIM" status "$STALE" >/dev/null 2>&1
+check "очередь запечатала себя (только ai/) → не протухание" "$?" "0"
+check "ни одного stale-plan на бухгалтерии" \
+    "$("$FRAIM" status "$STALE" --json 2>/dev/null | grep -c '"id": "stale-plan"')" "0"
+
+# Код поехал мимо файлов плана: сказать стоит, блокировать — нет.
+printf 'changed\n' >> "$STALE/src/other.py"
+git -C "$STALE" commit -aqm "feat: other" >/dev/null 2>&1
+"$FRAIM" status "$STALE" >/dev/null 2>&1
+check "коммит мимо поверхности плана → exit 0" "$?" "0"
+check "но он назван как info" \
+    "$("$FRAIM" status "$STALE" --json 2>/dev/null | grep -c '"severity": "info", "message": "план «alpha»')" "1"
+
+# Изменился файл, на котором план стоит, — вот это протухание, и оно с уликой.
+printf 'changed\n' >> "$STALE/src/app.py"
+git -C "$STALE" commit -aqm "feat: app" >/dev/null 2>&1
+"$FRAIM" status "$STALE" >/dev/null 2>&1
+check "изменился файл из плана → exit 1" "$?" "1"
+"$FRAIM" status "$STALE" 2>/dev/null | grep -q 'план «alpha» отстал: изменился src/app.py'
+check "находка называет файл, а не число коммитов" "$?" "0"
+
+# Каталог в Codebase Context покрывает всё под собой.
+BASE2=$(git -C "$STALE" rev-parse --short HEAD)
+stale_plan gamma "$BASE2" src/
+printf 'deep\n' > "$STALE/src/nested.py"
+git -C "$STALE" add -A >/dev/null 2>&1
+git -C "$STALE" commit -qm "feat: nested" >/dev/null 2>&1
+"$FRAIM" status "$STALE" 2>/dev/null | grep -q 'план «gamma» отстал: изменился src/nested.py'
+check "каталог в поверхности ловит файл под ним" "$?" "0"
+
+# Фундамент, который исполнитель и так перечитывает на Шаге 1, поверхностью не считается:
+# он стоит в КАЖДОМ плане по шаблону, и одна правка карты подняла бы всю очередь разом.
+BASE4=$(git -C "$STALE" rev-parse --short HEAD)
+stale_plan delta "$BASE4" src/app.py
+printf 'map moved\n' >> "$STALE/ARCHITECTURE.md"
+git -C "$STALE" add -A >/dev/null 2>&1
+git -C "$STALE" commit -qm "prune: карта" >/dev/null 2>&1
+check "правка ARCHITECTURE.md не поднимает очередь" \
+    "$("$FRAIM" status "$STALE" --json 2>/dev/null | grep -c '"severity": "attention", "message": "план «delta»')" "0"
+
+# План без перечисленных файлов сверить не с чем — там счётчик коммитов и остаётся.
+BASE3=$(git -C "$STALE" rev-parse --short HEAD)
+mkdir -p "$STALE/ai/tasks/blind"
+printf '# Task Context\n\n## Plan provenance\n- Based on: HEAD %s\n' "$BASE3" > "$STALE/ai/tasks/blind/context.md"
+printf 'more\n' >> "$STALE/src/other.py"
+git -C "$STALE" commit -aqm "feat: other again" >/dev/null 2>&1
+"$FRAIM" status "$STALE" 2>/dev/null | grep -q 'план «blind» отстал от HEAD на 1 коммит кода'
+check "план без списка файлов падает обратно на счётчик" "$?" "0"
+
 # Version drift of the system itself.
 printf -- '- System: fraim 0.0.1-old\n' >> "$PROJ/ai/tasks/feature-x/context.md"
 "$FRAIM" status "$PROJ" 2>/dev/null | grep -q 'написан fraim 0.0.1-old'

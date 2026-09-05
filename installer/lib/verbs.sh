@@ -611,6 +611,34 @@ verb_pitfall() {
 # in a real plan from reading as an unfilled blank.
 verb_has_placeholder() { grep -q '<[^>]* [^>]*>' "$1"; }
 
+# The addresses a plan stands on. Two sections carry them: `## Codebase Context` in
+# context.md is what the executor must READ, `## Files to Change` in task.md is what it
+# must WRITE. Both are extracted here and nowhere else, because two readers ask the same
+# question and must not answer it differently: `plan-seal` checks that every address
+# resolves, and the watchman asks whether any of them moved after the plan was written.
+verb_plan_context_paths() {
+    [ -f "$1" ] || return 0
+    awk '/^## Codebase Context/{f=1;next} /^## /{f=0} f' "$1" |
+        grep -oE '`[^`]+`' | tr -d '`' | grep -E '/|\.[a-z]+$' | sort -u
+}
+
+# Every `### `path`` heading under `## Files to Change`. `--existing` drops the files the
+# plan says to create: they are the one kind of address that legitimately does not resolve
+# yet. The watchman wants them anyway — a file someone else created while the plan waited
+# is a collision, not an absence.
+verb_plan_change_paths() {
+    _f=$1; _mode=${2:-}
+    [ -f "$_f" ] || return 0
+    awk -v mode="$_mode" '
+        /^### `/ {
+            p = $0; sub(/^### `/, "", p); sub(/`.*$/, "", p)
+            if (mode != "--existing") { print p; p = "" }
+            next
+        }
+        /^- \*\*Action:\*\*/ { if (p != "" && $0 !~ /create/) print p; p = "" }
+    ' "$_f" | sort -u
+}
+
 verb_plan_required() {
     _file=$1; _label=$2; shift 2
     for _s in "$@"; do
@@ -673,8 +701,7 @@ $_bad"
     # 6. Addresses must resolve. A path that does not exist is the classic plan defect:
     #    the executor pays a full run to discover a typo the planner could not see.
     _missing=
-    _paths=$(awk '/^## Codebase Context/{f=1;next} /^## /{f=0} f' "$_ctx" |
-             grep -oE '`[^`]+`' | tr -d '`' | grep -E '/|\.[a-z]+$' | sort -u)
+    _paths=$(verb_plan_context_paths "$_ctx")
     for _p in $_paths; do
         case $_p in */) _p=${_p%/} ;; esac
         [ -e "$_root/$_p" ] || _missing="$_missing $_p"
@@ -683,13 +710,7 @@ $_bad"
         die "context.md: путь из Codebase Context не существует:$_missing"
 
     # The same for files being changed — except the ones the plan says to create.
-    _missing=$(awk '
-        /^### `/ { p = $0; sub(/^### `/, "", p); sub(/`.*$/, "", p); next }
-        /^- \*\*Action:\*\*/ {
-            if (p != "" && $0 !~ /create/) print p
-            p = ""
-        }
-    ' "$_task" | sort -u | while read -r _p; do
+    _missing=$(verb_plan_change_paths "$_task" --existing | while read -r _p; do
         [ -n "$_p" ] || continue
         [ -e "$_root/$_p" ] || printf ' %s' "$_p"
     done)

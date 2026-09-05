@@ -3,7 +3,7 @@ name: run-task
 description: "Pick a task from the ai/tasks/ queue, execute it literally, then archive on user approval"
 metadata:
   tier: cheap
-  version: 0.7.1
+  version: 0.7.2
   source: fraim
 ---
 # /run-task — Execute Prepared Task
@@ -88,11 +88,20 @@ workflow, not a shortcut.
 4.5 Check: does the plan contradict `ARCHITECTURE.md`, `CONVENTIONS.md`, or the code as it is?
 4.6 Run `fraim status --json` and read the findings for **this** slug. Two of them are staleness
     checks the watchman already performs, deterministically, against the `## Plan provenance`
-    stamp: `stale-plan` (the code moved after the plan was written) and `plan-version` (the plan
-    was written by a different release of these procedures than the one executing it). Either
-    one naming your slug → plan defect, go to Step 4d. Do not re-derive this by hand: the
-    watchman is the one implementation of that arithmetic. (why: N3)
-4.6a No `fraim` — read `## Plan provenance` yourself and say plainly that the check was manual.
+    stamp: `stale-plan` (a file this plan stands on moved after the plan was written) and
+    `plan-version` (the plan was written by a different release of these procedures than the
+    one executing it). Either one naming your slug at severity `attention` → plan defect, go to
+    Step 4d. Do not re-derive this by hand: the watchman is the one implementation of that
+    arithmetic. (why: N3)
+4.6a A `stale-plan` finding at severity `info` is **not** a defect: it says the code moved past
+     this plan's files, not through them. Do not block on it. Say in one line that it is there,
+     and let 4.7 decide — that step re-reads those files anyway.
+4.6b No `fraim` — read `## Plan provenance` yourself and say plainly that the check was manual.
+     Compare `git diff --name-only <Based on>..HEAD` against the paths under `## Codebase
+     Context` and `## Files to Change`; only an overlap is staleness. A diff that lands entirely
+     in `ai/` is the queue sealing itself — every verb ends in its own commit, so plans standing
+     in line push each other away from HEAD without a line of code changing. That is not a
+     defect and does not need `/revise-task`. (why: N3)
      Reading is allowed without the CLI; changing state is not.
 4.7 Re-open the `## Codebase Context` files and confirm the patterns the plan tells you to mirror
     still hold.
@@ -231,6 +240,19 @@ user thought they asked for.
 that changed the same files. The provenance stamp is the snapshot it was written against, so
 comparing it against the code now is what catches a plan that was correct when written and is
 not correct anymore.
+
+What is compared matters as much as the comparison. «HEAD moved» is the wrong question in this
+system: every verb ends in a commit of its own, so sealing six plans moves HEAD six times over
+`ai/` alone, and a check counting commits calls all six of them stale — six blockers, zero
+changed lines. The watchman therefore measures the plan's **surface** — the files it tells you
+to read (`## Codebase Context`) and the files it tells you to change (`## Files to Change`) —
+and names the ones that moved. `attention` means the ground under the plan shifted; `info` means
+the project moved elsewhere; bookkeeping under `ai/` is not reported at all.
+
+`ARCHITECTURE.md` and `CONVENTIONS.md` are the exception on the reading side: you open both in
+full at Step 1.1–1.2, before the plan, so they can never reach you as somebody's stale snapshot
+— and they sit in every plan's Codebase Context by template, so counting them would stale the
+entire queue over one edit to the map. A plan out to **change** them is counted as normal.
 
 The `System:` line applies that same test to the workflow system itself. The procedures are
 installed globally and update on their own schedule, so a plan written by one release can be
