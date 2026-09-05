@@ -325,6 +325,20 @@ wm_check_remote() {
         return 0
     fi
 
+    # Настройку начали и не довели: адрес прописан, а remote-tracking веток нет ни одной —
+    # значит туда ни разу ничего не отправляли. Репозиторий на хосте в этот момент обычно
+    # создан и пуст, и это худшее из состояний: снаружи копия выглядит существующей, а
+    # внутри её нет. Видно без сети — сторож читает собственные refs, а не спрашивает хост.
+    #
+    # Отдельная находка, а не «N точек не уехали», потому что величина другая: не
+    # отставание копии, а незаконченная работа (D5). Порог сюда не применяется — незакрытая
+    # настройка не становится нормой от того, что точек в проекте всего две.
+    if [ -n "$(git -C "$_root" rev-parse -q --verify HEAD 2>/dev/null)" ] &&
+       [ -z "$(git -C "$_root" for-each-ref --count=1 refs/remotes 2>/dev/null)" ]; then
+        wm_add remote attention "адрес копии прописан, но туда ни разу ничего не уезжало" "fraim publish"
+        return 0
+    fi
+
     # Commits on HEAD that no remote ref carries. This works without an upstream being
     # configured, which matters: a branch created locally usually has none.
     _n=$(git -C "$_root" rev-list --count HEAD --not --remotes 2>/dev/null)

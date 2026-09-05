@@ -142,11 +142,19 @@ A deterministic action has exactly one implementation.
 
 `fraim publish` is the one command here that reaches the network, and what it does cannot be
 taken back — a repository that was public for a minute was public. `fraim publish --check` is
-yours to run freely: no network call, it reports what is installed, whether a copy exists, how
-much has not travelled, and whether the history carries a secret that must not leave the
-machine. The publish itself is the human's: it prints a plan and asks, and through a pipe
-without `--yes` it deliberately does nothing. **Never pass `--yes` or `--force` on your own
-initiative** — where the copy lives and who may read it is the user's decision, not a default.
+yours to run freely: no network call, it reports what is installed, whether a copy exists,
+whether the setup was ever finished, and whether the history carries a secret that must not
+leave the machine. The publish itself is the human's: it prints a plan and asks, and through a
+pipe without `--yes` it deliberately does nothing. **Never pass `--yes` or `--force` on your
+own initiative** — where the copy lives and who may read it is the user's decision, not a default.
+
+Two of its refusals hand you a **ready-made brief** — a secret already in the history, and a
+remote that carries work this machine does not have. When the user pastes one to you, it is
+self-contained and it states its own limits; honour them. Both end in a rewrite or a merge the
+system deliberately does not perform for anyone: `fraim` never rewrites history (`fraim undo`
+is a counter-commit for exactly that reason), so cleaning a secret out of the past is an
+external tool, run once, with the user's explicit yes — and the first step is never git at all,
+it is rotating the key that was exposed.
 
 ## The one rule for you
 

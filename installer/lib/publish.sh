@@ -392,6 +392,7 @@ publish_plan_show() {
         printf '  %s %s\n' "$(wm_pad куда 9)" \
             "$(publish_provider_field "$_pub_prov" 2), репозиторий «$_pub_name» — будет создан"
     fi
+    [ -z "$PUB_HOST" ] || printf '  %s %s\n' "$(wm_pad 'на хосте' 9)" "$(publish_host_line)"
     printf '  %s %s\n' "$(wm_pad доступ 9)" "$(publish_vis_label "$_pub_vis")"
     printf '  %s %s\n' "$(wm_pad 'что едет' 9)" \
         "ветка $_pub_branch, $_pub_n $(wm_plural "${_pub_n:-0}" \
@@ -604,5 +605,159 @@ publish_created_url() {
         github) gh repo view "$2" --json sshUrl --jq .sshUrl 2>/dev/null ;;
         gitlab) glab repo view "$2" 2>/dev/null | sed -n 's#.*\(git@[^ ]*\.git\).*#\1#p' | head -1 ;;
     esac
+    return 0
+}
+
+# --- правда с хоста ---------------------------------------------------------
+# Локальная бухгалтерия «уехало / не уехало» — это `refs/remotes`, то есть память ЭТОЙ
+# машины о прошлом push. Она врёт ровно в тех случаях, ради которых проверка и нужна:
+# репозиторий на хосте создали и не наполнили, ветку там удалили, историю туда положили
+# из другого места. Спросить можно только сам хост — поэтому это делает `publish`
+# (команда человека, которой можно в сеть), а не сторож (D4: он без сети и без действий).
+#
+# PUB_HOST — одно слово, PUB_HOST_SHA — то, что лежит на хосте, когда оно там есть:
+#   unreachable  хост не ответил
+#   empty        на хосте нет ни одной ветки — «создан, но пуст»
+#   synced       наша ветка там и совпадает с HEAD
+#   behind       наша ветка там отстаёт, или её там нет вовсе
+#   diverged     на хосте есть работа, которой нет здесь
+PUB_HOST=
+PUB_HOST_SHA=
+publish_host_state() {
+    _pub_root=$1; _pub_br=$2
+    PUB_HOST=; PUB_HOST_SHA=
+    _pub_ls=$(git -C "$_pub_root" ls-remote --heads origin 2>/dev/null) || {
+        PUB_HOST=unreachable; return 0
+    }
+    if [ -z "$_pub_ls" ]; then PUB_HOST=empty; return 0; fi
+    PUB_HOST_SHA=$(printf '%s\n' "$_pub_ls" |
+        awk -v b="refs/heads/$_pub_br" '$2 == b { print $1; exit }')
+    if [ -z "$PUB_HOST_SHA" ]; then PUB_HOST=behind; return 0; fi
+    _pub_local=$(publish_head "$_pub_root")
+    if [ "$PUB_HOST_SHA" = "$_pub_local" ]; then PUB_HOST=synced; return 0; fi
+    # Объекта с хоста может не быть у нас вовсе — тогда сверять нечем, и это по
+    # определению расхождение: там лежит то, чего здесь не видели.
+    if git -C "$_pub_root" cat-file -e "$PUB_HOST_SHA^{commit}" 2>/dev/null &&
+       git -C "$_pub_root" merge-base --is-ancestor "$PUB_HOST_SHA" "$_pub_local" 2>/dev/null; then
+        PUB_HOST=behind
+    else
+        PUB_HOST=diverged
+    fi
+    return 0
+}
+
+publish_host_line() {
+    case $PUB_HOST in
+        unreachable) printf 'хост не ответил — сверить не с чем\n' ;;
+        empty)       printf 'репозиторий создан, но ПУСТ — история туда не доехала\n' ;;
+        synced)      printf 'там ровно то же, что здесь\n' ;;
+        behind)      printf 'там старее, чем здесь — часть точек не доехала\n' ;;
+        diverged)    printf 'там есть работа, которой нет здесь\n' ;;
+        *)           printf '\n' ;;
+    esac
+}
+
+# --- задание агенту ---------------------------------------------------------
+# Два места, где команда обязана остановиться и где «сделай сам» было бы просьбой о
+# экспертизе, которой у пользователя может не быть (P0): секрет, уже лежащий в истории,
+# и расхождение с хостом. Обе задачи требуют суждения и обе делаются инструментами,
+# которых у системы нет и не будет: чистка истории — это ПЕРЕПИСЫВАНИЕ истории, а его
+# fraim себе не позволяет нигде (`fraim undo` — встречный коммит, и это не случайность).
+#
+# Поэтому отказ печатает не совет, а готовое задание: самодостаточное, с фактами внутри
+# и с границами, за которые агенту выходить нельзя. Блок печатается без цвета и без рамок
+# по краям строк — его копируют целиком.
+PUB_RULE='────────────────────────────────────────────────────────────────'
+
+publish_brief_open() {
+    say ""
+    say "  ${C_BLD}Отдай это агенту — скопируй всё между линиями:${C_OFF}"
+    printf '  %s%s%s\n' "$C_DIM" "$PUB_RULE" "$C_OFF"
+}
+publish_brief_close() {
+    printf '  %s%s%s\n' "$C_DIM" "$PUB_RULE" "$C_OFF"
+}
+
+publish_refuse_secret() {
+    _pub_root=$1
+    _pub_n=$(pub_count "$PUB_STOP")
+    say ""
+    printf '%s✗%s публикация остановлена: %s %s %s уезжать с этой машины\n' \
+        "$C_RED" "$C_OFF" "$_pub_n" \
+        "$(wm_plural "$_pub_n" находка находки находок)" \
+        "$(wm_plural "$_pub_n" "не должна" "не должны" "не должны")"
+    say ""
+    say "  По порядку:"
+    say "  1. Смени сам ключ там, где он выдан — он уже полежал в файле, это не отменить."
+    if [ -z "$(publish_remote_url "$_pub_root")" ]; then
+        say "  2. Копии нет: файл видели только на этой машине, спешки нет."
+    else
+        say "  2. Копия уже есть — считай, что файл там. Ключ меняется в любом случае."
+    fi
+    say "  3. Убрать его из истории — это переписывание истории. Единственная операция,"
+    say "     которую система себе не позволяет: это работа для агента, не для fraim."
+
+    publish_brief_open
+    printf 'Проект: %s\n' "$_pub_root"
+    printf 'Задача: убрать из истории git то, что нельзя публиковать, и довести проект\n'
+    printf 'до первой публикации.\n\n'
+    printf 'Что нашёл `fraim publish` (смотрел всю историю, а не только рабочую папку):\n'
+    _pub_ifs=$IFS; IFS='
+'
+    for _pub_line in $PUB_STOP; do
+        [ -n "$_pub_line" ] || continue
+        printf -- '  - %s — %s\n' "${_pub_line%%	*}" "${_pub_line#*	}"
+    done
+    IFS=$_pub_ifs
+    cat <<'BRIEF'
+
+Порядок работы:
+1. Перечисли, какие именно ключи нужно отозвать и где это делается. Отзываю и
+   меняю их я сам — ты только называешь, что и где.
+2. Посмотри, публиковался ли репозиторий: git remote -v, git ls-remote.
+3. Предложи, как вычистить найденное из ВСЕЙ истории (git filter-repo или BFG).
+   Покажи команду и скажи, что именно она затрёт. Не запускай без моего «да»:
+   это переписывание истории, откатить его нельзя.
+4. После чистки прогони `fraim publish --check` — он должен сказать «чисто».
+
+Границы:
+- ничего не публиковать и не пушить;
+- `fraim publish --force` не предлагать: он отправит найденное как есть;
+- `fraim commit`, `fraim undo` и `fraim restore` историю не переписывают,
+  для этой задачи они не подходят.
+BRIEF
+    publish_brief_close
+    say ""
+    dim "  Если находка ложная (тестовая фикстура, пример в документации) — fraim publish --force."
+    return 0
+}
+
+publish_refuse_diverged() {
+    _pub_root=$1; _pub_url=$2; _pub_br=$3
+    _pub_local=$(publish_head "$_pub_root")
+    say ""
+    printf '%s✗%s на хосте есть работа, которой нет здесь — отправлять нельзя\n' "$C_RED" "$C_OFF"
+    say ""
+    say "  Это не поломка, а развилка: кто-то отправлял в эту копию не с этой машины"
+    say "  (вторая машина, веб-сессия, CI, другой человек). Свести их — суждение, и"
+    say "  единственный способ сделать это «одной кнопкой» затёр бы чью-то работу."
+
+    publish_brief_open
+    printf 'Проект: %s\n' "$_pub_root"
+    printf 'Задача: свести расхождение между этой машиной и удалённой копией.\n\n'
+    printf 'Состояние (по `fraim publish`):\n'
+    printf -- '  адрес:    %s\n' "$_pub_url"
+    printf -- '  ветка:    %s\n' "$_pub_br"
+    printf -- '  здесь:    %s\n' "$_pub_local"
+    printf -- '  на хосте: %s — этого коммита здесь нет\n' "$PUB_HOST_SHA"
+    printf '\nПорядок работы:\n'
+    printf '1. Покажи, что там: git fetch origin, затем git log --oneline HEAD..origin/%s\n' "$_pub_br"
+    cat <<'BRIEF'
+2. Скажи словами, откуда это взялось и что будет потеряно в каждом варианте:
+   взять ту работу сюда или отправить эту туда.
+3. Ничего не сводить без моего «да». force-push не предлагать вовсе.
+4. Когда сведено — я запущу `fraim publish`, он сверится с хостом сам.
+BRIEF
+    publish_brief_close
     return 0
 }

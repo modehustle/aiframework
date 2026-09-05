@@ -542,6 +542,19 @@ check "отслеживаемый .env вызывает предупрежден
 rm -f "$LEGACY/.env2"
 
 # Save points that never left this machine: detection only, never a reach for the network.
+#
+# Две разные величины, и мерить их одной было бы враньём (D5). Здесь адрес прописан, а
+# отправляли по нему ни разу — это незакрытая настройка, а не отставание копии, и на хосте
+# в этот момент обычно лежит пустой репозиторий, который снаружи выглядит существующим.
+"$FRAIM" status "$LEGACY" 2>/dev/null | grep -q 'ни разу ничего не уезжало'
+check "сторож видит незаконченную настройку копии" "$?" "0"
+
+# А вот это уже отставание: копия наполнена, и после неё легли новые точки.
+git -C "$LEGACY" push -q origin HEAD >/dev/null 2>&1
+printf 'y\n' >> "$LEGACY/src/index.js"
+git -C "$LEGACY" commit -qam "fix: y" >/dev/null 2>&1
+printf 'z\n' >> "$LEGACY/src/index.js"
+git -C "$LEGACY" commit -qam "fix: z" >/dev/null 2>&1
 "$FRAIM" status "$LEGACY" 2>/dev/null | grep -q 'не уехали в удалённую копию'
 check "сторож видит неуехавшие точки сохранения" "$?" "0"
 "$FRAIM" config set unpushed_threshold 1 >/dev/null 2>&1
@@ -1214,7 +1227,8 @@ check "на хосте та же точка" \
       "$(git -C "$SANDBOX/pub-remote.git" rev-parse HEAD)" "$(git -C "$PUB" rev-parse HEAD)"
 
 OUT=$("$FRAIM" publish 2>&1)
-check "повторный запуск ничего не делает" "$(printf '%s' "$OUT" | grep -c 'всё уехало')" "1"
+check "повторный запуск ничего не делает" \
+      "$(printf '%s' "$OUT" | grep -c 'совпадает с этой машиной')" "1"
 
 printf 'print(2)\n' >> app.py
 git -C "$PUB" commit -qam "fix: more" >/dev/null
@@ -1241,7 +1255,17 @@ check "находка в истории роняет код возврата" "$
 OUT=$("$FRAIM" publish --url "$SANDBOX/pub-remote2.git" --yes 2>&1); RC=$?
 check "гейт останавливает публикацию" "$RC" "2"
 check "ремоут при отказе не прописан" "$(git -C "$PUBS" remote | wc -l | tr -d ' ')" "0"
-check "отказ называет обход" "$(printf '%s' "$OUT" | grep -c 'publish --force')" "1"
+check "отказ называет обход" "$(printf '%s' "$OUT" | grep -c 'находка ложная')" "1"
+# Отказ отдаёт готовое задание, а не совет: «убери файл из истории» — это просьба об
+# экспертизе, которой у пользователя может не быть.
+check "отказ печатает задание агенту" \
+      "$(printf '%s' "$OUT" | grep -c 'Отдай это агенту')" "1"
+check "задание самодостаточно: в нём путь проекта" \
+      "$(printf '%s' "$OUT" | grep -c "Проект: $PUBS")" "1"
+check "задание называет найденное поимённо" "$(printf '%s' "$OUT" | grep -c '  - \.env')" "1"
+check "задание ставит границы агенту" "$(printf '%s' "$OUT" | grep -c 'Границы:')" "1"
+check "задание не советует переписывать историю молча" \
+      "$(printf '%s' "$OUT" | grep -c 'Не запускай без моего')" "1"
 
 git init -q --bare "$SANDBOX/pub-remote2.git"
 OUT=$("$FRAIM" publish --url "$SANDBOX/pub-remote2.git" --yes --force 2>&1); RC=$?
@@ -1265,6 +1289,70 @@ check "само значение ключа не печатается" \
 check "тяжёлый файл — предупреждение, а не отказ" "$(printf '%s' "$OUT" | grep -c 'МБ в истории')" "1"
 check "зависимости в истории свёрнуты в один каталог" \
       "$(printf '%s' "$OUT" | grep -c 'node_modules/ ')" "1"
+
+# --- рассинхрон с хостом ----------------------------------------------------
+# Локальная бухгалтерия («уехало / не уехало») — это память ЭТОЙ машины о прошлых
+# отправках. Она врёт ровно там, где ошибка дороже всего: репозиторий создан и пуст,
+# ветку на хосте снесли, историю туда положили из другого места. Поэтому publish
+# спрашивает хост, а не свои refs — три случая ниже проверяют каждую из этих форм.
+PUBH="$SANDBOX/pubhost"
+mkdir -p "$PUBH"
+cd "$PUBH" || exit 1
+"$FRAIM" scaffold >/dev/null 2>&1
+printf 'print(1)\n' > app.py
+git -C "$PUBH" add app.py >/dev/null; git -C "$PUBH" commit -qm "feat: app" >/dev/null
+
+# 1. Создан, но пуст: адрес прописан руками, история туда не доехала. Снаружи копия
+#    выглядит существующей — это худшее из состояний, и молчать о нём нельзя.
+git init -q --bare "$SANDBOX/pub-host.git"
+git -C "$PUBH" remote add origin "$SANDBOX/pub-host.git"
+"$FRAIM" status "$PUBH" 2>/dev/null | grep -q 'ни разу ничего не уезжало'
+check "сторож видит недоведённую настройку без сети" "$?" "0"
+
+OUT=$("$FRAIM" publish 2>&1)
+check "publish называет пустой репозиторий на хосте" \
+      "$(printf '%s' "$OUT" | grep -c 'ПУСТ')" "1"
+# Состояние хоста живёт в плане одной строкой и больше нигде: второй раз то же самое
+# сверху — шум, а шум учат пролистывать.
+check "состояние хоста сказано ровно один раз" \
+      "$(printf '%s' "$OUT" | grep -c 'история туда не доехала')" "1"
+"$FRAIM" publish --yes >/dev/null 2>&1
+check "та же команда доводит работу до конца" \
+      "$(git -C "$SANDBOX/pub-host.git" rev-parse HEAD)" "$(git -C "$PUBH" rev-parse HEAD)"
+
+# 2. Ветку на хосте снесли, а refs/remotes здесь остались. По записям этой машины «всё
+#    уехало» — и это ровно то враньё, ради которого сверка и существует.
+BR=$(git -C "$PUBH" rev-parse --abbrev-ref HEAD)
+git -C "$SANDBOX/pub-host.git" update-ref -d "refs/heads/$BR"
+check "локальные записи всё ещё говорят «уехало»" \
+      "$(git -C "$PUBH" rev-list --count HEAD --not --remotes)" "0"
+OUT=$("$FRAIM" publish 2>&1)
+check "publish не верит своим записям против хоста" \
+      "$(printf '%s' "$OUT" | grep -c 'совпадает с этой машиной')" "0"
+"$FRAIM" publish --yes >/dev/null 2>&1
+check "копия восстановлена" \
+      "$(git -C "$SANDBOX/pub-host.git" rev-parse HEAD)" "$(git -C "$PUBH" rev-parse HEAD)"
+
+# 3. На хосте появилась работа, которой здесь нет. Единственный способ «свести одной
+#    кнопкой» — затереть чужое, поэтому команда обязана остановиться и отдать задание.
+OTHER="$SANDBOX/pubother"
+git clone -q "$SANDBOX/pub-host.git" "$OTHER"
+git -C "$OTHER" config user.email t@t; git -C "$OTHER" config user.name t
+printf 'from another machine\n' > "$OTHER/other.py"
+git -C "$OTHER" add other.py >/dev/null; git -C "$OTHER" commit -qm "feat: other" >/dev/null
+git -C "$OTHER" push -q origin HEAD >/dev/null 2>&1
+printf 'print(2)\n' >> "$PUBH/app.py"
+git -C "$PUBH" commit -qam "fix: local" >/dev/null
+
+OUT=$("$FRAIM" publish --yes 2>&1); RC=$?
+check "расхождение останавливает отправку" "$RC" "2"
+check "на хосте ничего не затёрто" \
+      "$(git -C "$SANDBOX/pub-host.git" log --oneline | grep -c 'feat: other')" "1"
+check "расхождение объяснено, а не названо ошибкой" \
+      "$(printf '%s' "$OUT" | grep -c 'работа, которой нет здесь')" "1"
+check "расхождение отдаёт задание агенту" \
+      "$(printf '%s' "$OUT" | grep -c 'свести расхождение')" "1"
+check "задание запрещает force-push" "$(printf '%s' "$OUT" | grep -c 'force-push не предлагать')" "1"
 
 # Провайдер, которого нет, отвечает инструкцией и полом — а не «нельзя». Проект здесь
 # чистый нарочно: иначе до провайдера дело не дойдёт, его остановит гейт безопасности.
