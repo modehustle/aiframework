@@ -92,6 +92,7 @@ menu_bar() {
 menu_items() {
     cat <<'ITEMS'
 Скан проекта	что происходит здесь и сейчас
+Чистка	прибрать всё, что чинится без суждения
 Обновить	поставить и обновить скиллы во всех харнесах
 Доктор	что и куда установлено, что разошлось
 Реестр проектов	все проекты, которые ведёт система
@@ -210,12 +211,13 @@ menu_exec() {
     printf '\033[H\033[J\n'
     case $_n in
         1) ( cmd_status ) ;;
-        2) ( cmd_init ) ;;
-        3) ( cmd_doctor ) ;;
-        4) ( cmd_projects list ) ;;
-        5) ( registry_init; _p=$(pwd -P)
-             if registry_add "$_p"; then ok "в реестре: $_p"; else warn "не удалось добавить: $_p"; fi ) ;;
-        6) ( cmd_config show ) ;;
+        2) ( cmd_clean ) ;;
+        3) ( cmd_init ) ;;
+        4) ( cmd_doctor ) ;;
+        5) ( cmd_projects list ) ;;
+        6) ( registry_init; _menu_p=$(pwd -P)
+             if registry_add "$_menu_p"; then ok "в реестре: $_menu_p"; else warn "не удалось добавить: $_menu_p"; fi ) ;;
+        7) ( cmd_config show ) ;;
     esac
     printf '\n  %sEnter — назад%s ' "$C_DIM" "$C_OFF"
     read -r _ignored 2>/dev/null || true

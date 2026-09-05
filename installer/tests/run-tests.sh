@@ -876,6 +876,87 @@ check "гейт плана: пустую проверку не пропуска�
 
 rm -rf "$PROJ2/ai/tasks/add-cache"
 
+# ---------------------------------------------------------------- clean
+printf '\nfraim clean (чистка)\n'
+
+CL="$SANDBOX/cleanproj"
+mkdir -p "$CL/ai/tasks" "$CL/ai/investigations"
+git -C "$CL" init -q; git -C "$CL" config user.email t@t; git -C "$CL" config user.name t
+printf '# ARCHITECTURE\nmap\n'  > "$CL/ARCHITECTURE.md"
+printf '# CONVENTIONS\nrules\n' > "$CL/CONVENTIONS.md"
+printf '# DECISIONS\n'          > "$CL/DECISIONS.md"
+printf '# README\n'             > "$CL/README.md"
+printf 'check_shape = on\n'     > "$CL/ai/fraim.conf"
+printf 'x\n' > "$CL/app.py"
+git -C "$CL" add -A >/dev/null; git -C "$CL" commit -qm base >/dev/null
+cd "$CL" || exit 1
+
+# исполненная задача с честным отчётом — гейт её пропустит
+"$FRAIM" task-new done-task >/dev/null 2>&1
+printf '# Result\n\n## Status\ncomplete\n\n## Foundation updated\n- ARCHITECTURE.md: no structural change\n' \
+    > "$CL/ai/tasks/done-task/result.md"
+# исполненная задача без отчёта о фундаменте — гейт обязан отказать и в чистке
+"$FRAIM" task-new bad-task >/dev/null 2>&1
+printf '# Result\n\n## Status\ncomplete\n' > "$CL/ai/tasks/bad-task/result.md"
+# протухший план — чистка НЕ должна его трогать
+"$FRAIM" task-new stale-plan >/dev/null 2>&1
+for i in 1 2 3; do
+    printf 'c%s\n' "$i" >> "$CL/app.py"
+    git -C "$CL" add app.py >/dev/null; git -C "$CL" commit -qm "fix: c$i" >/dev/null
+done
+# брошенное расследование и доведённое до исхода
+"$FRAIM" investigate-new abandoned-one >/dev/null 2>&1
+touch -d '40 days ago' "$CL/ai/investigations/abandoned-one/findings.md" 2>/dev/null ||
+    touch -t "$(date -v-40d +%Y%m%d0000 2>/dev/null || echo 202001010000)" \
+        "$CL/ai/investigations/abandoned-one/findings.md"
+"$FRAIM" investigate-new solved-one >/dev/null 2>&1
+python3 - "$CL/ai/investigations/solved-one/findings.md" <<'PYSOLVE'
+import pathlib, sys
+p = pathlib.Path(sys.argv[1]); t = p.read_text()
+t = t.replace('<the ONE unclear thing, as a question that can be answered>', 'why the counter lies')
+t = t.replace('<root cause, plainly. Route: reactive fix (surgical) | /make-task (structural) | /revise-task | /prune.>',
+              'it counted folders, not runnable tasks')
+t = t.replace('<what was ruled out, where exactly you got stuck, what the human must decide or provide.>', '')
+t = t.replace('<repo: what `git status` shows — and world: what was undone, counted against the baseline above>',
+              'repo: clean; world: untouched')
+t = '\n'.join(l for l in t.splitlines() if 'fraim:stub' not in l)
+p.write_text(t + '\n')
+PYSOLVE
+
+# Под пайпом без --yes чистка обязана только показать план: «сама всё сделает» не значит
+# «без спроса», а ратификация не исчезает оттого, что действий стало много (B5).
+PLAN=$("$FRAIM" clean </dev/null 2>&1)
+check "clean без --yes ничего не делает" "$([ -d "$CL/ai/investigations/abandoned-one" ] && echo yes || echo no)" "yes"
+check "clean показывает план" "$(printf '%s' "$PLAN" | grep -c 'Чистка сделает')" "1"
+check "план включает фундамент" "$(printf '%s' "$PLAN" | grep -c 'до стандарта')" "1"
+check "план включает брошенное расследование" "$(printf '%s' "$PLAN" | grep -c 'abandoned-one')" "1"
+check "план включает доведённое расследование" "$(printf '%s' "$PLAN" | grep -c 'solved-one')" "1"
+check "план включает незапечатанную задачу" "$(printf '%s' "$PLAN" | grep -c 'done-task')" "1"
+check "план НЕ трогает протухший план" "$(printf '%s' "$PLAN" | grep -c 'stale-plan')" "0"
+
+OUT=$("$FRAIM" clean --yes </dev/null 2>&1)
+check "clean --yes отработал" "$(printf '%s' "$OUT" | grep -c 'сделано:')" "1"
+check "фундамент доведён до стандарта" "$(grep -c '^## Known Pitfalls / Lessons$' "$CL/CONVENTIONS.md")" "1"
+check "доведённое расследование заархивировано" \
+      "$(find "$CL/ai/archive" -maxdepth 1 -name '*investigate_solved-one' | wc -l | tr -d ' ')" "1"
+check "брошенное расследование заархивировано" \
+      "$(find "$CL/ai/archive" -maxdepth 1 -name '*investigate_abandoned-one' | wc -l | tr -d ' ')" "1"
+# Архив обязан говорить правду: не «сделано», а «брошено, исхода нет, уборка не проверялась».
+check "в архиве записано, что расследование брошено" \
+      "$(cat "$CL"/ai/archive/*investigate_abandoned-one/findings.md | grep -c '^## Abandoned$')" "1"
+check "и что уборка не проверялась" \
+      "$(cat "$CL"/ai/archive/*investigate_abandoned-one/findings.md | grep -c 'Уборка не проверялась')" "1"
+check "исполненная задача запечатана" "$([ -d "$CL/ai/tasks/done-task" ] && echo yes || echo no)" "no"
+# Гейт остаётся гейтом внутри чистки: задача без отчёта о фундаменте не уезжает в архив.
+check "задача без отчёта о фундаменте осталась" "$([ -d "$CL/ai/tasks/bad-task" ] && echo yes || echo no)" "yes"
+check "чистка честно сказала, что осталось" "$(printf '%s' "$OUT" | grep -c 'осталось требующего тебя')" "1"
+check "протухший план не тронут" "$([ -d "$CL/ai/tasks/stale-plan" ] && echo yes || echo no)" "yes"
+
+# Повторный заход не должен находить работу там, где её уже нет.
+PLAN2=$("$FRAIM" clean </dev/null 2>&1)
+check "повторная чистка не предлагает сделанное" "$(printf '%s' "$PLAN2" | grep -c 'solved-one')" "0"
+cd "$SANDBOX" || exit 1
+
 # ------------------------------------------------- стандарт фундамента и upgrade
 printf '\nсоответствие стандарту (shape) и fraim upgrade\n'
 

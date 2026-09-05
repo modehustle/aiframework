@@ -35,6 +35,7 @@ _libdir=$(cd -- "$(dirname -- "$_self")/../lib" 2>/dev/null && pwd -P) || {
 . "$_libdir/scaffold.sh"
 . "$_libdir/verbs.sh"
 . "$_libdir/watchman.sh"
+. "$_libdir/clean.sh"
 . "$_libdir/menu.sh"
 
 usage() {
@@ -48,6 +49,7 @@ fraim — эксплуатационный слой для проектов на
   fraim undo [ХЕШ]          показать точки сохранения / вернуть, как было
   fraim scaffold [ПУТЬ]     завести проект под систему
   fraim upgrade [ПУТЬ]      довести существующий фундамент до стандарта
+  fraim clean [--yes]       прибрать всё, что чинится без суждения
   fraim init | update       поставить / обновить / подхватить новый харнес
   fraim doctor              что и куда установлено, что разошлось
   fraim config              что действует и откуда (set КЛЮЧ ЗНАЧЕНИЕ)
@@ -349,6 +351,36 @@ cmd_upgrade() {
     ok "готово — проверить: fraim status"
 }
 
+# --- clean ------------------------------------------------------------------
+# Один заход вместо тридцати команд. Ратификация не исчезает: план показывается всегда,
+# и без «да» ничего не делается — под пайпом «да» это --yes, иначе чистка только покажет.
+cmd_clean() {
+    _yes=0
+    for _a in "$@"; do
+        case $_a in
+            --yes|-y) _yes=1 ;;
+            --dry-run) _yes=0 ;;
+            *) die "неизвестный флаг: $_a" ;;
+        esac
+    done
+    _root=$(pwd -P)
+    wm_managed "$_root" || die "здесь нечего прибирать: это не проект под системой"
+    clean_scan "$_root"
+    clean_show || return 0
+    say ""
+    if [ "$_yes" = 0 ]; then
+        if [ -t 0 ]; then
+            printf '  Начать? [y/N] '
+            read -r _ans || _ans=
+            case $_ans in y|Y|д|Д|yes|да) ;; *) say "  отменено"; return 0 ;; esac
+        else
+            dim "  это был только план. Выполнить: fraim clean --yes"
+            return 0
+        fi
+    fi
+    clean_apply "$_root"
+}
+
 # --- config -----------------------------------------------------------------
 cmd_config() {
     case ${1:-show} in
@@ -467,6 +499,7 @@ case $_cmd in
     init|update)   cmd_init "$@" ;;
     scaffold)      cmd_scaffold "$@" ;;
     upgrade)       cmd_upgrade "$@" ;;
+    clean)         cmd_clean "$@" ;;
     config)        cmd_config "$@" ;;
     task-new)      cmd_task_new "$@" ;;
     task-block)    cmd_task_block "$@" ;;

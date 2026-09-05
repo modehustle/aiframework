@@ -37,7 +37,11 @@ Exit codes: `0` healthy · `1` something needs the human · `2` project is not
 under the system.
 
 Report the verdict as-is. **Do not act on it** — name the procedure the user should
-run and stop there. Every mutating procedure in this system ends by asking the human,
+run and stop there. The one exception is housekeeping the user asks for: `fraim clean`
+closes the loose ends whose answer is computable (foundation behind the standard,
+investigations with an outcome, abandoned investigations, executed-but-unsealed tasks,
+an unsaved foundation) and deliberately touches nothing that needs judgement — stale
+plans, the queue, foundation drift. It prints its plan and asks before doing anything. Every mutating procedure in this system ends by asking the human,
 by design.
 
 ## Routing table
@@ -129,6 +133,7 @@ A deterministic action has exactly one implementation.
 |---|---|
 | `fraim init` | install / update / pick up a newly installed harness |
 | `fraim upgrade` | bring an existing project's foundation up to the current standard |
+| `fraim clean` | close every loose end whose answer is computable, in one pass |
 | `fraim config` | what settings are in effect and where each came from |
 | `fraim projects` | list, add or remove projects in the registry |
 | `fraim doctor` | what is installed where, which version, what diverged |
