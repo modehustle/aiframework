@@ -108,6 +108,39 @@ OUT=$(timeout 10 "$FRAIM" </dev/null 2>&1 | head -1)
 check "голый fraim без терминала печатает usage" \
       "$(printf '%s' "$OUT" | cut -c1-6)" "fraim "
 
+# Карточка меню рисуется ПОСЛЕ сторожа, а в POSIX sh нет локальных переменных: сторож
+# пишет _w, _n, _msg, пока работает. Меню, считавшее ширину до wm_run, получало
+# «Illegal number: точек сохранения» и рисовало одну пустую строку — ровно на проектах,
+# где находок больше всего. Рельс проверяет отрисовку на проекте с ремоутом и
+# неотправленными точками, то есть в той самой ситуации.
+CARD="$SANDBOX/cardproj"
+mkdir -p "$CARD"
+git init -q --bare "$SANDBOX/card-remote.git"
+git -C "$CARD" init -q; git -C "$CARD" config user.email t@t; git -C "$CARD" config user.name t
+cd "$CARD" || exit 1
+"$FRAIM" scaffold >/dev/null 2>&1
+git -C "$CARD" remote add origin "$SANDBOX/card-remote.git"
+git -C "$CARD" push -q origin HEAD:main 2>/dev/null
+git -C "$CARD" branch -u origin/main >/dev/null 2>&1
+for i in 1 2 3 4 5 6; do
+    printf 'c%s\n' "$i" >> "$CARD/app.py"
+    git -C "$CARD" add app.py >/dev/null; git -C "$CARD" commit -qm "fix: c$i" >/dev/null
+done
+CARDOUT=$(sh -c '
+    . "'"$REPO"'/installer/lib/core.sh"; . "'"$REPO"'/installer/lib/config.sh"
+    . "'"$REPO"'/installer/lib/registry.sh"; . "'"$REPO"'/installer/lib/context.sh"
+    . "'"$REPO"'/installer/lib/scaffold.sh"; . "'"$REPO"'/installer/lib/verbs.sh"
+    . "'"$REPO"'/installer/lib/watchman.sh"; . "'"$REPO"'/installer/lib/menu.sh"
+    cd "'"$CARD"'" && menu_card && printf "%s\n" "$MENU_CARD"' 2>&1)
+check "карточка меню не падает на числах сторожа" "$(printf '%s' "$CARDOUT" | grep -c 'Illegal number')" "0"
+check "карточка меню показывает текст находок" \
+      "$(printf '%s' "$CARDOUT" | grep -c 'не уехали в удалённую копию')" "1"
+# Длинную строку карточка режет по двоеточию, а не по колонке: посчитать колонку
+# правильно можно только зная локаль, а под LC_ALL=C кириллица режется пополам.
+check "длинная находка режется по смыслу" \
+      "$(printf '%s' "$CARDOUT" | grep -c 'скелет развёрнут, но не заполнен: …')" "1"
+cd "$SANDBOX" || exit 1
+
 # Пункт меню и его действие живут в двух местах (menu_items и menu_exec). Рельс
 # ловит класс: добавили строку — забыли ветку. Последний пункт («Выход») ветки
 # не имеет по построению.

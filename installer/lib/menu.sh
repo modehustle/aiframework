@@ -35,30 +35,54 @@ menu_cooked() {
 }
 
 # --- drawing primitives -----------------------------------------------------
+# Every variable here is prefixed `_menu_`. POSIX sh has no locals, and the watchman
+# writes plain `_w`, `_n`, `_msg` while it works: a card that computed its width before
+# calling wm_run got «Illegal number: точек сохранения» and rendered one blank line —
+# on exactly the projects that have the most to report.
 menu_width() {
-    _w=$(tput cols 2>/dev/null) || _w=
-    case $_w in ''|*[!0-9]*) _w=80 ;; esac
-    [ "$_w" -gt 78 ] && _w=78
-    [ "$_w" -lt 44 ] && _w=44
-    printf '%s\n' "$_w"
+    _menu_cols=$(tput cols 2>/dev/null) || _menu_cols=
+    case $_menu_cols in ''|*[!0-9]*) _menu_cols=80 ;; esac
+    [ "$_menu_cols" -gt 78 ] && _menu_cols=78
+    [ "$_menu_cols" -lt 44 ] && _menu_cols=44
+    printf '%s\n' "$_menu_cols"
+}
+
+# Cut a string to a display width, adding an ellipsis. The verdict on a live project can
+# be thirty lines long and each line longer than the terminal; a card that wraps is not a
+# card. What does not fit is still reachable — item 1 prints the full verdict.
+menu_clip() {
+    _menu_s=$1; _menu_max=$2
+    _menu_len=$(str_len "$_menu_s")
+    if [ "$_menu_len" -le "$_menu_max" ]; then
+        printf '%s' "$_menu_s"; return
+    fi
+    # Cut at the colon rather than at a column: every long finding is «что случилось: с
+    # чем именно», and the head is the half worth keeping. Cutting by column would need a
+    # character-aware `cut`, which in the C locale counts bytes and slices Cyrillic in half.
+    _menu_head=${_menu_s%%:*}
+    if [ "$_menu_head" != "$_menu_s" ] &&
+       [ "$(str_len "$_menu_head")" -le "$_menu_max" ]; then
+        printf '%s: …' "$_menu_head"; return
+    fi
+    printf '%s…' "$(printf '%s' "$_menu_s" | cut -c1-$(( _menu_max - 1 )) 2>/dev/null ||
+                    printf '%s' "$_menu_s")"
 }
 
 menu_rule() {
-    _n=$1; _out=
-    while [ "$_n" -gt 0 ]; do _out="$_out─"; _n=$((_n - 1)); done
-    printf '%s' "$_out"
+    _menu_n=$1; _menu_out=
+    while [ "$_menu_n" -gt 0 ]; do _menu_out="$_menu_out─"; _menu_n=$((_menu_n - 1)); done
+    printf '%s' "$_menu_out"
 }
 
 # The title bar. Reverse video across the full width is what makes this read as
 # a screen rather than as scrollback, and it costs one escape sequence.
 menu_bar() {
-    _w=$1; _left=$2; _right=$3
-    _pad=$(( _w - 2 - $(printf '%s' "$_left" | wc -m | tr -d ' ') \
-                    - $(printf '%s' "$_right" | wc -m | tr -d ' ') - 1 ))
-    [ "$_pad" -lt 1 ] && _pad=1
-    printf '\033[7m %s' "$_left"
-    while [ "$_pad" -gt 0 ]; do printf ' '; _pad=$((_pad - 1)); done
-    printf '%s \033[0m\n' "$_right"
+    _menu_w=$1; _menu_left=$2; _menu_right=$3
+    _menu_pad=$(( _menu_w - 2 - $(str_len "$_menu_left") - $(str_len "$_menu_right") - 1 ))
+    [ "$_menu_pad" -lt 1 ] && _menu_pad=1
+    printf '\033[7m %s' "$_menu_left"
+    while [ "$_menu_pad" -gt 0 ]; do printf ' '; _menu_pad=$((_menu_pad - 1)); done
+    printf '%s \033[0m\n' "$_menu_right"
 }
 
 # --- items ------------------------------------------------------------------
@@ -84,53 +108,62 @@ menu_count() { menu_items | wc -l | tr -d ' '; }
 # reused on every redraw. Recomputed only after an action, because an arrow key
 # must not cost a `git log` on a large repository.
 MENU_CARD=
+MENU_CARD_LINES=6
 menu_card() {
-    _root=$(pwd -P)
-    _w=$(menu_width)
-    MENU_CARD=$(
-        if wm_managed "$_root"; then
-            WM_FINDINGS=
-            wm_run "$_root"
-            if [ -z "$WM_FINDINGS" ]; then
-                printf '  %s✓%s всё чисто\n' "$C_GRN" "$C_OFF"
-            else
-                printf '%s\n' "$WM_FINDINGS" | while IFS='	' read -r _id _sev _msg _act; do
-                    [ -n "$_id" ] || continue
-                    if [ "$_sev" = attention ]; then _m="$C_YEL!$C_OFF"; else _m="$C_DIM·$C_OFF"; fi
-                    if [ -n "$_act" ]; then
-                        printf '  %s %s %s→ %s%s\n' "$_m" \
-                            "$(wm_pad "$_msg" $(( _w - 26 )))" "$C_DIM" "$_act" "$C_OFF"
-                    else
-                        printf '  %s %s\n' "$_m" "$_msg"
-                    fi
-                done
-            fi
-        else
+    _menu_root=$(pwd -P)
+    if wm_managed "$_menu_root"; then
+        WM_FINDINGS=
+        wm_run "$_menu_root"
+    else
+        WM_FINDINGS=
+    fi
+    # Width AFTER wm_run: the watchman writes globals while it works.
+    _menu_w=$(menu_width)
+    _menu_body=$(
+        if ! wm_managed "$_menu_root"; then
             printf '  %s·%s каталог не под системой — %s/onboard%s или %sfraim scaffold%s\n' \
                 "$C_DIM" "$C_OFF" "$C_BLD" "$C_OFF" "$C_BLD" "$C_OFF"
+        elif [ -z "$WM_FINDINGS" ]; then
+            printf '  %s✓%s всё чисто\n' "$C_GRN" "$C_OFF"
+        else
+            _menu_shown=0
+            printf '%s\n' "$WM_FINDINGS" | while IFS='	' read -r _menu_id _menu_sev _menu_msg _menu_act; do
+                [ -n "$_menu_id" ] || continue
+                _menu_shown=$((_menu_shown + 1))
+                [ "$_menu_shown" -gt "$MENU_CARD_LINES" ] && continue
+                if [ "$_menu_sev" = attention ]; then _menu_m="$C_YEL!$C_OFF"
+                else _menu_m="$C_DIM·$C_OFF"; fi
+                printf '  %s %s\n' "$_menu_m" "$(menu_clip "$_menu_msg" $(( _menu_w - 6 )))"
+            done
+            _menu_total=$(printf '%s\n' "$WM_FINDINGS" | grep -c '[^[:space:]]' || true)
+            if [ "${_menu_total:-0}" -gt "$MENU_CARD_LINES" ]; then
+                printf '    %s…и ещё %s — «Скан проекта» покажет всё%s\n' \
+                    "$C_DIM" "$(( _menu_total - MENU_CARD_LINES ))" "$C_OFF"
+            fi
         fi
     )
+    MENU_CARD=$_menu_body
 }
 
 menu_draw() {
-    _sel=$1
-    _w=$(menu_width)
+    _menu_sel=$1
+    _menu_w=$(menu_width)
 
     printf '\033[H\033[J'
     printf '\n'
-    menu_bar "$_w" "▌ FRAIM $(fraim_version)" "$(basename -- "$(pwd -P)")"
+    menu_bar "$_menu_w" "▌ FRAIM $(fraim_version)" "$(basename -- "$(pwd -P)")"
     printf '\n'
     printf '%s\n' "$MENU_CARD"
-    printf '\n  %s%s%s\n\n' "$C_DIM" "$(menu_rule $(( _w - 2 )))" "$C_OFF"
+    printf '\n  %s%s%s\n\n' "$C_DIM" "$(menu_rule $(( _menu_w - 2 )))" "$C_OFF"
 
-    _i=0
-    menu_items | while IFS='	' read -r _label _hint; do
-        _i=$((_i + 1))
-        if [ "$_i" = "$_sel" ]; then
+    _menu_i=0
+    menu_items | while IFS='	' read -r _menu_label _menu_hint; do
+        _menu_i=$((_menu_i + 1))
+        if [ "$_menu_i" = "$_menu_sel" ]; then
             printf '  %s%s▸ %s%s  %s%s%s\n' "$C_BLD" "$C_GRN" \
-                "$(wm_pad "$_label" 22)" "$C_OFF" "$C_DIM" "$_hint" "$C_OFF"
+                "$(wm_pad "$_menu_label" 22)" "$C_OFF" "$C_DIM" "$_menu_hint" "$C_OFF"
         else
-            printf '    %s  %s%s%s\n' "$(wm_pad "$_label" 22)" "$C_DIM" "$_hint" "$C_OFF"
+            printf '    %s  %s%s%s\n' "$(wm_pad "$_menu_label" 22)" "$C_DIM" "$_menu_hint" "$C_OFF"
         fi
     done
 
