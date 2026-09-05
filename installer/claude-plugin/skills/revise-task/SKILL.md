@@ -3,7 +3,7 @@ name: revise-task
 description: "Repair a task plan the executor found defective, in place, without losing what was learned"
 metadata:
   tier: strong
-  version: 0.8.0
+  version: 0.8.1
   source: fraim
 ---
 # /revise-task — Repair a Defective Plan

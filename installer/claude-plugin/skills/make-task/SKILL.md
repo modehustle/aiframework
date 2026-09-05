@@ -3,7 +3,7 @@ name: make-task
 description: "Capture the agreed plan into a new task folder under ai/tasks/ for handoff to a fresh-chat executor model"
 metadata:
   tier: strong
-  version: 0.8.0
+  version: 0.8.1
   source: fraim
 ---
 # /make-task — Plan Handoff
