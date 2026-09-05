@@ -145,14 +145,44 @@ wm_check_unsealed() {
     done
 }
 
+# The freshest mtime in a folder: the folder itself, and everything one level inside it.
+# A directory's own mtime moves only when entries are added or removed, so a folder whose
+# one file is edited every day reads as untouched for a month — and «untouched for a month»
+# is exactly what decides whether the cleanup may archive it.
+wm_newest_mtime() {
+    _wnm_dir=$1
+    _wnm_best=$(wm_mtime "$_wnm_dir")
+    for _wnm_e in "$_wnm_dir"/* "$_wnm_dir"/.[!.]*; do
+        [ -e "$_wnm_e" ] || continue
+        _wnm_m=$(wm_mtime "$_wnm_e")
+        case $_wnm_m in ''|*[!0-9]*) continue ;; esac
+        [ "$_wnm_m" -gt "${_wnm_best:-0}" ] && _wnm_best=$_wnm_m
+    done
+    printf '%s\n' "${_wnm_best:-}"
+}
+
 # 4c. Investigations: a folder that never landed on an outcome, or landed and stayed.
 #     This is the terminal state /investigate never had — its folders grew forever.
+#
+#     The walk is over FOLDERS, not over findings.md. It used to be over the file, and a
+#     folder without one was therefore invisible to the verdict and to the cleanup alike:
+#     it survived every `fraim clean` and nothing ever said why. A folder with no report
+#     is not a healthy state — it is the one investigation state with nothing at all to
+#     show for itself.
 wm_check_investigations() {
     _root=$1
     [ -d "$_root/ai/investigations" ] || return 0
-    for _f in "$_root"/ai/investigations/*/findings.md; do
-        [ -f "$_f" ] || continue
-        _slug=$(basename -- "$(dirname -- "$_f")")
+    for _dir in "$_root"/ai/investigations/*/; do
+        [ -d "$_dir" ] || continue
+        _slug=$(basename -- "$_dir")
+        _f="$_dir/findings.md"
+        if [ ! -f "$_f" ]; then
+            _days=$(wm_days_since "$(wm_newest_mtime "$_dir")")
+            wm_add investigation attention \
+                "расследование «$_slug» без findings.md — ни исхода, ни отчёта об уборке ($_days $(wm_plural "$_days" день дня дней))" \
+                "/investigate или fraim clean"
+            continue
+        fi
         _days=$(wm_days_since "$(wm_mtime "$_f")")
         if verb_section_filled "$_f" '### DIAGNOSIS' || verb_section_filled "$_f" '### DEAD-END'; then
             wm_add investigation attention "расследование «$_slug» закончено и не заархивировано" \
@@ -164,6 +194,7 @@ wm_check_investigations() {
             wm_add investigation info "расследование «$_slug» в работе" ""
         fi
     done
+    return 0
 }
 
 # 4d. No save points at all. Every save point in this system is a commit, so a project

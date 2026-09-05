@@ -174,9 +174,14 @@ menu_draw() {
 
 # --- keys -------------------------------------------------------------------
 # Returns one word: up | down | enter | quit | <digit> | other.
+#
+# Every variable here is `_menu_`-prefixed for the same reason as the drawing
+# primitives: this runs inside a command substitution today, but one refactor
+# away from running in the loop's own shell, where a bare `_t` or `_c` would
+# land in the middle of the watchman's namespace.
 menu_getkey() {
-    _c=$(dd bs=1 count=1 2>/dev/null | od -An -tu1 | tr -dc '0-9')
-    case $_c in
+    _menu_c=$(dd bs=1 count=1 2>/dev/null | od -An -tu1 | tr -dc '0-9')
+    case $_menu_c in
         '')       printf 'quit\n' ;;                       # stdin closed
         10|13)    printf 'enter\n' ;;
         113|81)   printf 'quit\n' ;;                       # q Q
@@ -186,18 +191,18 @@ menu_getkey() {
             # An arrow is ESC [ A/B; a bare Esc is just ESC. Read the tail with
             # a timeout so a lone Esc does not block waiting for two more keys.
             stty min 0 time 3 2>/dev/null
-            _t=$(dd bs=1 count=2 2>/dev/null | tr -dc 'A-Z')
+            _menu_t=$(dd bs=1 count=2 2>/dev/null | tr -dc 'A-Z')
             stty min 1 time 0 2>/dev/null
             # A bare Esc is ignored, not treated as quit: over a slow link the
             # three bytes of an arrow can arrive split, and losing the screen
             # because a keystroke was late is worse than ignoring an Esc.
-            case $_t in
+            case $_menu_t in
                 *A) printf 'up\n' ;;
                 *B) printf 'down\n' ;;
                 *)  printf 'other\n' ;;
             esac
             ;;
-        4[89]|5[0-7]) printf '%s\n' "$(( _c - 48 ))" ;;     # 0-9
+        4[89]|5[0-7]) printf '%s\n' "$(( _menu_c - 48 ))" ;;     # 0-9
         *)        printf 'other\n' ;;
     esac
 }
@@ -205,27 +210,47 @@ menu_getkey() {
 # --- actions ----------------------------------------------------------------
 # Every command runs in a subshell: cmd_status and the verbs end in `exit`,
 # and without the subshell the first scan would close the menu.
+#
+# And every subshell ends in `|| true`, which is not belt-and-braces: the CLI runs
+# under `set -e`, and `fraim status` exits 1 whenever the project has anything
+# needing the human — the normal case for the person who opened the menu to look.
+# Without it, choosing «Скан проекта» printed the verdict and then killed the whole
+# process mid-screen, leaving the terminal in raw mode with the cursor hidden. The
+# menu must survive every exit code its own items produce, including the refusals
+# that are answers rather than failures.
 menu_exec() {
-    _n=$1
+    _menu_choice=$1
     menu_cooked
     printf '\033[H\033[J\n'
-    case $_n in
-        1) ( cmd_status ) ;;
-        2) ( cmd_clean ) ;;
-        3) ( cmd_init ) ;;
-        4) ( cmd_doctor ) ;;
-        5) ( cmd_projects list ) ;;
+    case $_menu_choice in
+        1) ( cmd_status ) || true ;;
+        2) ( cmd_clean ) || true ;;
+        3) ( cmd_init ) || true ;;
+        4) ( cmd_doctor ) || true ;;
+        5) ( cmd_projects list ) || true ;;
         6) ( registry_init; _menu_p=$(pwd -P)
-             if registry_add "$_menu_p"; then ok "в реестре: $_menu_p"; else warn "не удалось добавить: $_menu_p"; fi ) ;;
-        7) ( cmd_config show ) ;;
+             if registry_add "$_menu_p"; then ok "в реестре: $_menu_p"; else warn "не удалось добавить: $_menu_p"; fi ) || true ;;
+        7) ( cmd_config show ) || true ;;
     esac
     printf '\n  %sEnter — назад%s ' "$C_DIM" "$C_OFF"
-    read -r _ignored 2>/dev/null || true
+    read -r _menu_ignored 2>/dev/null || true
     menu_card
     menu_raw
 }
 
 # --- loop -------------------------------------------------------------------
+# The loop's own state is UPPERCASE on purpose, like MENU_CARD and MENU_STTY.
+# It has to survive calls into the watchman (menu_card) and into every command
+# (menu_exec), and POSIX sh has no locals: `_n` held the number of items until
+# menu_card ran the watchman, whose queue check writes a plain `_n` of its own.
+# From that moment the item count was 0, so `[ "$_sel" -gt "$_n" ]` was true on
+# every arrow and put the cursor back on line 1 — the menu redrew perfectly and
+# never moved — while `[ "$_k" -le "$_n" ]` rejected every digit, so 1-8 did
+# nothing either. A prefix is not enough here; only a namespace no other module
+# writes is.
+MENU_SEL=1
+MENU_N=0
+MENU_KEY=
 menu_run() {
     if ! menu_supported; then
         # Not a terminal: behave exactly as before. This branch is what keeps
@@ -233,24 +258,28 @@ menu_run() {
         usage
         return 0
     fi
-    _n=$(menu_count)
-    _sel=1
+    MENU_N=$(menu_count)
+    MENU_SEL=1
     menu_card
     menu_raw
+    # EXIT as well as the signals: whatever ends this process — a signal, an
+    # unexpected non-zero under `set -e`, a plain return — must not leave the
+    # operator with a terminal that has no echo and no cursor.
+    trap 'menu_cooked' EXIT
     trap 'menu_cooked; printf "\n"; exit 0' INT TERM HUP
     while :; do
-        menu_draw "$_sel"
-        _k=$(menu_getkey)
-        case $_k in
-            up)    _sel=$((_sel - 1)); [ "$_sel" -lt 1 ] && _sel=$_n ;;
-            down)  _sel=$((_sel + 1)); [ "$_sel" -gt "$_n" ] && _sel=1 ;;
+        menu_draw "$MENU_SEL"
+        MENU_KEY=$(menu_getkey)
+        case $MENU_KEY in
+            up)    MENU_SEL=$((MENU_SEL - 1)); [ "$MENU_SEL" -lt 1 ] && MENU_SEL=$MENU_N ;;
+            down)  MENU_SEL=$((MENU_SEL + 1)); [ "$MENU_SEL" -gt "$MENU_N" ] && MENU_SEL=1 ;;
             quit)  break ;;
-            enter) [ "$_sel" = "$_n" ] && break; menu_exec "$_sel" ;;
+            enter) [ "$MENU_SEL" = "$MENU_N" ] && break; menu_exec "$MENU_SEL" ;;
             [1-9])
-                [ "$_k" -le "$_n" ] || continue
-                _sel=$_k
-                [ "$_sel" = "$_n" ] && break
-                menu_exec "$_sel" ;;
+                [ "$MENU_KEY" -le "$MENU_N" ] || continue
+                MENU_SEL=$MENU_KEY
+                [ "$MENU_SEL" = "$MENU_N" ] && break
+                menu_exec "$MENU_SEL" ;;
             0)     break ;;
             *)     : ;;
         esac
