@@ -3,7 +3,7 @@ name: expose
 description: "Decide and implement how a running service is reachable from outside — internal only, HTTP on the internet behind a reverse proxy with TLS, or non-HTTP over a private network — then apply the edge and firewall for whichever tooling this host actually uses."
 metadata:
   tier: capable
-  version: 0.6.0
+  version: 0.7.0
   source: fraim
 ---
 # /expose — Reach a Service From Outside

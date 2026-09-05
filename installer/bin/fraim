@@ -234,7 +234,11 @@ cmd_doctor() {
     _ver=$(fraim_version)
     _root=$(fraim_root) || die "не найден каталог procedures/"
     say "${C_BLD}fraim $_ver${C_OFF}"
-    say "  источник:  $_root"
+    if git -C "$_root" rev-parse --git-dir >/dev/null 2>&1; then
+        say "  источник:  $_root ($(git -C "$_root" rev-parse --abbrev-ref HEAD 2>/dev/null) $(git -C "$_root" rev-parse --short HEAD 2>/dev/null), $(git -C "$_root" log -1 --format=%cd --date=short 2>/dev/null))"
+    else
+        say "  источник:  $_root"
+    fi
     say "  состояние: $FRAIM_HOME"
     say ""
 
@@ -349,6 +353,28 @@ cmd_upgrade() {
     fi
     say ""
     ok "готово — проверить: fraim status"
+}
+
+# --- version ----------------------------------------------------------------
+# Номер версии — плохой ответ на вопрос «приехало ли обновление»: он меняется, только
+# когда о нём вспомнили, а между двумя релизами ветка успевает уехать на десяток
+# коммитов. Поэтому команда показывает и то, откуда взят исходник: ветку, коммит и его
+# дату. Функция fraim_version при этом печатает по-прежнему один номер — он уезжает в
+# штампы провенанса и во фронтматтер скиллов, и там ему не место рядом с датой.
+cmd_version() {
+    _ver=$(fraim_version)
+    _root=$(fraim_root 2>/dev/null) || _root=
+    if [ -n "$_root" ] && git -C "$_root" rev-parse --git-dir >/dev/null 2>&1; then
+        _branch=$(git -C "$_root" rev-parse --abbrev-ref HEAD 2>/dev/null)
+        _sha=$(git -C "$_root" rev-parse --short HEAD 2>/dev/null)
+        _when=$(git -C "$_root" log -1 --format=%cd --date=short 2>/dev/null)
+        printf '%s\n' "$_ver"
+        dim "  источник: $_root"
+        dim "  ветка $_branch · коммит $_sha · $_when"
+    else
+        printf '%s\n' "$_ver"
+        [ -n "$_root" ] && dim "  источник: $_root (не git-клон)"
+    fi
 }
 
 # --- clean ------------------------------------------------------------------
@@ -522,7 +548,7 @@ case $_cmd in
     doctor)        cmd_doctor "$@" ;;
     show)          cmd_show "$@" ;;
     build)         cmd_build "$@" ;;
-    version|--version|-v) fraim_version ;;
+    version|--version|-v) cmd_version ;;
     help|--help|-h) usage ;;
     *) printf 'fraim: неизвестная команда: %s\n\n' "$_cmd" >&2; usage >&2; exit 2 ;;
 esac
