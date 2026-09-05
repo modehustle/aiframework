@@ -1194,6 +1194,13 @@ cd "$PROJ2" || exit 1
 # ---------------------------------------------------------------- publish
 printf '\nfraim publish (копия вне машины)\n'
 
+# Ветки, которые спрашивают человека, тестируются вызовом самой ветки: вопрос задаётся
+# только на терминале, а pty в POSIX sh не завести.
+PUBLIB_CANCEL='. "'"$REPO"'/installer/lib/core.sh"; . "'"$REPO"'/installer/lib/config.sh"
+    . "'"$REPO"'/installer/lib/registry.sh"; . "'"$REPO"'/installer/lib/context.sh"
+    . "'"$REPO"'/installer/lib/scaffold.sh"; . "'"$REPO"'/installer/lib/verbs.sh"
+    . "'"$REPO"'/installer/lib/watchman.sh"; . "'"$REPO"'/installer/lib/publish.sh"'
+
 # Всё здесь работает без сети и без gh: «хостом» служит локальный bare-репозиторий.
 # Это не упрощение ради теста — это тот же путь, которым идёт --url, то есть пол,
 # на который падает любой провайдер, когда его CLI нет или он повёл себя не так.
@@ -1302,6 +1309,7 @@ check "отказ называет, чем разблокировать" \
 # Приватная копия: находки уезжают, но названы поимённо и приняты явно.
 git init -q --bare "$SANDBOX/pub-priv.git"
 OUT=$("$FRAIM" publish --url "$SANDBOX/pub-priv.git" --private --yes 2>&1); RC=$?
+OUTPRIV=$OUT
 check "приватная копия: работа не встаёт" "$RC" "0"
 check "принятие риска сказано вслух" "$(printf '%s' "$OUT" | grep -c 'принято')" "1"
 check "сказано, откуда известно про приватность" \
@@ -1321,6 +1329,37 @@ check "--brief даёт тот же самодостаточный блок" \
 OUT=$(cd "$PUB" && "$FRAIM" publish --brief 2>&1)
 check "--brief на чистом проекте не выдумывает работу" \
       "$(printf '%s' "$OUT" | grep -c 'нечего вычищать')" "1"
+
+# «Нет» на вопросе о находках — это «хочу, но чистым», а не «передумал публиковать».
+# Раньше человек получал одно слово «отменено» и оставался ровно с тем, с чего начал.
+# Вопрос задаётся только на терминале, поэтому рельс зовёт саму ветку отказа, а
+# отдельная проверка стережёт то, что диспетчер по-прежнему в неё заходит.
+CANC=$(cd "$PUBV" && sh -c "$PUBLIB_CANCEL"'
+    publish_scan "$(pwd -P)"
+    publish_cancel_findings "$(pwd -P)"' 2>&1)
+check "отказ от риска отдаёт задание агенту" \
+      "$(printf '%s' "$CANC" | grep -c 'Отдай это агенту')" "1"
+check "задание называет находки поимённо" \
+      "$(printf '%s' "$CANC" | grep -c 'conf.py')" "1"
+check "отказ не кончается словом «отменено»" \
+      "$(printf '%s' "$CANC" | grep -c 'публикуем после чистки')" "1"
+check "сказано, чем проверить результат чистки" \
+      "$(printf '%s' "$CANC" | grep -c 'проверь сам: fraim publish --check')" "1"
+check "и что публикация после этого продолжится" \
+      "$(printf '%s' "$CANC" | grep -c 'без находок')" "1"
+# Границы задания те же, что и при отказе системы: агент чистит, но не публикует.
+check "задание по-прежнему запрещает публиковать" \
+      "$(printf '%s' "$CANC" | grep -c 'ничего не публиковать и не пушить')" "1"
+
+# Класс, а не случай: если ветку отказа однажды упростят обратно до say «отменено»,
+# задание исчезнет молча — на терминале, куда тесты не заходят.
+CANCWIRED=$(awk '/read -r _ans \|\| _ans=/,/^        else$/' "$REPO/installer/bin/fraim" |
+            grep -c 'publish_cancel_findings' || true)
+check "диспетчер зовёт эту ветку, а не печатает «отменено»" "$CANCWIRED" "1"
+
+# И сам вопрос называет, что означает «нет»: решение читается там, где принимается.
+check "принятие риска называет «нет» как выход" \
+      "$(printf '%s' "$OUTPRIV" | grep -c 'ответь «нет»')" "1"
 
 
 # Значение ключа не должно попасть в вывод: он уедет в скроллбек, в лог сессии агента
@@ -1424,6 +1463,118 @@ fi
 OUT=$("$FRAIM" publish --provider нетакого 2>&1); RC=$?
 check "неизвестный провайдер отвергается" "$RC" "2"
 
+cd "$SANDBOX" || exit 1
+
+# ------------------------------------------------- транспорт: ключ против логина
+# Находка эксплуатации. Адрес был ssh, ssh-ключа на машине не было, gh был авторизован
+# по https. Отправка падала с `Permission denied (publickey)`, подсказка советовала
+# `gh auth login` — команду, которая при протоколе https ставит credential helper и НЕ
+# ставит ssh-ключ. Человек выполнял её, ничего не менялось, цикл замыкался.
+printf '\nfraim publish (транспорт)\n'
+
+# Окружение вокруг тестов может само переписывать ssh-адреса GitHub в https своими
+# url.insteadOf — так делает, например, прокси в облачной сессии. Рельсы ниже проверяют
+# НАШЕ решение, а не чужую подстановку, поэтому на время блока внешняя конфигурация git
+# выключается: иначе `git remote add git@github.com:…` молча становится https-адресом и
+# проверять оказывается нечего.
+GITCFG_SAVED=${GIT_CONFIG_COUNT:-}
+GIT_CONFIG_COUNT=0; export GIT_CONFIG_COUNT
+
+PUBLIB='. "'"$REPO"'/installer/lib/core.sh"; . "'"$REPO"'/installer/lib/config.sh"
+        . "'"$REPO"'/installer/lib/registry.sh"; . "'"$REPO"'/installer/lib/context.sh"
+        . "'"$REPO"'/installer/lib/scaffold.sh"; . "'"$REPO"'/installer/lib/verbs.sh"
+        . "'"$REPO"'/installer/lib/watchman.sh"; . "'"$REPO"'/installer/lib/publish.sh"'
+
+CONV=$(sh -c "$PUBLIB"'
+    for u in git@github.com:me/proj.git ssh://git@gitlab.com/g/p.git https://github.com/a/b.git; do
+        printf "%s " "$(publish_ssh_to_https "$u" || printf -- -)"
+    done')
+check "ssh-адрес переводится в https без потери хоста" "$CONV" \
+      "https://github.com/me/proj.git https://gitlab.com/g/p.git - "
+
+# Отказ по ключу — это ответ хоста, а не молчание сети: их чинят разными руками, и
+# только одно из двух чиним мы. Фальшивый ssh даёт ровно ту строку, что и настоящий.
+FAKESSH="$SANDBOX/fake-ssh"
+printf '#!/bin/sh\nprintf "git@github.com: Permission denied (publickey).\\n" >&2\nexit 255\n' > "$FAKESSH"
+chmod +x "$FAKESSH"
+PUBT="$SANDBOX/pubtrans"
+mkdir -p "$PUBT"
+cd "$PUBT" || exit 1
+"$FRAIM" scaffold >/dev/null 2>&1
+git -C "$PUBT" remote add origin git@github.com:modehustle/crypto_trade.git
+
+HOSTST=$(GIT_SSH_COMMAND="$FAKESSH" sh -c "$PUBLIB"'
+    publish_host_state "'"$PUBT"'" master; printf "%s\n" "$PUB_HOST"')
+check "отказ по ключу — это denied, а не unreachable" "$HOSTST" "denied"
+
+# Без gh транспорт не переключается и ремоут не трогается: подменять чужой адрес там,
+# где вход всё равно неоткуда взять, значит менять один тупик на другой.
+mkdir -p "$SANDBOX/nobin"
+NOGH=$(PATH="$SANDBOX/nobin:/usr/bin:/bin" sh -c "$PUBLIB"'
+    publish_transport_https "'"$PUBT"'" >/dev/null 2>&1 && printf yes || printf no')
+check "без gh транспорт не подменяется" "$NOGH" "no"
+check "и адрес остался тем, что дал человек" \
+      "$(git -C "$PUBT" remote get-url origin)" "git@github.com:modehustle/crypto_trade.git"
+
+# С авторизованным gh и настроенным логином к https адрес переключается — тот же
+# репозиторий, другой транспорт.
+STUB="$SANDBOX/stubbin"
+mkdir -p "$STUB"
+cat > "$STUB/gh" <<'GHSTUB'
+#!/bin/sh
+case "$1 $2" in
+    "auth status") exit 0 ;;
+    "config get")  printf 'https
+'; exit 0 ;;
+    "auth setup-git") exit 0 ;;
+esac
+exit 1
+GHSTUB
+chmod +x "$STUB/gh"
+git config --global credential."https://github.com".helper "!gh auth git-credential"
+SWITCHED=$(PATH="$STUB:$PATH" sh -c "$PUBLIB"'
+    publish_transport_https "'"$PUBT"'" >/dev/null 2>&1 && printf yes || printf no')
+check "с gh и логином к https транспорт переключается" "$SWITCHED" "yes"
+check "адрес стал https того же репозитория" \
+      "$(git -C "$PUBT" remote get-url origin)" "https://github.com/modehustle/crypto_trade.git"
+
+# Подсказка обязана называть действие, которое работает. `gh auth login` ssh-ключа не
+# ставит — этой строки здесь больше нет и быть не должно.
+HINT=$(sh -c "$PUBLIB"'
+    publish_push_hint "git@github.com: Permission denied (publickey)." \
+        "git@github.com:me/proj.git" 2>&1')
+check "подсказка даёт готовый https-адрес" \
+      "$(printf '%s' "$HINT" | grep -c 'publish --url https://github.com/me/proj.git')" "1"
+check "подсказка даёт и второй выход — ключ на хост" \
+      "$(printf '%s' "$HINT" | grep -c 'ssh-keygen')" "1"
+# Строка ищется среди КОДА, а не среди комментариев: в комментарии рядом с починкой
+# старый текст цитируется нарочно — иначе через полгода никто не вспомнит, почему здесь
+# стоит рельс.
+BADHINT=$(grep -vE '^[[:space:]]*#' "$REPO/installer/lib/publish.sh" | grep -cF 'это чинит' || true)
+check "подсказка больше не лечит ssh через gh auth login" "$BADHINT" "0"
+
+# И весь путь целиком, ровно как у владельца: адрес ssh, ключа нет, gh авторизован по
+# https. Фальшивый ssh отказывает так же, как настоящий; «хост» — локальный голый
+# репозиторий, подставленный под https-адрес через url.insteadOf. Отправка обязана
+# доехать сама, без второго захода человека.
+PUBE="$SANDBOX/pube2e"
+mkdir -p "$PUBE"
+git init -q --bare "$SANDBOX/pube2e-host.git"
+git config --global url."$SANDBOX/pube2e-host.git".insteadOf "https://github.com/me/e2e.git"
+cd "$PUBE" || exit 1
+"$FRAIM" scaffold >/dev/null 2>&1
+git -C "$PUBE" remote add origin git@github.com:me/e2e.git
+OUT=$(PATH="$STUB:$PATH" GIT_SSH_COMMAND="$FAKESSH" "$FRAIM" publish --yes 2>&1); RC=$?
+check "отказ по ключу не останавливает публикацию" "$RC" "0"
+check "переключение названо вслух, а не сделано молча" \
+      "$(printf '%s' "$OUT" | grep -c 'адрес переключён на https')" "1"
+check "история доехала до хоста" \
+      "$(git -C "$SANDBOX/pube2e-host.git" log --oneline 2>/dev/null | wc -l | tr -d ' ')" "1"
+check "и сверка с хостом сошлась" \
+      "$(printf '%s' "$OUT" | grep -c 'на хосте лежит ровно то, что здесь')" "1"
+git config --global --unset url."$SANDBOX/pube2e-host.git".insteadOf
+
+if [ -n "$GITCFG_SAVED" ]; then GIT_CONFIG_COUNT=$GITCFG_SAVED; else unset GIT_CONFIG_COUNT; fi
 cd "$SANDBOX" || exit 1
 
 # Рельс: publish отправляет то, что уже сохранено, и ничего не сохраняет сам. Стоит
