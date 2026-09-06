@@ -1697,12 +1697,23 @@ check "rm убирает запись" "$("$FRAIM" projects 2>/dev/null | grep -
 printf '\nfraim init\n'
 
 mkdir -p "$HOME/.codex" "$HOME/.claude"     # pretend two harnesses are installed
+# Antigravity is detected by ~/.gemini/config, not by ~/.gemini: the bare directory
+# belongs to Gemini CLI, which is a different product sharing the same home.
+mkdir -p "$HOME/.gemini"
 cd "$PROJ" || exit 1
+"$FRAIM" init >/dev/null 2>&1
+check "голый ~/.gemini — это не Antigravity" \
+    "$([ -d "$HOME/.gemini/config/skills" ] && echo yes || echo no)" "no"
+mkdir -p "$HOME/.gemini/config"
 "$FRAIM" init >/dev/null 2>&1
 check "init завершился успешно" "$?" "0"
 check "Codex: 13 скиллов" "$(find "$HOME/.codex/skills" -name SKILL.md 2>/dev/null | wc -l | tr -d ' ')" "13"
 check "Claude Code: 13 скиллов" "$(find "$HOME/.claude/skills" -name SKILL.md 2>/dev/null | wc -l | tr -d ' ')" "13"
+check "Antigravity: 13 скиллов" "$(find "$HOME/.gemini/config/skills" -name SKILL.md 2>/dev/null | wc -l | tr -d ' ')" "13"
 check "контекстный блок в ~/.codex/AGENTS.md" "$(grep -c 'fraim:begin' "$HOME/.codex/AGENTS.md" 2>/dev/null)" "1"
+check "контекстный блок в ~/.gemini/AGENTS.md" "$(grep -c 'fraim:begin' "$HOME/.gemini/AGENTS.md" 2>/dev/null)" "1"
+check "GEMINI.md чужой — мы в него не пишем" \
+    "$([ -f "$HOME/.gemini/GEMINI.md" ] && echo yes || echo no)" "no"
 check "проект зарегистрирован" "$("$FRAIM" projects 2>/dev/null | grep -cx "  $PROJ")" "1"
 check "разрешение Bash(fraim:*) прописано" "$(grep -c 'Bash(fraim' "$HOME/.claude/settings.json" 2>/dev/null)" "1"
 

@@ -155,6 +155,14 @@ fraim init
 | omp | `~/.omp/skills/` | `~/.omp/AGENTS.md` |
 | pi | `~/.pi/skills/` | `~/.pi/AGENTS.md` |
 | Devin CLI | `~/.devin/skills/` | `~/.devin/AGENTS.md` |
+| Antigravity | `~/.gemini/config/skills/` | `~/.gemini/AGENTS.md` |
+
+У Antigravity обе клетки нетипичные, и обе намеренные: бинарник называется `agy`, а не
+`antigravity`; каталог скиллов — `~/.gemini/config/skills/`, единственный, который читают
+все три его обличья (IDE, CLI и сам агент); блок контекста уходит в `~/.gemini/AGENTS.md`,
+а не в соседний `GEMINI.md` — тот же каталог использует Gemini CLI, и `GEMINI.md` он
+переписывает как свой. Признаком присутствия служит `~/.gemini/config`, а не `~/.gemini`:
+голый `~/.gemini` — это Gemini CLI, другой продукт.
 
 Харнес считается установленным, если его бинарник есть в `PATH` **или** существует его
 домашний каталог. Оба признака нужны: харнес бывает поставлен, но ещё не в `PATH` этой
