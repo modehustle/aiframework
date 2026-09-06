@@ -167,6 +167,10 @@ wm_check_stale_plans() {
         [ -f "$_c" ] || continue
         _dir=$(dirname -- "$_c")
         _slug=$(basename -- "$_dir")
+        # A task that already carries a result or a blocker is not waiting to be executed,
+        # and staleness is a statement about what the executor runs into next.
+        [ -f "$_dir/result.md" ] && continue
+        [ -f "$_dir/blockers.md" ] && continue
         # Pull the first 7+ hex chars off the `Based on:` line.
         _ref=$(sed -n 's/^-\{0,1\}[[:space:]]*Based on:.*/&/p' "$_c" | head -1 |
                grep -oE '[0-9a-f]{7,40}' | head -1)
@@ -217,6 +221,36 @@ wm_check_plan_version() {
         [ -n "$_pv" ] || continue
         [ "$_pv" = "$_installed" ] && continue
         wm_add plan-version attention "план «$_slug» написан fraim $_pv, установлен $_installed" "/revise-task"
+    done
+}
+
+# 4a. A plan that retells the code instead of pointing at it. `/make-task` G6 forbids line
+#     numbers, copied signatures and paraphrased bodies, for a reason that is not economy:
+#     the executor opens every listed file anyway (`/run-task` step 2) and believes the file
+#     over the plan (G7), so a retelling can only ever agree redundantly or disagree falsely.
+#     A rule that only the model it constrains reports on is not a rule, so this is the
+#     deterministic half: grep for the shapes a retelling leaves behind. `info`, never
+#     `attention` — the plan is wasteful, not broken, and it must not become a blocker.
+wm_check_plan_retelling() {
+    _root=$1
+    [ -d "$_root/ai/tasks" ] || return 0
+    for _d in "$_root"/ai/tasks/*/; do
+        [ -d "$_d" ] || continue
+        _slug=$(basename -- "$_d")
+        [ -f "$_d/context.md" ] || continue
+        [ -f "$_d/result.md" ] && continue
+        [ -f "$_d/blockers.md" ] && continue
+        # `grep -c` exits 1 on zero matches, and this whole file runs under `set -e`:
+        # without the `|| true` a clean plan would abort the watchman mid-verdict.
+        _hits=$(cat "$_d/context.md" "$_d/task.md" 2>/dev/null |
+                grep -cE '[Ll]ines?[[:space:]]+[0-9]+|строк[^[:space:]]*[[:space:]]+[0-9]+|\.[a-z]{1,5}:[0-9]+' ||
+                true)
+        [ -n "$_hits" ] || continue
+        if [ "$_hits" -gt 0 ]; then
+            _w=$(wm_plural "$_hits" ссылка ссылки ссылок)
+            wm_add plan-retelling info \
+                "план «$_slug» пересказывает код: $_hits $_w на строки — исполнитель всё равно читает файл" ""
+        fi
     done
 }
 
@@ -537,6 +571,61 @@ wm_check_foundation() {
     return 0
 }
 
+# 8. Lessons that never came back. `CONVENTIONS.md`'s `## Known Pitfalls / Lessons` is the
+#    one loop that carries what execution learned back to planning — and until now it had
+#    exactly two producers, `/run-task` step 9 and `/prune`. Both live in the task loop.
+#    Reactive work, the default and most frequent mode, produced nothing: the gotcha that
+#    cost an afternoon of live debugging stayed in the chat and died with it.
+#
+#    This is not a subset of `wm_check_foundation`, which the file warns against: that one
+#    anchors on `ARCHITECTURE.md` and measures whether the MAP still matches the code. A
+#    project can have a perfectly fresh map and a `CONVENTIONS.md` frozen since the day it
+#    was written — different file, different question, and neither count implies the other.
+#
+#    The threshold is deliberately far above `foundation_lag_commits`: a lesson is a rarer
+#    event than a structural change, and a verdict that asks for one too often is a verdict
+#    that gets skimmed (D2).
+wm_check_lessons() {
+    _root=$1
+    _conv="$_root/CONVENTIONS.md"
+    [ -f "$_conv" ] || return 0
+    scaffold_is_stub "$_conv" && return 0
+    wm_is_git "$_root" || return 0
+
+    # Same arithmetic as the map check, one file over: work saved since the lessons last
+    # moved. A prune resets it too — a gardening that honestly found nothing to add still
+    # means somebody looked.
+    _n=$(wm_code_commits_since "$_root" "$(git -C "$_root" log -1 --format=%H -- CONVENTIONS.md 2>/dev/null)")
+    _np=$(wm_code_commits_since "$_root" "$(git -C "$_root" log -1 --format=%H --grep='^prune: ' 2>/dev/null)")
+    [ -n "$_n" ] || _n=0
+    [ -n "$_np" ] || _np=0
+    [ "$_np" -lt "$_n" ] && _n=$_np
+
+    _max=$(config_get lessons_lag_commits "$_root")
+    if [ "$_n" -ge "$_max" ]; then
+        _w=$(wm_plural "$_n" коммит коммита коммитов)
+        wm_add lessons attention \
+            "$_n $_w кода с последнего пополнения CONVENTIONS.md — грабли никуда не записывались" "/prune"
+    fi
+    return 0
+}
+
+# 11. Новая версия самой системы. Единственная находка, которая не про проект, —
+#     и потому info, а не attention: чужой проект не становится хуже оттого, что
+#     на хосте лежит свежий fraim.
+#
+#     В сеть эта проверка НЕ ходит. Сторож обязан работать оффлайн и за миллисекунды
+#     (SCHEDULING.md, слой 1), поэтому она читает файл кэша, который пишут те команды,
+#     где сеть человек и ожидает: `fraim update --check` и `fraim doctor`. Отсюда же
+#     следует, что «мы не знаем» она не показывает: незнание сторожа — это его тишина,
+#     а состояние проверки видно в докторе, который её и делает.
+wm_check_update() {
+    [ "$(update_cache_field 4)" = behind ] || return 0
+    wm_add system-update info \
+        "новая версия fraim на хосте ($(update_cache_field 3 | cut -c1-7))" "fraim update"
+    return 0
+}
+
 # --- entry point ------------------------------------------------------------
 
 # Is this project under the system at all? Missing ai/ AND missing foundation
@@ -558,6 +647,7 @@ wm_run() {
     config_is_on check_blockers     "$_root" && wm_check_blockers "$_root"
     config_is_on check_stale_plans  "$_root" && wm_check_stale_plans "$_root"
     config_is_on check_plan_version "$_root" && wm_check_plan_version "$_root"
+    config_is_on check_plan_retelling "$_root" && wm_check_plan_retelling "$_root"
     config_is_on check_unsealed       "$_root" && wm_check_unsealed "$_root"
     config_is_on check_investigations "$_root" && wm_check_investigations "$_root"
     config_is_on check_git            "$_root" && wm_check_git "$_root"
@@ -565,6 +655,8 @@ wm_run() {
     config_is_on check_dirty          "$_root" && wm_check_dirty "$_root"
     wm_check_queue "$_root"
     config_is_on check_foundation   "$_root" && wm_check_foundation "$_root"
+    config_is_on check_lessons      "$_root" && wm_check_lessons "$_root"
+    config_is_on check_update       "$_root" && wm_check_update
     return 0
 }
 

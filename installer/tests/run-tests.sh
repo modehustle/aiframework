@@ -130,7 +130,7 @@ CARDOUT=$(sh -c '
     . "'"$REPO"'/installer/lib/core.sh"; . "'"$REPO"'/installer/lib/config.sh"
     . "'"$REPO"'/installer/lib/registry.sh"; . "'"$REPO"'/installer/lib/context.sh"
     . "'"$REPO"'/installer/lib/scaffold.sh"; . "'"$REPO"'/installer/lib/verbs.sh"
-    . "'"$REPO"'/installer/lib/watchman.sh"; . "'"$REPO"'/installer/lib/menu.sh"
+    . "'"$REPO"'/installer/lib/watchman.sh"; . "'"$REPO"'/installer/lib/update.sh"; . "'"$REPO"'/installer/lib/menu.sh"
     cd "'"$CARD"'" && menu_card && printf "%s\n" "$MENU_CARD"' 2>&1)
 check "карточка меню не падает на числах сторожа" "$(printf '%s' "$CARDOUT" | grep -c 'Illegal number')" "0"
 check "карточка меню показывает текст находок" \
@@ -150,7 +150,7 @@ NAV=$(sh -c '
     . "'"$REPO"'/installer/lib/core.sh"; . "'"$REPO"'/installer/lib/config.sh"
     . "'"$REPO"'/installer/lib/registry.sh"; . "'"$REPO"'/installer/lib/context.sh"
     . "'"$REPO"'/installer/lib/scaffold.sh"; . "'"$REPO"'/installer/lib/verbs.sh"
-    . "'"$REPO"'/installer/lib/watchman.sh"; . "'"$REPO"'/installer/lib/menu.sh"
+    . "'"$REPO"'/installer/lib/watchman.sh"; . "'"$REPO"'/installer/lib/update.sh"; . "'"$REPO"'/installer/lib/menu.sh"
     cd "'"$CARD"'" || exit 1
     MENU_N=$(menu_count); MENU_SEL=1
     menu_card
@@ -354,6 +354,33 @@ git -C "$STALE" commit -aqm "feat: other again" >/dev/null 2>&1
 "$FRAIM" status "$STALE" 2>/dev/null | grep -q 'план «blind» отстал от HEAD на 1 коммит кода'
 check "план без списка файлов падает обратно на счётчик" "$?" "0"
 
+# Протухание — утверждение о том, что исполнителю ещё предстоит. Задача, у которой уже
+# есть результат или блокер, исполнителя не ждёт, и её план стареть не может.
+BASE5=$(git -C "$STALE" rev-parse --short HEAD)
+stale_plan done-task "$BASE5" src/app.py
+printf 'changed again\n' >> "$STALE/src/app.py"
+git -C "$STALE" add -A >/dev/null 2>&1
+git -C "$STALE" commit -qm "feat: app again" >/dev/null 2>&1
+"$FRAIM" status "$STALE" 2>/dev/null | grep -q 'план «done-task» отстал'
+check "незакрытая задача с изменившимся файлом протухла" "$?" "0"
+printf '# Result\n' > "$STALE/ai/tasks/done-task/result.md"
+"$FRAIM" status "$STALE" 2>/dev/null | grep -q 'план «done-task» отстал'
+check "исполненная задача не считается протухшей" "$?" "1"
+
+# План, который пересказывает код вместо ссылки на него. Информация, не блокер.
+mkdir -p "$PROJ/ai/tasks/retold"
+printf '# Task Context\n\n## Codebase Context\n- `app.py` · `handler` — pattern to mirror\n' \
+    > "$PROJ/ai/tasks/retold/context.md"
+printf '# Task\n' > "$PROJ/ai/tasks/retold/task.md"
+"$FRAIM" status "$PROJ" 2>/dev/null | grep -q 'пересказывает код'
+check "план с указателями пересказом не считается" "$?" "1"
+printf 'Read lines 660-792 of app.py; create_run_dir (lines 664-670).\n' >> "$PROJ/ai/tasks/retold/task.md"
+"$FRAIM" status "$PROJ" 2>/dev/null | grep -q 'пересказывает код'
+check "пересказ кода замечен" "$?" "0"
+"$FRAIM" status "$PROJ" --json 2>/dev/null | grep -q '"id": "plan-retelling", "severity": "info"'
+check "пересказ — info, а не блокер" "$?" "0"
+rm -rf "$PROJ/ai/tasks/retold"
+
 # Version drift of the system itself.
 printf -- '- System: fraim 0.0.1-old\n' >> "$PROJ/ai/tasks/feature-x/context.md"
 "$FRAIM" status "$PROJ" 2>/dev/null | grep -q 'написан fraim 0.0.1-old'
@@ -361,6 +388,29 @@ check "план от старой версии fraim замечен" "$?" "0"
 
 python3 -c "import json,sys;json.load(sys.stdin)" < "$("$FRAIM" status "$PROJ" --json > "$SANDBOX/s.json" 2>/dev/null; echo "$SANDBOX/s.json")"
 check "--json — валидный JSON" "$?" "0"
+
+# Lessons that never came back: work saved while CONVENTIONS.md stays frozen. Same
+# arithmetic as the map check, one file over — and not a subset of it: the map here is
+# fresh, only the lessons are not.
+"$FRAIM" config set --machine lessons_lag_commits 3 >/dev/null 2>&1
+printf '# Conventions\n\n## Known Pitfalls / Lessons\n- None yet.\n' > "$PROJ/CONVENTIONS.md"
+git -C "$PROJ" add CONVENTIONS.md >/dev/null 2>&1
+git -C "$PROJ" commit -qm "onboard: house rules" >/dev/null 2>&1
+"$FRAIM" status "$PROJ" 2>/dev/null | grep -q 'грабли никуда не записывались'
+check "свежий CONVENTIONS.md тревоги не поднимает" "$?" "1"
+for i in 1 2 3 4; do
+    printf 'l%s\n' "$i" >> "$PROJ/app.py"
+    git -C "$PROJ" add app.py >/dev/null 2>&1
+    git -C "$PROJ" commit -qm "fix: reactive change $i" >/dev/null 2>&1
+done
+"$FRAIM" status "$PROJ" 2>/dev/null | grep -q 'грабли никуда не записывались'
+check "работа без единого урока замечена" "$?" "0"
+printf -- '- Retry on a 200 that carries an error body.\n' >> "$PROJ/CONVENTIONS.md"
+git -C "$PROJ" add CONVENTIONS.md >/dev/null 2>&1
+git -C "$PROJ" commit -qm "fix: lesson recorded" >/dev/null 2>&1
+"$FRAIM" status "$PROJ" 2>/dev/null | grep -q 'грабли никуда не записывались'
+check "записанный урок сбрасывает счётчик" "$?" "1"
+"$FRAIM" config set --machine lessons_lag_commits 25 >/dev/null 2>&1
 
 # The watchman is read-only. Anything else and it could not be put on a cron.
 BEFORE=$(find "$PROJ" -newer "$PROJ/ARCHITECTURE.md" -type f | md5sum)
@@ -617,6 +667,12 @@ check "task-new создал задачу" "$([ -f "$PROJ2/ai/tasks/add-auth/con
 check "провенанс: дата проставлена" "$(grep -c '^- Planned: 20' "$PROJ2/ai/tasks/add-auth/context.md")" "1"
 check "провенанс: git-ref проставлен" "$(grep -c '^- Based on: HEAD ' "$PROJ2/ai/tasks/add-auth/context.md")" "1"
 check "провенанс: версия системы проставлена" "$(grep -c '^- System: fraim ' "$PROJ2/ai/tasks/add-auth/context.md")" "1"
+# The executor's rules live in /run-task. The verb lays down a pointer so the planner never
+# retypes them into a copy that outlives the procedure it was copied from.
+check "task-new положил указатель на правила" \
+    "$(grep -c 'Your rules are `/run-task` itself' "$PROJ2/ai/tasks/add-auth/task.md")" "1"
+check "правила исполнителя в план не скопированы" \
+    "$(grep -c 'Touch only files listed' "$PROJ2/ai/tasks/add-auth/task.md")" "0"
 "$FRAIM" task-new add-auth >/dev/null 2>&1
 check "task-new не затирает существующую задачу" "$?" "2"
 "$FRAIM" task-new "Not Kebab" >/dev/null 2>&1
@@ -683,6 +739,10 @@ check "task-revise записал ревизию" "$(grep -c '^## Revision 1 —
 check "task-revise записал дефект" "$(grep -c 'Defect: wrong path in step 3' "$PROJ2/ai/tasks/fix-cache/task.md")" "1"
 check "провенанс не задвоился" "$(grep -c '^- Planned: ' "$PROJ2/ai/tasks/fix-cache/context.md")" "1"
 check "task-revise закоммитил" "$(git -C "$PROJ2" log --oneline -1 --format=%s)" "revise: fix-cache — wrong path in step 3"
+# The repair used to leave the plan one commit behind again — its own — so /run-task sent it
+# straight back to /revise-task. The loop has to terminate.
+"$FRAIM" status "$PROJ2" 2>/dev/null | grep -q 'fix-cache.*отстал'
+check "после ревизии план не считается протухшим" "$?" "1"
 "$FRAIM" task-revise fix-cache "again" "again" >/dev/null 2>&1
 check "task-revise без блокера отказывает" "$?" "2"
 
@@ -1199,7 +1259,7 @@ printf '\nfraim publish (копия вне машины)\n'
 PUBLIB_CANCEL='. "'"$REPO"'/installer/lib/core.sh"; . "'"$REPO"'/installer/lib/config.sh"
     . "'"$REPO"'/installer/lib/registry.sh"; . "'"$REPO"'/installer/lib/context.sh"
     . "'"$REPO"'/installer/lib/scaffold.sh"; . "'"$REPO"'/installer/lib/verbs.sh"
-    . "'"$REPO"'/installer/lib/watchman.sh"; . "'"$REPO"'/installer/lib/publish.sh"'
+    . "'"$REPO"'/installer/lib/watchman.sh"; . "'"$REPO"'/installer/lib/update.sh"; . "'"$REPO"'/installer/lib/publish.sh"'
 
 # Всё здесь работает без сети и без gh: «хостом» служит локальный bare-репозиторий.
 # Это не упрощение ради теста — это тот же путь, которым идёт --url, то есть пол,
@@ -1483,7 +1543,7 @@ GIT_CONFIG_COUNT=0; export GIT_CONFIG_COUNT
 PUBLIB='. "'"$REPO"'/installer/lib/core.sh"; . "'"$REPO"'/installer/lib/config.sh"
         . "'"$REPO"'/installer/lib/registry.sh"; . "'"$REPO"'/installer/lib/context.sh"
         . "'"$REPO"'/installer/lib/scaffold.sh"; . "'"$REPO"'/installer/lib/verbs.sh"
-        . "'"$REPO"'/installer/lib/watchman.sh"; . "'"$REPO"'/installer/lib/publish.sh"'
+        . "'"$REPO"'/installer/lib/watchman.sh"; . "'"$REPO"'/installer/lib/update.sh"; . "'"$REPO"'/installer/lib/publish.sh"'
 
 CONV=$(sh -c "$PUBLIB"'
     for u in git@github.com:me/proj.git ssh://git@gitlab.com/g/p.git https://github.com/a/b.git; do
@@ -1637,12 +1697,23 @@ check "rm убирает запись" "$("$FRAIM" projects 2>/dev/null | grep -
 printf '\nfraim init\n'
 
 mkdir -p "$HOME/.codex" "$HOME/.claude"     # pretend two harnesses are installed
+# Antigravity is detected by ~/.gemini/config, not by ~/.gemini: the bare directory
+# belongs to Gemini CLI, which is a different product sharing the same home.
+mkdir -p "$HOME/.gemini"
 cd "$PROJ" || exit 1
+"$FRAIM" init >/dev/null 2>&1
+check "голый ~/.gemini — это не Antigravity" \
+    "$([ -d "$HOME/.gemini/config/skills" ] && echo yes || echo no)" "no"
+mkdir -p "$HOME/.gemini/config"
 "$FRAIM" init >/dev/null 2>&1
 check "init завершился успешно" "$?" "0"
 check "Codex: 13 скиллов" "$(find "$HOME/.codex/skills" -name SKILL.md 2>/dev/null | wc -l | tr -d ' ')" "13"
 check "Claude Code: 13 скиллов" "$(find "$HOME/.claude/skills" -name SKILL.md 2>/dev/null | wc -l | tr -d ' ')" "13"
+check "Antigravity: 13 скиллов" "$(find "$HOME/.gemini/config/skills" -name SKILL.md 2>/dev/null | wc -l | tr -d ' ')" "13"
 check "контекстный блок в ~/.codex/AGENTS.md" "$(grep -c 'fraim:begin' "$HOME/.codex/AGENTS.md" 2>/dev/null)" "1"
+check "контекстный блок в ~/.gemini/AGENTS.md" "$(grep -c 'fraim:begin' "$HOME/.gemini/AGENTS.md" 2>/dev/null)" "1"
+check "GEMINI.md чужой — мы в него не пишем" \
+    "$([ -f "$HOME/.gemini/GEMINI.md" ] && echo yes || echo no)" "no"
 check "проект зарегистрирован" "$("$FRAIM" projects 2>/dev/null | grep -cx "  $PROJ")" "1"
 check "разрешение Bash(fraim:*) прописано" "$(grep -c 'Bash(fraim' "$HOME/.claude/settings.json" 2>/dev/null)" "1"
 
@@ -1667,6 +1738,110 @@ check "чужой скилл не тронут" "$([ -d "$HOME/.codex/skills/min
 check "doctor завершился успешно" "$?" "0"
 "$FRAIM" show orient 2>/dev/null | head -1 | grep -q -- '---'
 check "show печатает процедуру" "$?" "0"
+
+# ---------------------------------------------------------------- обновление
+printf '\nfraim update (обновление)\n'
+
+# «Хостом» служит локальный bare-репозиторий: сети здесь нет и не должно быть.
+UPHOST="$SANDBOX/uphost.git"
+UPSRC="$SANDBOX/upsrc"
+git init -q --bare "$UPHOST"
+git init -q "$SANDBOX/upseed"
+git -C "$SANDBOX/upseed" config user.email t@t; git -C "$SANDBOX/upseed" config user.name t
+mkdir -p "$SANDBOX/upseed/procedures" "$SANDBOX/upseed/installer"
+printf 'x\n' > "$SANDBOX/upseed/procedures/orient.md"
+printf '9.9.9\n' > "$SANDBOX/upseed/installer/VERSION"
+git -C "$SANDBOX/upseed" add -A >/dev/null 2>&1
+git -C "$SANDBOX/upseed" commit -qm init >/dev/null 2>&1
+git -C "$SANDBOX/upseed" branch -M main >/dev/null 2>&1
+git -C "$SANDBOX/upseed" push -q "$UPHOST" main >/dev/null 2>&1
+# `git init --bare` ставит HEAD на master; без этого клон приезжает без рабочей копии
+# и без HEAD — и тогда мы проверяли бы не то, что думаем.
+git -C "$UPHOST" symbolic-ref HEAD refs/heads/main
+git clone -q "$UPHOST" "$UPSRC" >/dev/null 2>&1
+
+UPLIB='. "'"$REPO"'/installer/lib/core.sh"; . "'"$REPO"'/installer/lib/config.sh"
+    . "'"$REPO"'/installer/lib/update.sh"; . "'"$REPO"'/installer/lib/watchman.sh"'
+
+# Проверка ходит в сеть и записывает вердикт в кэш.
+sh -c "FRAIM_ROOT='$UPSRC' $UPLIB"'; update_probe' >/dev/null 2>&1
+check "проверка удалась → в кэше состояние" "$(awk '{print $4}' "$FRAIM_HOME/update-check")" "current"
+
+printf 'more\n' >> "$SANDBOX/upseed/procedures/orient.md"
+git -C "$SANDBOX/upseed" commit -aqm second >/dev/null 2>&1
+git -C "$SANDBOX/upseed" push -q "$UPHOST" main >/dev/null 2>&1
+sh -c "FRAIM_ROOT='$UPSRC' $UPLIB"'; update_probe' >/dev/null 2>&1
+check "хост ушёл вперёд → behind" "$(awk '{print $4}' "$FRAIM_HOME/update-check")" "behind"
+sh -c "FRAIM_ROOT='$UPSRC' $UPLIB"'; update_line' | grep -q 'fraim update'
+check "строка называет команду, которой чинить" "$?" "0"
+
+# Копия впереди хоста — это не отставание. У того, кто правит систему у себя, sha не
+# совпадает с хостовым постоянно, и звать его обновляться значило бы врать.
+git -C "$UPSRC" config user.email t@t; git -C "$UPSRC" config user.name t
+git -C "$UPSRC" pull -q origin main >/dev/null 2>&1
+printf 'mine\n' >> "$UPSRC/procedures/orient.md"
+git -C "$UPSRC" commit -aqm "своя правка" >/dev/null 2>&1
+sh -c "FRAIM_ROOT='$UPSRC' $UPLIB"'; update_probe' >/dev/null 2>&1
+check "локальная копия впереди → ahead, а не behind" "$(awk '{print $4}' "$FRAIM_HOME/update-check")" "ahead"
+UPF=$(sh -c "$UPLIB"'; WM_FINDINGS=; wm_check_update; printf "%s" "$WM_FINDINGS"')
+check "и сторож про неё молчит" "${UPF:-empty}" "empty"
+git -C "$UPSRC" reset -q --hard origin/main >/dev/null 2>&1
+
+# Обновление правит `~/.fraim/src`, и только его. Запуск из dev-копии обязан сказать
+# это вслух, а не обновить молча чужой каталог.
+sh -c "FRAIM_ROOT='$UPSRC' $UPLIB"'; update_apply' >/dev/null 2>&1
+check "запуск не из ~/.fraim/src обновлять отказывается" "$?" "1"
+sh -c "FRAIM_ROOT='$UPSRC' $UPLIB"'; update_apply' 2>&1 | grep -q "$FRAIM_HOME/src"
+check "и называет каталог, который обновляется" "$?" "0"
+
+# Недоступный хост — это «неизвестно», а не «всё хорошо»: молчание сети не должно
+# выглядеть как здоровье (D1).
+git -C "$UPSRC" remote set-url origin "$SANDBOX/нет-такого.git"
+sh -c "FRAIM_ROOT='$UPSRC' $UPLIB"'; update_probe' >/dev/null 2>&1
+check "хост не ответил → unknown, а не current" "$(awk '{print $4}' "$FRAIM_HOME/update-check")" "unknown"
+git -C "$UPSRC" remote set-url origin "$UPHOST"
+
+# Сторож читает КЭШ и не ходит в сеть: это его контракт (SCHEDULING.md, слой 1).
+NETCALL=$(sed -n '/^wm_check_update() {/,/^}/p' "$REPO/installer/lib/watchman.sh" | grep -c 'git \|curl\|ls-remote' || true)
+check "сторож про обновления в сеть не ходит" "$NETCALL" "0"
+
+printf '%s %s %s behind\n' "$(date +%s)" aaaaaaa bbbbbbb > "$FRAIM_HOME/update-check"
+UPF=$(sh -c "$UPLIB"'; WM_FINDINGS=; wm_check_update; printf "%s" "$WM_FINDINGS"')
+printf '%s' "$UPF" | grep -q '^system-update	info'
+check "отставшая версия — находка, и она info" "$?" "0"
+printf '%s %s %s current\n' "$(date +%s)" aaaaaaa aaaaaaa > "$FRAIM_HOME/update-check"
+UPF=$(sh -c "$UPLIB"'; WM_FINDINGS=; wm_check_update; printf "%s" "$WM_FINDINGS"')
+check "свежая версия — молчание" "${UPF:-empty}" "empty"
+
+# Находка машинная, а не проектная: она не может испортить вердикт по проекту.
+printf '%s %s %s behind\n' "$(date +%s)" aaaaaaa bbbbbbb > "$FRAIM_HOME/update-check"
+"$FRAIM" status "$SANDBOX/proj" >/dev/null 2>&1
+UPRC=$?
+"$FRAIM" status "$SANDBOX/proj" --json 2>/dev/null | grep -q '"id": "system-update"'
+check "обновление видно в вердикте проекта" "$?" "0"
+check "и не поднимает его severity" "$UPRC" "$(printf '%s %s %s current\n' "$(date +%s)" a a > "$FRAIM_HOME/update-check"; "$FRAIM" status "$SANDBOX/proj" >/dev/null 2>&1; echo $?)"
+
+# Выключаемо, как всякая проверка сторожа.
+printf '%s %s %s behind\n' "$(date +%s)" aaaaaaa bbbbbbb > "$FRAIM_HOME/update-check"
+"$FRAIM" config set --machine check_update off >/dev/null 2>&1
+"$FRAIM" status "$SANDBOX/proj" --json 2>/dev/null | grep -q '"id": "system-update"'
+check "check_update off — находки нет" "$?" "1"
+"$FRAIM" config set --machine check_update on >/dev/null 2>&1
+
+# Кэш протухает по настройке, а не по вкусу.
+printf '%s %s %s current\n' "$(( $(date +%s) - 100 ))" a a > "$FRAIM_HOME/update-check"
+sh -c "$UPLIB"'; update_cache_stale'
+check "свежий кэш не протух" "$?" "1"
+printf '%s %s %s current\n' "$(( $(date +%s) - 200000 ))" a a > "$FRAIM_HOME/update-check"
+sh -c "$UPLIB"'; update_cache_stale'
+check "кэш старше update_check_days протух" "$?" "0"
+
+# Копия, разложенная руками, обновлению не подлежит — и говорит об этом, а не молчит.
+mkdir -p "$SANDBOX/handmade/procedures"
+sh -c "FRAIM_ROOT='$SANDBOX/handmade' $UPLIB"'; update_src_is_clone'
+check "не git-клон источником обновления не считается" "$?" "1"
+
+rm -f "$FRAIM_HOME/update-check"
 
 printf '\n%s пройдено, %s провалено\n' "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ]

@@ -11,6 +11,25 @@
 #          if either the binary resolves or the directory exists.
 # instructions-file — the harness's GLOBAL context file, where we leave the
 #          pointer block. Empty means the harness has no global one.
+#
+# Antigravity is the one row where neither cell is the obvious one, and both
+# choices are load-bearing:
+#
+#   · the binary is `agy`, not `antigravity` — that is the name its installer
+#     puts on PATH;
+#   · skills go to `~/.gemini/config/skills`, which is the single directory all
+#     three flavours read (IDE, CLI, and the agent itself). The older paths —
+#     `~/.gemini/skills`, `~/.gemini/antigravity/global_skills`,
+#     `~/.gemini/antigravity-cli/skills` — are each read by only some of them;
+#   · the pointer block goes to `~/.gemini/AGENTS.md`, not `~/.gemini/GEMINI.md`.
+#     Antigravity reads both, but Gemini CLI writes GEMINI.md as its own global
+#     context, and the two products share the directory: writing there would put
+#     our block into a file another tool owns and rewrites.
+#
+# The presence probe derives the harness home from the skills path, which here
+# is `~/.gemini/config` rather than `~/.gemini` — deliberately. `~/.gemini` alone
+# means Gemini CLI, which is not this harness; the `config/` subtree is
+# Antigravity's own.
 harness_table() {
     cat <<'TBL'
 hermes	Hermes Agent	hermes	$HOME/.hermes/skills	$HOME/.hermes/AGENTS.md
@@ -19,6 +38,7 @@ codex	Codex	codex	$HOME/.codex/skills	$HOME/.codex/AGENTS.md
 omp	omp	omp	$HOME/.omp/skills	$HOME/.omp/AGENTS.md
 pi	pi	pi	$HOME/.pi/skills	$HOME/.pi/AGENTS.md
 devin	Devin CLI	devin	$HOME/.devin/skills	$HOME/.devin/AGENTS.md
+antigravity	Antigravity	agy	$HOME/.gemini/config/skills	$HOME/.gemini/AGENTS.md
 TBL
 }
 

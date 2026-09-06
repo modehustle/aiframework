@@ -37,6 +37,7 @@ _libdir=$(cd -- "$(dirname -- "$_self")/../lib" 2>/dev/null && pwd -P) || {
 . "$_libdir/watchman.sh"
 . "$_libdir/clean.sh"
 . "$_libdir/publish.sh"
+. "$_libdir/update.sh"
 . "$_libdir/menu.sh"
 
 usage() {
@@ -53,7 +54,8 @@ fraim — эксплуатационный слой для проектов на
   fraim clean [--yes]       прибрать всё, что чинится без суждения
   fraim publish [--check]   копия проекта вне этой машины: создать, отправить, сверить
                             (--brief — задание агенту вычистить найденное)
-  fraim init | update       поставить / обновить / подхватить новый харнес
+  fraim init                поставить скиллы / подхватить новый харнес
+  fraim update [--check]    привезти новую версию и разложить (--check — только узнать)
   fraim doctor              что и куда установлено, что разошлось
   fraim config              что действует и откуда (set КЛЮЧ ЗНАЧЕНИЕ)
   fraim projects            реестр проектов (add ПУТЬ / rm ПУТЬ)
@@ -139,8 +141,56 @@ cmd_init() {
     fi
 
     claude_permission_hint
+
+    # Единственное место в init, где есть сеть, и оно необязательное: узнать, не вышло
+    # ли уже что-то новее. Молча и не чаще, чем раз в update_check_days; отказ сети
+    # ничего не ломает. Сторож потом прочитает готовый ответ из кэша, сам никуда не идя.
+    update_probe_if_due
+    if [ "$(update_state)" = behind ]; then
+        say ""
+        warn "$(update_line)"
+    fi
+
     say ""
     say "Готово. Проверить: ${C_BLD}fraim doctor${C_OFF}"
+}
+
+# --- update -----------------------------------------------------------------
+# `fraim init` раскладывает то, что уже лежит на диске. `fraim update` сначала
+# привозит новое, потом раскладывает — и это две разные команды, потому что init
+# нужен ещё и просто так: поставил новый харнес → init, сеть не при чём.
+#
+# --check ничего не меняет и годится для расписания: exit 1, если отстали.
+cmd_update() {
+    case ${1:-} in
+        --check)
+            if ! update_src_is_clone; then
+                warn "источник — не git-клон, проверять нечего"
+                return 0
+            fi
+            update_probe || :
+            case $(update_state) in
+                behind)  warn "$(update_line)"; return 1 ;;
+                ahead)   ok "$(update_line)"; return 0 ;;
+                unknown) warn "$(update_line)"
+                         dim "    сеть или доступ к репозиторию: проверь git ls-remote"
+                         return 1 ;;
+                *)       ok "установлена последняя версия ($(fraim_version))"; return 0 ;;
+            esac ;;
+        "") ;;
+        *)  die "fraim update: неизвестный ключ: $1" ;;
+    esac
+
+    say "Обновление fraim"
+    say ""
+    _u_before=$(fraim_version)
+    update_apply || return 1
+    say ""
+    # Новый бинарник, новые lib/, новые процедуры — и только теперь раскладка.
+    # В этом процессе продолжать нельзя: он прочитал lib/ до обновления.
+    _u_bin="$(update_src)/installer/bin/fraim"
+    dim "  было: $_u_before"
+    exec "$_u_bin" init
 }
 
 # Claude Code gates shell calls, so without a standing permission the control
@@ -243,6 +293,14 @@ cmd_doctor() {
         say "  источник:  $_root"
     fi
     say "  состояние: $FRAIM_HOME"
+    # Единственная сеть в докторе, и она уместна: доктор для того и зовётся, чтобы
+    # узнать, всё ли на месте, а «вышло ли что-то новее» — часть этого вопроса.
+    update_probe_if_due
+    case $(update_state) in
+        behind|unknown) warn "  $(update_line)" ;;
+        ahead)          dim "  $(update_line)" ;;
+        *)              ok "  последняя известная версия" ;;
+    esac
     say ""
 
     say "${C_BLD}Процедуры${C_OFF}"
@@ -744,7 +802,8 @@ cmd_restore() { verb_restore "$(pwd -P)" "$@"; }
 _cmd=$1; shift
 case $_cmd in
     menu)          menu_run ;;
-    init|update)   cmd_init "$@" ;;
+    init)          cmd_init "$@" ;;
+    update)        cmd_update "$@" ;;
     scaffold)      cmd_scaffold "$@" ;;
     upgrade)       cmd_upgrade "$@" ;;
     clean)         cmd_clean "$@" ;;

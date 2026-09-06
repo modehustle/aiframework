@@ -2,7 +2,7 @@
 name: fraim
 description: Control panel for the fraim workflow system. Use when the user asks where a project stands, what needs attention, what to do next, which projects have drifted, or how to install and update the workflow procedures. Routes to the right procedure and reads the deterministic project watchman.
 metadata:
-  version: 0.8.2
+  version: 0.9.0
   source: fraim
 ---
 # fraim — control panel
@@ -131,7 +131,8 @@ A deterministic action has exactly one implementation.
 
 | Command | What it does |
 |---|---|
-| `fraim init` | install / update / pick up a newly installed harness |
+| `fraim init` | lay the skills out again / pick up a newly installed harness |
+| `fraim update` | bring in a new version and lay it out (`--check` only reports) |
 | `fraim upgrade` | bring an existing project's foundation up to the current standard |
 | `fraim clean` | close every loose end whose answer is computable, in one pass |
 | `fraim config` | what settings are in effect and where each came from |
@@ -140,8 +141,9 @@ A deterministic action has exactly one implementation.
 | `fraim publish` | a copy of the project off this machine: check, create, push, verify |
 | `fraim show NAME` | print a procedure's text (for environments without skills) |
 
-`fraim publish` is the one command here that reaches the network, and what it does cannot be
-taken back — a repository that was public for a minute was public. `fraim publish --check` is
+`fraim publish` is the one command here that reaches the network and cannot be taken back
+(`fraim update` and `fraim doctor` also touch it, but they only ever read, and only about
+fraim itself). What publish does cannot be taken back — a repository that was public for a minute was public. `fraim publish --check` is
 yours to run freely: no network call, it reports what is installed, whether a copy exists,
 whether the setup was ever finished, and whether the history carries a secret that must not
 leave the machine. The publish itself is the human's: it prints a plan and asks, and through a

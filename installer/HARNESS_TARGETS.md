@@ -69,6 +69,7 @@ GitHub Copilot, Cursor, VS Code и другие.
 | 9 | **ZCode** | 199B | приложение, проприетарное | не найдено | пропустить |
 | 10 | **Codex** | 191B | CLI + IDE-расширение (OpenAI) | skills | **P0** |
 | — | **Devin CLI** | вне рейтинга | CLI, проприетарный (Cognition) | skills | P1 |
+| — | **Antigravity** | вне рейтинга | IDE + CLI, проприетарный (Google) | `~/.gemini/config/skills/` | **P0** |
 | — | **Devin Desktop** | вне рейтинга | десктоп-оболочка (Cognition) | наследует от вложенного агента | — |
 
 P0 закрывается **одним** артефактом — каталогом со `SKILL.md`. Это и есть ядро инсталлера.
@@ -261,6 +262,36 @@ per-project установку, а не глобальную.
 сложную работу — миграции БД, интеграции). Это не точка интеграции, но полезный ориентир:
 кто-то уже продаёт ровно эту идею, и на неё стоит смотреть при позиционировании.
 
+### Antigravity (Google)
+
+Агент-первая среда Google на Gemini: IDE (форк VS Code), CLI и сам агент. В рейтинг
+OpenRouter не попадает — ходит не через него, — но это второй после Claude Code
+проприетарный харнес, который люди ставят рядом с нашим.
+
+**Опции:**
+
+- **A. Skills** — тот же открытый стандарт, каталог со `SKILL.md`.
+- **B. Правила** — `AGENTS.md` и `GEMINI.md` глобально, `.agents/rules/` в проекте.
+- **C. MCP.**
+
+**Рекомендация: A + B, но с двумя оговорками, которые стоили разведки.**
+
+Каталог скиллов у Antigravity успел переехать, и в сети живы все прежние адреса:
+`~/.gemini/skills`, `~/.gemini/antigravity/global_skills`, `~/.gemini/antigravity-cli/skills`.
+Каждый из них читает **часть** обличий продукта. Единственный, который читают все три
+(IDE, CLI и агент), — `~/.gemini/config/skills/`; проектный — `.agents/skills/`. Целимся
+в глобальный.
+
+Контекстный блок кладём в `~/.gemini/AGENTS.md`, а не в `~/.gemini/GEMINI.md`, хотя
+Antigravity читает оба. `GEMINI.md` в этом же каталоге — глобальный контекст **Gemini CLI**,
+другого продукта, который его себе и переписывает: наш блок там оказался бы в чужом файле
+([gemini-cli #16058](https://github.com/google-gemini/gemini-cli/issues/16058) — конфликт
+признан и закрыт как «не планируется»). `AGENTS.md` рядом читается тем же Antigravity и
+никому не принадлежит.
+
+Бинарник называется `agy`. Признак присутствия — каталог `~/.gemini/config`, а не
+`~/.gemini`: голый `~/.gemini` заводит и Gemini CLI, который этим харнесом не является.
+
 ### Devin Desktop
 
 Запущен 2 июня 2026 как следующее поколение Windsurf. На старте умеет запускать внутри
@@ -297,6 +328,7 @@ Cursor, Copilot, Gemini CLI и остальные принявшие станд�
 | omp | `skills/` | копирование |
 | Codex | каталог skills | копирование |
 | Devin CLI | каталог skills | копирование |
+| Antigravity | `~/.gemini/config/skills/` | копирование |
 
 **Контекстный слой (P0).** Блок для `AGENTS.md`, объясняющий инвариант фундамента
 и то, когда звать какую процедуру. Читается 30+ агентами и служит подсказкой для тех,
@@ -391,3 +423,8 @@ Codex, Devin CLI сразу), затем плагин Claude Code поверх �
   [#15939](https://github.com/openai/codex/issues/15939) · [#15941](https://github.com/openai/codex/issues/15941)
 - [Devin CLI](https://cognition.com/blog/devin-for-terminal) ·
   [Devin Desktop](https://www.fixedlabs.ai/blog/devin-desktop-review)
+- [Antigravity — Agent Skills](https://antigravity.google/docs/ide/skills/) ·
+  [правила](https://antigravity.google/docs/rules-workflows/) ·
+  [CLI (`agy`)](https://antigravity.google/docs/cli/getting-started/) ·
+  [каталоги скиллов для Antigravity 2.0](https://github.com/google/agents-cli/issues/26) ·
+  [конфликт GEMINI.md с Gemini CLI](https://github.com/google-gemini/gemini-cli/issues/16058)
