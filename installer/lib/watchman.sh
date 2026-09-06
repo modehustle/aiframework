@@ -610,6 +610,22 @@ wm_check_lessons() {
     return 0
 }
 
+# 11. Новая версия самой системы. Единственная находка, которая не про проект, —
+#     и потому info, а не attention: чужой проект не становится хуже оттого, что
+#     на хосте лежит свежий fraim.
+#
+#     В сеть эта проверка НЕ ходит. Сторож обязан работать оффлайн и за миллисекунды
+#     (SCHEDULING.md, слой 1), поэтому она читает файл кэша, который пишут те команды,
+#     где сеть человек и ожидает: `fraim update --check` и `fraim doctor`. Отсюда же
+#     следует, что «мы не знаем» она не показывает: незнание сторожа — это его тишина,
+#     а состояние проверки видно в докторе, который её и делает.
+wm_check_update() {
+    [ "$(update_cache_field 4)" = behind ] || return 0
+    wm_add system-update info \
+        "новая версия fraim на хосте ($(update_cache_field 3 | cut -c1-7))" "fraim update"
+    return 0
+}
+
 # --- entry point ------------------------------------------------------------
 
 # Is this project under the system at all? Missing ai/ AND missing foundation
@@ -640,6 +656,7 @@ wm_run() {
     wm_check_queue "$_root"
     config_is_on check_foundation   "$_root" && wm_check_foundation "$_root"
     config_is_on check_lessons      "$_root" && wm_check_lessons "$_root"
+    config_is_on check_update       "$_root" && wm_check_update
     return 0
 }
 
