@@ -483,6 +483,13 @@ cmd_publish() {
         _branch=$(publish_branch "$_root")
         dim "  спрашиваю хост, что там лежит…"
         publish_host_state "$_root" "$_branch"
+        # Хост не принял доступ по этому адресу — чиним транспорт ДО плана. Человек
+        # обязан ратифицировать тот адрес, по которому копия действительно поедет, а не
+        # тот, по которому ему уже отказали; репозиторий при этом остаётся тем же.
+        if [ "$PUB_HOST" = denied ] && publish_transport_https "$_root"; then
+            _have=$(publish_remote_url "$_root")
+            publish_host_state "$_root" "$_branch"
+        fi
         case $PUB_HOST in
             synced)
                 ok "копия на месте и совпадает с этой машиной: $_have"
@@ -570,7 +577,18 @@ cmd_publish() {
                 printf '  Публикуем? [y/N] '
             fi
             read -r _ans || _ans=
-            case $_ans in y|Y|д|Д|yes|да) ;; *) say "  отменено"; exit 0 ;; esac
+            case $_ans in
+                y|Y|д|Д|yes|да) ;;
+                *)
+                    # «Нет» именно на вопросе о находках означает «хочу, но чистым», и
+                    # ответ на это — задание агенту, а не одно слово «отменено».
+                    if [ "$_stops" -gt 0 ]; then
+                        publish_cancel_findings "$_root"
+                    else
+                        say "  отменено"
+                    fi
+                    exit 0 ;;
+            esac
         else
             dim "  это был только план. Выполнить: fraim publish --yes"
             exit 0

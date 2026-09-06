@@ -474,6 +474,83 @@ publish_ask_url() {
     printf '%s\n' "$_pub_ans"
 }
 
+# --- транспорт --------------------------------------------------------------
+# Адрес и доступ — разные вещи, и до сих пор продукт их путал. Владелец получил
+# `Permission denied (publickey)`, подсказка сказала «через gh это чинит gh auth login»,
+# он честно её выполнил — `gh auth login` с протоколом HTTPS кладёт credential helper для
+# https и НЕ кладёт ssh-ключ, — адрес остался ssh-овым, отправка снова упала, и цикл
+# замкнулся. Подсказка была не просто бесполезной: она уводила от единственного рабочего
+# действия.
+#
+# Пол здесь тот же, что и у всего модуля: URL. Если ключ не приняли, а gh уже держит
+# авторизацию для https того же самого репозитория — меняется транспорт, и только он.
+# Хост, имя, видимость, ветка не меняются: человек ратифицировал именно этот репозиторий,
+# и он остаётся тем же. Замена говорится вслух и остаётся в ремоуте — молчаливая правка
+# чужого репозитория здесь была бы хуже отказа.
+
+publish_ssh_to_https() {
+    case $1 in
+        ssh://git@*) printf '%s\n' "$1" | sed 's#^ssh://git@#https://#' ;;
+        # Двоеточие режется ровно одно — то, что отделяет хост от пути. Наивное
+        # «убрать первое двоеточие» после подстановки схемы съело бы двоеточие самой
+        # https:// и выдало бы адрес, которого не существует.
+        git@*)       printf '%s\n' "$1" | sed 's#^git@\([^:/]*\):#https://\1/#' ;;
+        *)           return 1 ;;
+    esac
+}
+
+# Умеет ли git сам подставить логин для https этого хоста. Пустой ответ значит «нет»:
+# переключить адрес и упереться в запрос пароля — это тот же тупик, только другими словами.
+publish_https_credentials() {
+    [ -n "$(git config --get-urlmatch credential.helper "$1" 2>/dev/null)" ]
+}
+
+# Возвращает 0, если транспорт заменён. Молча ничего не делает: каждая ветка отказа
+# печатает, чего именно не хватило.
+publish_transport_https() {
+    _pub_root=$1
+    _pub_have=$(publish_remote_url "$_pub_root")
+    _pub_alt=$(publish_ssh_to_https "$_pub_have") || return 1
+    publish_github_slug "$_pub_have" >/dev/null 2>&1 || return 1
+    publish_cli_state gh || return 1
+
+    if ! publish_https_credentials https://github.com; then
+        # Это не «настроить машину за человека»: gh auth setup-git лишь дописывает в git
+        # тот вход, который человек уже сделал командой gh auth login. Идемпотентно и
+        # называется вслух — как и всё остальное, что эта команда трогает вне проекта.
+        gh auth setup-git >/dev/null 2>&1 || return 1
+        publish_https_credentials https://github.com || return 1
+        dim "  git научен брать логин у gh (gh auth setup-git)"
+    fi
+
+    git -C "$_pub_root" remote set-url origin "$_pub_alt" 2>/dev/null || return 1
+    say ""
+    ok "адрес переключён на https: $_pub_alt"
+    dim "  ssh-ключ этой машины хост не принял, а вход gh для https уже есть —"
+    dim "  репозиторий тот же самый, поменялся только транспорт"
+    return 0
+}
+
+# Что сказать, когда переключить нечем. Каждая строка — действие, а не диагноз.
+publish_transport_hint() {
+    _pub_have=$1
+    _pub_alt=$(publish_ssh_to_https "$_pub_have") || {
+        dim "    хост не принял логин — проверь доступ к репозиторию под своей учёткой"
+        return 0
+    }
+    dim "    хост не принял ssh-ключ этой машины. Два выхода, оба рабочие:"
+    dim "    · по https (ключ не нужен):  fraim publish --url $_pub_alt"
+    case $_pub_have in
+        *github.com*) dim "      для GitHub логин к https даёт gh: gh auth login, затем gh auth setup-git" ;;
+        *)            dim "      логин к https спросит хост — понадобится токен доступа" ;;
+    esac
+    dim "    · по ssh (ключ нужен):       ssh-keygen -t ed25519, затем ключ на хост"
+    case $_pub_have in
+        *github.com*) dim "      для GitHub это одна команда: gh ssh-key add ~/.ssh/id_ed25519.pub" ;;
+    esac
+    return 0
+}
+
 # --- doing it ---------------------------------------------------------------
 # Create (when the provider can), wire the remote, push, and then CHECK that what is on
 # the host is what is here. The check is the half that makes the tick honest: a push can
@@ -501,10 +578,28 @@ publish_do() {
     say ""
     say "Отправляю $_pub_branch → $_pub_have"
     if ! _pub_out=$(git -C "$_pub_root" push -u origin "$_pub_branch" 2>&1); then
-        warn "отправка не удалась"
-        printf '%s\n' "$_pub_out" | sed 's/^/    /' | while read -r _pub_l; do dim "$_pub_l"; done
-        publish_push_hint "$_pub_out"
-        return 1
+        # Одна и только одна повторная попытка, и только при отказе по ключу: транспорт
+        # меняется на тот, вход к которому уже есть. Повторять что-либо ещё было бы
+        # надеждой, а не действием.
+        _pub_retried=0
+        case $_pub_out in
+            *'Permission denied'*|*publickey*)
+                if publish_transport_https "$_pub_root"; then
+                    _pub_have=$(publish_remote_url "$_pub_root")
+                    say ""
+                    say "Отправляю $_pub_branch → $_pub_have"
+                    _pub_retried=1
+                fi ;;
+        esac
+        if [ "$_pub_retried" = 1 ]; then
+            _pub_out=$(git -C "$_pub_root" push -u origin "$_pub_branch" 2>&1) || _pub_retried=2
+        fi
+        if [ "$_pub_retried" != 1 ]; then
+            warn "отправка не удалась"
+            printf '%s\n' "$_pub_out" | sed 's/^/    /' | while read -r _pub_l; do dim "$_pub_l"; done
+            publish_push_hint "$_pub_out" "$_pub_have"
+            return 1
+        fi
     fi
     ok "отправлено"
 
@@ -529,11 +624,15 @@ publish_do() {
 publish_push_hint() {
     case $1 in
         *'Permission denied'*|*'publickey'*)
-            dim "    хост не узнал твой ключ. Через gh это чинит 'gh auth login', иначе — ключ SSH на хосте" ;;
+            publish_transport_hint "${2:-}" ;;
         *'rejected'*|*'non-fast-forward'*|*'fetch first'*)
             dim "    в репозитории на хосте уже есть своя история — возьми пустой репозиторий или другое имя" ;;
         *'could not read Username'*|*'Authentication failed'*)
-            dim "    хост просит логин: 'gh auth login' для GitHub, иначе — SSH-адрес вместо https" ;;
+            dim "    хост просит логин к https по этому адресу:"
+            case ${2:-} in
+                *github.com*) dim "    · gh auth login, затем gh auth setup-git — дальше git берёт логин сам" ;;
+                *)            dim "    · нужен токен доступа этого хоста, либо ssh-адрес и ключ на хосте" ;;
+            esac ;;
         *'not found'*|*'does not appear to be a git repository'*)
             dim "    адрес не найден — проверь ссылку: fraim publish --url ССЫЛКА" ;;
     esac
@@ -602,7 +701,16 @@ publish_create() {
 
 publish_created_url() {
     case $1 in
-        github) gh repo view "$2" --json sshUrl --jq .sshUrl 2>/dev/null ;;
+        # Адрес в той форме, к которой у этой машины есть вход. `gh auth login` с
+        # протоколом https не кладёт ssh-ключ, и sshUrl на такой машине — заведомо
+        # нерабочий адрес: спрашиваем у gh, каким протоколом он сам живёт.
+        github)
+            if [ "$(gh config get git_protocol 2>/dev/null)" = ssh ]; then
+                gh repo view "$2" --json sshUrl --jq .sshUrl 2>/dev/null
+            else
+                _pub_u=$(gh repo view "$2" --json url --jq .url 2>/dev/null)
+                [ -n "$_pub_u" ] && printf '%s.git\n' "$_pub_u"
+            fi ;;
         gitlab) glab repo view "$2" 2>/dev/null | sed -n 's#.*\(git@[^ ]*\.git\).*#\1#p' | head -1 ;;
     esac
     return 0
@@ -623,12 +731,25 @@ publish_created_url() {
 #   diverged     на хосте есть работа, которой нет здесь
 PUB_HOST=
 PUB_HOST_SHA=
+PUB_HOST_ERR=
 publish_host_state() {
     _pub_root=$1; _pub_br=$2
-    PUB_HOST=; PUB_HOST_SHA=
-    _pub_ls=$(git -C "$_pub_root" ls-remote --heads origin 2>/dev/null) || {
-        PUB_HOST=unreachable; return 0
-    }
+    PUB_HOST=; PUB_HOST_SHA=; PUB_HOST_ERR=
+    # stderr ловится вместе с stdout, потому что причина отказа — это ответ, а не шум:
+    # «хост не ответил» и «хост не принял твой ключ» чинятся разными руками, и второе
+    # чинится нами. Строки рефов отбираются по форме (sha + refs/…), иначе безобидное
+    # «Warning: Permanently added 'github.com' …» посчиталось бы веткой.
+    if _pub_ls=$(git -C "$_pub_root" ls-remote --heads origin 2>&1); then
+        _pub_ls=$(printf '%s\n' "$_pub_ls" | grep -E '^[0-9a-f]{7,40}[[:space:]]+refs/' || true)
+    else
+        PUB_HOST_ERR=$_pub_ls
+        case $_pub_ls in
+            *'Permission denied'*|*publickey*|*'Authentication failed'*|*'could not read Username'*)
+                PUB_HOST=denied ;;
+            *)  PUB_HOST=unreachable ;;
+        esac
+        return 0
+    fi
     if [ -z "$_pub_ls" ]; then PUB_HOST=empty; return 0; fi
     PUB_HOST_SHA=$(printf '%s\n' "$_pub_ls" |
         awk -v b="refs/heads/$_pub_br" '$2 == b { print $1; exit }')
@@ -648,6 +769,7 @@ publish_host_state() {
 
 publish_host_line() {
     case $PUB_HOST in
+        denied)      printf 'хост не принял доступ по этому адресу — сверить не с чем\n' ;;
         unreachable) printf 'хост не ответил — сверить не с чем\n' ;;
         empty)       printf 'репозиторий создан, но ПУСТ — история туда не доехала\n' ;;
         synced)      printf 'там ровно то же, что здесь\n' ;;
@@ -873,6 +995,33 @@ publish_accept_notice() {
     dim "  приватность известна: $PUB_VIS_SRC"
     dim "  чего это не отменяет: ключ увидят все, у кого есть доступ к репозиторию, и он"
     dim "  останется в истории, если репозиторий когда-нибудь станет публичным"
-    dim "  вычистить, а не принимать — fraim publish --brief (задание для агента)"
+    dim "  вычистить, а не принимать — ответь «нет»: команда отдаст задание агенту"
+    return 0
+}
+
+# «Нет» на вопросе о находках — это не «не хочу публиковать», это «не так». Человек хочет
+# копию, но чистую, и упирается ровно в ту операцию, которой у системы нет: убрать файл из
+# истории значит её переписать, а этого fraim не делает нигде.
+#
+# Раньше здесь печаталось одно слово — «отменено». Человек оставался с тем же, с чего начал:
+# находки на месте, что с ними делать — не сказано, а единственная строка про задание уехала
+# вверх экрана вместе с принятием риска, которое он как раз и отклонил. Отказ системы уже
+# печатал задание (publish_refuse_secret); отказ человека печатает то же самое — момент один
+# и тот же, и разной должна быть только первая фраза.
+publish_cancel_findings() {
+    _pub_root=$1
+    _pub_n=$(pub_count "$PUB_STOP")
+    say ""
+    say "  ${C_BLD}Отменено — публикуем после чистки.${C_OFF}"
+    printf '  %s %s %s в истории. Убрать их оттуда — значит переписать историю,
+' \
+        "$_pub_n" "$(wm_plural "$_pub_n" находка находки находок)" \
+        "$(wm_plural "$_pub_n" остаётся остаются остаются)"
+    say "  а это единственная операция, которую система себе не позволяет: работа для агента."
+    publish_brief_secret "$_pub_root"
+    say ""
+    dim "  когда агент отчитается — проверь сам: fraim publish --check должен сказать «чисто»,"
+    dim "  и тогда fraim publish отправит копию уже без находок"
+    dim "  находки ложные (фикстура, пример в документации) — fraim publish --force"
     return 0
 }
