@@ -39,6 +39,9 @@ _libdir=$(cd -- "$(dirname -- "$_self")/../lib" 2>/dev/null && pwd -P) || {
 . "$_libdir/clean.sh"
 . "$_libdir/publish.sh"
 . "$_libdir/update.sh"
+. "$_libdir/roles.sh"
+. "$_libdir/fleet.sh"
+. "$_libdir/dispatch.sh"
 . "$_libdir/menu.sh"
 
 usage() {
@@ -56,8 +59,17 @@ fraim — эксплуатационный слой для проектов на
   fraim clean [--yes]       прибрать всё, что чинится без суждения
   fraim publish [--check]   копия проекта вне этой машины: создать, отправить, сверить
                             (--brief — задание агенту вычистить найденное)
+  fraim dispatch ПЛАН       параллельный режим: проверить план и завести сборку
+                            run СБОРКА — поднять флот в среде исполнения
+                            watch СБОРКА — что среда говорит о воркерах
+                            verify СБОРКА ПОДЗАДАЧА — сверить дерево с путями
+                            check ПЛАН · accept СБОРКА · list
+  fraim mode [task|parallel]  режим проекта: обычный или дирижёр с флотом
+  fraim roles [set [ИМЯ]]   таблица ролей: во что разворачивается роль на этой машине
+                            (set — выбрать агента, модель и усилие из списка)
   fraim init                поставить скиллы / подхватить новый харнес
-  fraim update [--check]    привезти новую версию и разложить (--check — только узнать)
+  fraim update [--check]    привезти новую версию и разложить (--check — только узнать;
+                            --quiet — для автозапуска: молча, и никогда не мешает старту)
   fraim doctor              что и куда установлено, что разошлось
   fraim config              что действует и откуда (set КЛЮЧ ЗНАЧЕНИЕ)
   fraim projects            реестр проектов (add ПУТЬ / rm ПУТЬ)
@@ -137,6 +149,7 @@ cmd_init() {
         # the machine block here would have overwritten what `fraim scaffold` puts in a
         # project's AGENTS.md — and it would be the wrong text anyway: a routing table for
         # skills installed on this machine says nothing to the agent that clones the repo.
+        CTX_ROOT=$_cwd
         if context_install "$_cwd/AGENTS.md" context_project_block; then
             dim "    контекстный блок → $_cwd/AGENTS.md"
         fi
@@ -179,6 +192,24 @@ cmd_update() {
                          return 1 ;;
                 *)       ok "установлена последняя версия ($(fraim_version))"; return 0 ;;
             esac ;;
+        --quiet)
+            # For an image or a VM recipe: run at every start, say nothing when there is
+            # nothing to say, and NEVER stand between the human and their session.
+            #
+            # Every failure path here exits 0 on purpose. A dead network, a private repo
+            # without credentials, a source that is not a clone — none of those are reasons
+            # to stop an agent from starting. Working on a version one commit old beats not
+            # working at all, and the person finds out from `fraim version` either way.
+            update_src_is_clone || exit 0
+            update_probe >/dev/null 2>&1 || exit 0
+            [ "$(update_state)" = behind ] || exit 0
+            _u_before=$(fraim_version)
+            if update_apply >/dev/null 2>&1; then
+                ok "fraim обновлён: $_u_before → $(fraim_version)"
+                exec "$(update_src)/installer/bin/fraim" init >/dev/null 2>&1
+            fi
+            exit 0
+            ;;
         "") ;;
         *)  die "fraim update: неизвестный ключ: $1" ;;
     esac
@@ -927,6 +958,269 @@ cmd_undo() {
 }
 cmd_restore() { verb_restore "$(pwd -P)" "$@"; }
 
+# Dispatch: split a task into parallel subtasks for independent workers.
+# Takes an optional plan file; without it, looks for build-plan.md in project.
+# The mechanics of a build. Called by the conductor agent, not typed by the human — the
+# human says what they want and reads the report; these are the steps the agent takes to
+# get there. `accept` is the exception and belongs to the human alone (B5).
+cmd_dispatch() {
+    _sub=${1:-}
+
+    # `check` is the one subcommand that reads a file and writes nothing, so it must
+    # work where a plan is written — which is not always inside a project. Without a
+    # project the role table simply resolves one level up, from the machine.
+    if [ "$_sub" = check ]; then
+        [ $# -ge 2 ] || die "нужно: fraim dispatch check ПЛАН"
+        _root=$(pwd -P); [ -d "$_root/ai" ] || _root=
+        dispatch_check "$2" "$_root" || die "план не годится для параллельной раздачи"
+        ok "план проходит dispatch-check"
+        say ""
+        dispatch_report "$2" "$_root"
+        return 0
+    fi
+
+    _root=$(verb_root)
+    case $_sub in
+        verify)
+            [ $# -ge 3 ] || die "нужно: fraim dispatch verify СБОРКА ПОДЗАДАЧА [БАЗА]"
+            _b=$2; _s=$3
+            _plan="$_root/ai/builds/$_b/plan.md"
+            [ -f "$_plan" ] || die "нет плана сборки $_b"
+            _paths=$(dispatch_field "$_plan" "$_s" 4)
+            [ -n "$_paths" ] || die "в сборке $_b нет подзадачи $_s"
+            _base=${4:-$(cd "$_root" && git rev-parse HEAD 2>/dev/null)}
+            dispatch_verify_tree "$_root" "$_base" "$_paths"
+            ;;
+        run)
+            [ $# -ge 2 ] || die "нужно: fraim dispatch run СБОРКА"
+            say "Поднимаю флот для сборки $2..."
+            if dispatch_launch "$_root" "$2"; then
+                say ""
+                ok "флот поднят"
+            else
+                say ""
+                warn "часть воркеров не поднялась — что поднялось, записано в ai/builds/$2/fleet.tsv"
+                exit 1
+            fi
+            ;;
+        watch)
+            [ $# -ge 2 ] || die "нужно: fraim dispatch watch СБОРКА"
+            build_fleet_rows "$_root" "$2" | while IFS='	' read -r _s _t _d _at; do
+                [ -n "$_d" ] && [ "$_d" != "—" ] || { printf '%-12s не поднялась\n' "$_s"; continue; }
+                printf '%-12s %s\n' "$_s" "$_d"
+                fleet_worker_show "$_d" | head -3 | sed 's/^/    /'
+            done
+            ;;
+        accept)
+            [ $# -ge 2 ] || die "нужно: fraim dispatch accept СБОРКА"
+            build_accept "$_root" "$2" >/dev/null || die "приёмка не прошла"
+            ok "сборка $2 принята"
+            ;;
+        list)
+            build_list "$_root"
+            ;;
+        "")
+            die "нужно: fraim dispatch ПЛАН (или check / verify / accept / list)"
+            ;;
+        *)
+            _plan=$_sub
+            [ -f "$_plan" ] || die "плана нет: $_plan"
+            dispatch_check "$_plan" "$_root" || die "план не годится для параллельной раздачи"
+
+            _bid=build-$(date -u '+%Y%m%d-%H%M%S')
+            build_seal "$_root" "$_bid" "$_plan" >/dev/null || die "не удалось завести журнал сборки"
+
+            say "Сборка $_bid — кто что исполняет:"
+            say ""
+            dispatch_report "$_plan" "$_root"
+            say ""
+
+            dispatch_parse_plan "$_plan" | while IFS='|' read -r _id _role _sum _paths; do
+                [ -n "$_id" ] || continue
+                _d=$(dispatch_write_task "$_root" "$_bid" "$_id" "$_role" "$_sum" "$_paths") ||
+                    die "не удалось записать задачу подзадачи $_id"
+                dim "  задание $_id → ${_d#"$_root"/}"
+            done
+
+            say ""
+            ok "задания записаны, журнал заведён: ai/builds/$_bid/journal.md"
+            if fleet_present; then
+                dim "    поднять флот:    fraim dispatch run $_bid"
+                dim "    состояние:       fraim dispatch watch $_bid"
+            else
+                dim "    среды исполнения на этой машине нет — задания можно исполнить вручную"
+            fi
+            dim "    сверить с деревом: fraim dispatch verify $_bid ПОДЗАДАЧА"
+            ;;
+    esac
+}
+
+# Interactive assignment. The point is P0: nobody should have to remember that the value
+# is three colon-separated fields, nor type a model id from memory. Where a list can be
+# had it is offered; where it cannot, a typed value is still accepted — see roles.sh for
+# why we do not keep a catalogue of models.
+cmd_roles_set() {
+    _rs_root=$(pwd -P)
+    project_is_managed "$_rs_root" || _rs_root=
+
+    _rs_force_machine=
+    if [ "${1:-}" = --machine ]; then _rs_force_machine=1; shift; fi
+
+    # Non-interactive form: `fraim roles set КЛЮЧ ЗНАЧЕНИЕ`. This is the path a Dockerfile
+    # or a VM recipe takes — an image is built without a terminal, and baking the role
+    # table into the image is the whole point of building one. `fraim config set` cannot
+    # do it: it validates the key against config_table, and role_/tier_ keys are open-ended
+    # by design, so it refuses every one of them.
+    if [ $# -ge 2 ]; then
+        _rs_key=$1; _rs_val=$2
+        case $_rs_key in
+            tier_*|role_*) ;;
+            *) _rs_key=role_$_rs_key ;;
+        esac
+        roles_parse "$_rs_val" >/dev/null ||
+            die "«$_rs_val» не в форме агент:модель:усилие"
+        if [ -n "$_rs_force_machine" ] || [ -z "$_rs_root" ]; then
+            _rs_file=$(config_machine_file)
+        else
+            _rs_file=$(config_project_file "$_rs_root")
+        fi
+        config_set_file "$_rs_file" "$_rs_key" "$_rs_val" || die "не удалось записать в $_rs_file"
+        ok "$_rs_key = $_rs_val"
+        dim "    → $_rs_file"
+        return 0
+    fi
+
+    menu_supported || die "нужен терминал для выбора — или задай сразу: fraim roles set КЛЮЧ агент:модель:усилие"
+
+    # 1. Which procedure. A tier key is offered too, because setting tier_cheap once is
+    #    usually the right move and setting thirteen roles one by one is usually not.
+    if [ $# -ge 1 ]; then
+        _rs_key=$1
+    else
+        _rs_key=$({ printf 'tier_cheap\ntier_capable\ntier_strong\n'
+                    fraim_procedures 2>/dev/null || :
+                  } | roles_pick "Что настраиваем — класс моделей или отдельную процедуру?") ||
+            die "отменено"
+    fi
+    case $_rs_key in
+        tier_*) _rs_ckey=$_rs_key ;;
+        role_*) _rs_ckey=$_rs_key ;;
+        *)      _rs_ckey=role_$_rs_key ;;
+    esac
+
+    # 2-4. The three fields. Models offered are the ones already configured here plus the
+    #      suggestion for this tier — so the first run has something to pick and later
+    #      runs mostly re-pick what this machine already uses.
+    _rs_agent=$(roles_agents_available | roles_pick "Агент:" 1) || die "отменено"
+    case $_rs_key in
+        tier_*) _rs_tier=${_rs_key#tier_} ;;
+        *)      _rs_tier=$(roles_tier_of "${_rs_key#role_}" 2>/dev/null || :) ;;
+    esac
+    _rs_model=$({ roles_models_seen "$_rs_root"; roles_models_suggested "$_rs_tier"; } |
+                grep '[^[:space:]]' | awk '!seen[$0]++' |
+                roles_pick "Модель:" 1) || die "отменено"
+    _rs_effort=$(roles_efforts | roles_pick "Усилие:" 2) || die "отменено"
+
+    # The agent list carries "(недоступен: …)" on entries the environment cannot launch.
+    # Strip it: the reason is there to inform the choice, not to end up in the config.
+    _rs_agent=${_rs_agent%% (недоступен:*}
+
+    _rs_val="$_rs_agent:$_rs_model:$_rs_effort"
+    roles_parse "$_rs_val" >/dev/null || die "получилось «$_rs_val» — это не агент:модель:усилие"
+
+    # 5. Which level. Project beats machine (§11.3, C), so the question is real whenever
+    #    we are standing inside a project.
+    _rs_file=$(config_machine_file)
+    if [ -n "$_rs_root" ]; then
+        _rs_lvl=$(printf 'эта машина (~/.fraim/config)\nтолько этот проект (ai/fraim.conf)\n' |
+                  roles_pick "Где записать?" 1) || die "отменено"
+        case $_rs_lvl in
+            *fraim.conf*) _rs_file=$(config_project_file "$_rs_root") ;;
+        esac
+    fi
+
+    config_set_file "$_rs_file" "$_rs_ckey" "$_rs_val" || die "не удалось записать в $_rs_file"
+    say ""
+    ok "$_rs_ckey = $_rs_val"
+    dim "    → $_rs_file"
+}
+
+# The mode of this project: which of the three defined modes is in force here.
+#
+# Not a preset of behaviours — MODES.md §1 is explicit that a mode answers "who has the
+# right to do what", and the authority inside each mode lives in the foundation and is not
+# configurable. What this switches is which mode is active, and the visible effect is the
+# context block in AGENTS.md: that is where an agent entering the project learns whether it
+# is a conductor. So there is no command to "start conducting" — being in the mode is the
+# whole mechanism.
+cmd_mode() {
+    _md_root=$(verb_root)
+    _md_cur=$(config_get mode "$_md_root")
+
+    if [ $# -eq 0 ]; then
+        say "режим: ${C_BLD}$_md_cur${C_OFF} · $(config_source mode "$_md_root")"
+        say ""
+        case $_md_cur in
+            parallel)
+                dim "    агент, входящий в проект, работает дирижёром: планирует, раздаёт"
+                dim "    флоту и сверяет, но приёмка — твоя (B5)"
+                dim "    вернуть обычный режим: fraim mode task" ;;
+            *)
+                dim "    одна задача — одна приёмка, исполняет одна сессия"
+                dim "    включить дирижёра и флот: fraim mode parallel" ;;
+        esac
+        return 0
+    fi
+
+    case $1 in
+        task|parallel) _md_new=$1 ;;
+        *) die "режим бывает task или parallel, а не «$1»" ;;
+    esac
+
+    if [ "$_md_new" = parallel ] && ! fleet_present; then
+        warn "среды исполнения на этой машине нет — флот поднять будет нечем"
+        dim "    планирование и проверки работают, а «fraim dispatch run» откажет"
+    fi
+
+    config_set_file "$(config_project_file "$_md_root")" mode "$_md_new" ||
+        die "не удалось записать режим"
+
+    # The block is the mechanism, not a side effect: without rewriting it the switch
+    # would change a config key and nothing an agent can see.
+    CTX_ROOT=$_md_root
+    context_install "$_md_root/AGENTS.md" context_project_block ||
+        die "режим записан, но AGENTS.md обновить не удалось — агент его не увидит"
+
+    ok "режим: $_md_new"
+    dim "    AGENTS.md обновлён — новая сессия агента прочитает это на входе"
+}
+
+# The role table (MODES.md §11.3): what a role resolves to here, and from which level.
+cmd_roles() {
+    if [ "${1:-}" = set ]; then shift; cmd_roles_set "$@"; return; fi
+    _root=$(pwd -P)
+    project_is_managed "$_root" || _root=
+    _rs=$(roles_list "$_root")
+    if [ -z "$_rs" ]; then
+        say "ролей не задано — всё пойдёт на встроенный дефолт:"
+        printf '  %s\n' "$(roles_resolve default "$_root" | tr '\t' ' ')"
+        say ""
+        dim "    задать: fraim config set role_refactor claude:haiku:medium"
+        return 0
+    fi
+    # Literal, not a printf format: POSIX printf pads to BYTES, and these headings are
+    # Cyrillic — %-15s on «роль» pads 8 bytes to 15 and lands 4 characters wide.
+    printf 'роль            агент   модель   усилие  источник\n'
+    for _r in $_rs; do
+        _ex=$(roles_resolve "$_r" "$_root") || continue
+        printf '%-15s %-7s %-8s %-7s %s\n' "$_r" \
+            "$(printf '%s' "$_ex" | cut -f1)" \
+            "$(printf '%s' "$_ex" | cut -f2)" \
+            "$(printf '%s' "$_ex" | cut -f3)" \
+            "$(roles_source "$_r" "$_root")"
+    done
+}
+
 # --- dispatch ---------------------------------------------------------------
 # A bare `fraim` is the most common thing typed by someone who does not know
 # what to type — answering it with a list of twenty commands is the worst
@@ -961,6 +1255,9 @@ case $_cmd in
     stack-passport) cmd_stack_passport "$@" ;;
     status)        cmd_status "$@" ;;
     fleet)         cmd_fleet "$@" ;;
+    dispatch)      cmd_dispatch "$@" ;;
+    roles)         cmd_roles "$@" ;;
+    mode)          cmd_mode "$@" ;;
     projects)      cmd_projects "$@" ;;
     doctor)        cmd_doctor "$@" ;;
     show)          cmd_show "$@" ;;

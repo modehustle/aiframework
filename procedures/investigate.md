@@ -4,6 +4,7 @@ description: "Investigate one unclear thing (a bug, a mechanism, a feasibility q
 metadata:
   tier: strong
   order: 10
+  parallel: yes
 ---
 # /investigate — Reconnaissance & Debugging
 

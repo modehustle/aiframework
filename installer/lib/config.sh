@@ -15,6 +15,7 @@
 # key|default|description
 config_table() {
     cat <<'TBL'
+mode|task|Режим работы проекта: task (одна задача — одна приёмка) или parallel (дирижёр и флот)
 foundation_lag_commits|10|Сколько коммитов кода без обновления ARCHITECTURE.md считать дрейфом
 stale_plan_commits|1|Сколько коммитов кода (мимо ai/) сверять с файлами плана
 lessons_lag_commits|25|Сколько коммитов кода без единой записи в Known Pitfalls считать потерей уроков
