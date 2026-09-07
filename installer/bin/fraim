@@ -39,6 +39,7 @@ _libdir=$(cd -- "$(dirname -- "$_self")/../lib" 2>/dev/null && pwd -P) || {
 . "$_libdir/clean.sh"
 . "$_libdir/publish.sh"
 . "$_libdir/update.sh"
+. "$_libdir/roles.sh"
 . "$_libdir/dispatch.sh"
 . "$_libdir/menu.sh"
 
@@ -57,7 +58,10 @@ fraim — эксплуатационный слой для проектов на
   fraim clean [--yes]       прибрать всё, что чинится без суждения
   fraim publish [--check]   копия проекта вне этой машины: создать, отправить, сверить
                             (--brief — задание агенту вычистить найденное)
-  fraim dispatch [ПЛАН]     параллельный режим: разбить задачу, проверить пути, раздать флоту
+  fraim dispatch ПЛАН       параллельный режим: проверить план и завести сборку
+                            (check ПЛАН — только проверка; verify СБОРКА ПОДЗАДАЧА —
+                            сверить дерево с объявленными путями; accept / list)
+  fraim roles               таблица ролей: во что разворачивается роль на этой машине
   fraim init                поставить скиллы / подхватить новый харнес
   fraim update [--check]    привезти новую версию и разложить (--check — только узнать)
   fraim doctor              что и куда установлено, что разошлось
@@ -931,48 +935,99 @@ cmd_restore() { verb_restore "$(pwd -P)" "$@"; }
 
 # Dispatch: split a task into parallel subtasks for independent workers.
 # Takes an optional plan file; without it, looks for build-plan.md in project.
+# The conductor's command. It stops one step short of launching on purpose: the
+# adapter that performs the six operations of MODES.md §9 is not written yet, and a
+# command that says "dispatched" while nothing runs is the defect this whole rewrite
+# came from. Everything up to the launch is real and checked.
 cmd_dispatch() {
-    _root=$(verb_root)
-    _subcmd=${1:-}
+    _sub=${1:-}
 
-    case $_subcmd in
-        status)
-            [ $# -ge 2 ] || die "fraim dispatch status BUILD-ID"
-            dispatch_status "$_root" "$2"
-            ;;
-        collect)
-            [ $# -ge 2 ] || die "fraim dispatch collect BUILD-ID"
-            say "Собираю результаты..."
-            collect_results "$_root" "$2" || die "сборка не удалась"
-            ok "Результаты собраны в ai/builds/$2/result.md"
+    # `check` is the one subcommand that reads a file and writes nothing, so it must
+    # work where a plan is written — which is not always inside a project. Without a
+    # project the role table simply resolves one level up, from the machine.
+    if [ "$_sub" = check ]; then
+        [ $# -ge 2 ] || die "нужно: fraim dispatch check ПЛАН"
+        _root=$(pwd -P); [ -d "$_root/ai" ] || _root=
+        dispatch_check "$2" "$_root" || die "план не годится для параллельной раздачи"
+        ok "план проходит dispatch-check"
+        say ""
+        dispatch_report "$2" "$_root"
+        return 0
+    fi
+
+    _root=$(verb_root)
+    case $_sub in
+        verify)
+            [ $# -ge 3 ] || die "нужно: fraim dispatch verify СБОРКА ПОДЗАДАЧА [БАЗА]"
+            _b=$2; _s=$3
+            _plan="$_root/ai/builds/$_b/plan.md"
+            [ -f "$_plan" ] || die "нет плана сборки $_b"
+            _paths=$(dispatch_field "$_plan" "$_s" 4)
+            [ -n "$_paths" ] || die "в сборке $_b нет подзадачи $_s"
+            _base=${4:-$(cd "$_root" && git rev-parse HEAD 2>/dev/null)}
+            dispatch_verify_tree "$_root" "$_base" "$_paths"
             ;;
         accept)
-            [ $# -ge 2 ] || die "fraim dispatch accept BUILD-ID"
-            say "Принимаю сборку..."
-            dispatch_accept "$_root" "$2" || die "приёмка не удалась"
-            ok "Сборка принята. Фундамент обновлён."
+            [ $# -ge 2 ] || die "нужно: fraim dispatch accept СБОРКА"
+            build_accept "$_root" "$2" >/dev/null || die "приёмка не прошла"
+            ok "сборка $2 принята"
+            ;;
+        list)
+            build_list "$_root"
+            ;;
+        "")
+            die "нужно: fraim dispatch ПЛАН (или check / verify / accept / list)"
             ;;
         *)
-            # Default: dispatch a new build
-            _plan=${1:-"$_root/build-plan.md"}
-            [ -f "$_plan" ] || die "план не найден: $_plan"
+            _plan=$_sub
+            [ -f "$_plan" ] || die "плана нет: $_plan"
+            dispatch_check "$_plan" "$_root" || die "план не годится для параллельной раздачи"
 
-            dispatch_check "$_plan" || die "dispatch-check не прошла"
+            _bid=build-$(date -u '+%Y%m%d-%H%M%S')
+            build_seal "$_root" "$_bid" "$_plan" >/dev/null || die "не удалось завести журнал сборки"
 
-            say "Разбор плана..."
-            _build_id=$(printf 'build-%s' "$(date +%Y%m%d-%H%M%S)")
-            mkdir -p "$_root/ai/builds/$_build_id"
-            cp "$_plan" "$_root/ai/builds/$_build_id/plan.md"
+            say "Сборка $_bid — кто что исполняет:"
+            say ""
+            dispatch_report "$_plan" "$_root"
+            say ""
 
-            say "Раздача подзадач..."
-            dispatch_to_workers "$_root" "$_plan" | while IFS=$'\t' read -r _id _task_dir; do
-                printf 'Worker %s → %s\n' "$_id" "$_task_dir"
+            dispatch_parse_plan "$_plan" | while IFS='|' read -r _id _role _sum _paths; do
+                [ -n "$_id" ] || continue
+                _d=$(dispatch_write_task "$_root" "$_bid" "$_id" "$_role" "$_sum" "$_paths") ||
+                    die "не удалось записать задачу подзадачи $_id"
+                dim "  задание $_id → ${_d#"$_root"/}"
             done
 
-            say "Сборка запечатана: $_build_id"
-            ok "Флот готов к запуску. Следующий шаг: запустить воркеров в ADE"
+            say ""
+            ok "задания записаны, журнал заведён: ai/builds/$_bid/journal.md"
+            warn "запуска воркеров ещё нет — адаптер среды исполнения (MODES.md §9) не написан"
+            dim "    задания можно исполнить вручную, а после сверить с деревом:"
+            dim "    fraim dispatch verify $_bid ПОДЗАДАЧА"
             ;;
     esac
+}
+
+# The role table (MODES.md §11.3): what a role resolves to here, and from which level.
+cmd_roles() {
+    _root=$(pwd -P)
+    project_is_managed "$_root" || _root=
+    _rs=$(roles_list "$_root")
+    if [ -z "$_rs" ]; then
+        say "ролей не задано — всё пойдёт на встроенный дефолт:"
+        printf '  %s\n' "$(roles_resolve default "$_root" | tr '\t' ' ')"
+        say ""
+        dim "    задать: fraim config set role_refactor claude:haiku:medium"
+        return 0
+    fi
+    printf 'роль        агент   модель   усилие  источник\n'
+    for _r in $_rs; do
+        _ex=$(roles_resolve "$_r" "$_root") || continue
+        printf '%-11s %-7s %-8s %-7s %s\n' "$_r" \
+            "$(printf '%s' "$_ex" | cut -f1)" \
+            "$(printf '%s' "$_ex" | cut -f2)" \
+            "$(printf '%s' "$_ex" | cut -f3)" \
+            "$(roles_source "$_r" "$_root")"
+    done
 }
 
 # --- dispatch ---------------------------------------------------------------
@@ -1010,6 +1065,7 @@ case $_cmd in
     status)        cmd_status "$@" ;;
     fleet)         cmd_fleet "$@" ;;
     dispatch)      cmd_dispatch "$@" ;;
+    roles)         cmd_roles "$@" ;;
     projects)      cmd_projects "$@" ;;
     doctor)        cmd_doctor "$@" ;;
     show)          cmd_show "$@" ;;
