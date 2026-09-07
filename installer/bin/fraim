@@ -989,7 +989,18 @@ cmd_dispatch() {
             _paths=$(dispatch_field "$_plan" "$_s" 4)
             [ -n "$_paths" ] || die "в сборке $_b нет подзадачи $_s"
             _base=${4:-$(cd "$_root" && git rev-parse HEAD 2>/dev/null)}
-            dispatch_verify_tree "$_root" "$_base" "$_paths"
+
+            # The worker's own checkout, not the project root — see dispatch_worker_tree.
+            # Falling back to the root when there is no checkout keeps the command useful
+            # for work done by hand in place, which is how it is used without an ADE.
+            _tree=$(dispatch_worker_tree "$_root" "$_b-$_s")
+            if [ -n "$_tree" ]; then
+                dim "  чекаут подзадачи: $_tree"
+            else
+                _tree=$_root
+                warn "отдельного чекаута $_b-$_s нет — сверяю корень проекта"
+            fi
+            dispatch_verify_tree "$_tree" "$_base" "$_paths"
             ;;
         run)
             [ $# -ge 2 ] || die "нужно: fraim dispatch run СБОРКА"
@@ -1006,10 +1017,30 @@ cmd_dispatch() {
         watch)
             [ $# -ge 2 ] || die "нужно: fraim dispatch watch СБОРКА"
             build_fleet_rows "$_root" "$2" | while IFS='	' read -r _s _t _d _at; do
-                [ -n "$_d" ] && [ "$_d" != "—" ] || { printf '%-12s не поднялась\n' "$_s"; continue; }
-                printf '%-12s %s\n' "$_s" "$_d"
-                fleet_worker_show "$_d" | head -3 | sed 's/^/    /'
+                if [ -z "$_d" ] || [ "$_d" = "—" ]; then
+                    printf '%-12s не поднялась\n' "$_s"; continue
+                fi
+                _w=$(fleet_worker_show "$_d")
+                # Their two words for how a worker is doing. Pulled out rather than
+                # printing raw JSON — the first live build showed the operator a wall of
+                # it — but the raw answer still shows when neither word is found, because
+                # inventing a verdict we did not read would be worse than a wall (§9.5).
+                _st=$(printf '%s' "$_w" | tr -d '\n' |
+                      grep -oE '"state"[[:space:]]*:[[:space:]]*"[a-z_]*"' | head -1 |
+                      sed 's/.*"\([a-z_]*\)"$/\1/')
+                _sg=$(printf '%s' "$_w" | tr -d '\n' |
+                      grep -oE '"stage"[[:space:]]*:[[:space:]]*"[a-z_]*"' | head -1 |
+                      sed 's/.*"\([a-z_]*\)"$/\1/')
+                if printf '%s' "$_w" | fleet_ok && [ -n "$_st$_sg" ]; then
+                    printf '%-12s %-18s %s %s\n' "$_s" "$_d" "${_st:-—}" "${_sg:+· $_sg}"
+                else
+                    printf '%-12s %-18s среда ответила не так, как ожидалось:\n' "$_s" "$_d"
+                    printf '%s\n' "$_w" | head -4 | sed 's/^/    /'
+                fi
             done
+            say ""
+            dim "    состояние терминала — не статус задачи: завершённая задача может"
+            dim "    держать живой терминал. Что сделано — покажет dispatch verify."
             ;;
         accept)
             [ $# -ge 2 ] || die "нужно: fraim dispatch accept СБОРКА"
@@ -1157,6 +1188,14 @@ cmd_mode() {
     _md_root=$(verb_root)
     _md_cur=$(config_get mode "$_md_root")
 
+    # Called by the harness at session start, not by a human: prints the mode's briefing
+    # as JSON for `additionalContext`. Silent and successful in task mode, so the hook can
+    # stay installed harmlessly if someone leaves it behind.
+    if [ "${1:-}" = --hook ]; then
+        context_hook_payload "$_md_root" || :
+        return 0
+    fi
+
     if [ $# -eq 0 ]; then
         say "режим: ${C_BLD}$_md_cur${C_OFF} · $(config_source mode "$_md_root")"
         say ""
@@ -1185,14 +1224,31 @@ cmd_mode() {
     config_set_file "$(config_project_file "$_md_root")" mode "$_md_new" ||
         die "не удалось записать режим"
 
-    # The block is the mechanism, not a side effect: without rewriting it the switch
-    # would change a config key and nothing an agent can see.
     CTX_ROOT=$_md_root
     context_install "$_md_root/AGENTS.md" context_project_block ||
         die "режим записан, но AGENTS.md обновить не удалось — агент его не увидит"
 
     ok "режим: $_md_new"
-    dim "    AGENTS.md обновлён — новая сессия агента прочитает это на входе"
+
+    # The hook is what actually STARTS the mode: AGENTS.md is a file the agent may read,
+    # a SessionStart hook is text the harness puts into its context before the first turn.
+    case $_md_new in parallel) _md_hook=on ;; *) _md_hook=off ;; esac
+    if context_hook_set "$_md_root" "$_md_hook"; then
+        case $_md_new in
+            parallel) dim "    хук SessionStart поставлен — дирижёрская инструкция придёт" ;;
+            *)        dim "    хук SessionStart снят" ;;
+        esac
+        dim "    в контекст агента на старте сессии, без единого нажатия"
+    else
+        _md_rc=$?
+        if [ "$_md_rc" -eq 2 ]; then
+            warn "нет python3 — хук SessionStart не поставлен"
+            dim "    режим держится только на AGENTS.md, а это агент может и пролистать"
+        else
+            warn ".claude/settings.json не удалось обновить — хук не поставлен"
+        fi
+    fi
+    dim "    AGENTS.md обновлён"
 }
 
 # The role table (MODES.md §11.3): what a role resolves to here, and from which level.
@@ -1213,11 +1269,14 @@ cmd_roles() {
     printf 'роль            агент   модель   усилие  источник\n'
     for _r in $_rs; do
         _ex=$(roles_resolve "$_r" "$_root") || continue
-        printf '%-15s %-7s %-8s %-7s %s\n' "$_r" \
-            "$(printf '%s' "$_ex" | cut -f1)" \
+        _ra=$(printf '%s' "$_ex" | cut -f1)
+        _rnote=$(fleet_caps_describe "$_ra" 2>/dev/null || :)
+        printf '%-15s %-7s %-8s %-7s %s%s\n' "$_r" \
+            "$_ra" \
             "$(printf '%s' "$_ex" | cut -f2)" \
             "$(printf '%s' "$_ex" | cut -f3)" \
-            "$(roles_source "$_r" "$_root")"
+            "$(roles_source "$_r" "$_root")" \
+            "${_rnote:+  ← $_rnote}"
     done
 }
 
