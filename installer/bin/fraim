@@ -40,6 +40,7 @@ _libdir=$(cd -- "$(dirname -- "$_self")/../lib" 2>/dev/null && pwd -P) || {
 . "$_libdir/publish.sh"
 . "$_libdir/update.sh"
 . "$_libdir/roles.sh"
+. "$_libdir/fleet.sh"
 . "$_libdir/dispatch.sh"
 . "$_libdir/menu.sh"
 
@@ -59,8 +60,10 @@ fraim — эксплуатационный слой для проектов на
   fraim publish [--check]   копия проекта вне этой машины: создать, отправить, сверить
                             (--brief — задание агенту вычистить найденное)
   fraim dispatch ПЛАН       параллельный режим: проверить план и завести сборку
-                            (check ПЛАН — только проверка; verify СБОРКА ПОДЗАДАЧА —
-                            сверить дерево с объявленными путями; accept / list)
+                            run СБОРКА — поднять флот в среде исполнения
+                            watch СБОРКА — что среда говорит о воркерах
+                            verify СБОРКА ПОДЗАДАЧА — сверить дерево с путями
+                            check ПЛАН · accept СБОРКА · list
   fraim roles [set [ИМЯ]]   таблица ролей: во что разворачивается роль на этой машине
                             (set — выбрать агента, модель и усилие из списка)
   fraim init                поставить скиллы / подхватить новый харнес
@@ -968,6 +971,26 @@ cmd_dispatch() {
             _base=${4:-$(cd "$_root" && git rev-parse HEAD 2>/dev/null)}
             dispatch_verify_tree "$_root" "$_base" "$_paths"
             ;;
+        run)
+            [ $# -ge 2 ] || die "нужно: fraim dispatch run СБОРКА"
+            say "Поднимаю флот для сборки $2..."
+            if dispatch_launch "$_root" "$2"; then
+                say ""
+                ok "флот поднят"
+            else
+                say ""
+                warn "часть воркеров не поднялась — что поднялось, записано в ai/builds/$2/fleet.tsv"
+                exit 1
+            fi
+            ;;
+        watch)
+            [ $# -ge 2 ] || die "нужно: fraim dispatch watch СБОРКА"
+            build_fleet_rows "$_root" "$2" | while IFS='	' read -r _s _t _d _at; do
+                [ -n "$_d" ] && [ "$_d" != "—" ] || { printf '%-12s не поднялась\n' "$_s"; continue; }
+                printf '%-12s %s\n' "$_s" "$_d"
+                fleet_worker_show "$_d" | head -3 | sed 's/^/    /'
+            done
+            ;;
         accept)
             [ $# -ge 2 ] || die "нужно: fraim dispatch accept СБОРКА"
             build_accept "$_root" "$2" >/dev/null || die "приёмка не прошла"
@@ -1001,9 +1024,13 @@ cmd_dispatch() {
 
             say ""
             ok "задания записаны, журнал заведён: ai/builds/$_bid/journal.md"
-            warn "запуска воркеров ещё нет — адаптер среды исполнения (MODES.md §9) не написан"
-            dim "    задания можно исполнить вручную, а после сверить с деревом:"
-            dim "    fraim dispatch verify $_bid ПОДЗАДАЧА"
+            if fleet_present; then
+                dim "    поднять флот:    fraim dispatch run $_bid"
+                dim "    состояние:       fraim dispatch watch $_bid"
+            else
+                dim "    среды исполнения на этой машине нет — задания можно исполнить вручную"
+            fi
+            dim "    сверить с деревом: fraim dispatch verify $_bid ПОДЗАДАЧА"
             ;;
     esac
 }

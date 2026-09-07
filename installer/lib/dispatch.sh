@@ -235,6 +235,91 @@ dispatch_verify_tree() {
 
 build_dir() { printf '%s/ai/builds/%s\n' "$1" "$2"; }
 
+# ---------------------------------------------------------------------------
+# Launching the fleet
+#
+# What we keep and what we do not: MODES.md §10 says the environment's ids — terminal
+# handles, worktree ids, dispatch ids — are THEIR truth, and ours is "which subtask went
+# to whom and what came back", which lives in git. So this file writes a cache with the
+# time it was taken (the precedent §10 names is ~/.fraim/update-check), not a registry we
+# pretend to own. If Orca and this file disagree, Orca is right about dispatch state and
+# the tree is right about the work.
+# ---------------------------------------------------------------------------
+
+# subtask<TAB>task_id<TAB>dispatch_id<TAB>taken_at
+build_fleet_file() { printf '%s/fleet.tsv\n' "$(build_dir "$1" "$2")"; }
+
+# Start every subtask of a build. Returns 1 if any worker failed to start — but only
+# after trying them all, because the subtasks are independent by construction and
+# abandoning the rest would throw away work that is already running.
+dispatch_launch() {
+    _dl_root=$1; _dl_build=$2
+
+    _dl_dir=$(build_dir "$_dl_root" "$_dl_build")
+    _dl_plan="$_dl_dir/plan.md"
+    [ -f "$_dl_plan" ] || { printf >&2 'нет плана сборки %s\n' "$_dl_build"; return 1; }
+
+    fleet_present || { printf >&2 'среда исполнения не найдена на этой машине\n'; return 1; }
+    fleet_ready   || { printf >&2 'среда исполнения не отвечает — запусти её (orca open)\n'; return 1; }
+
+    _dl_base=$(cd "$_dl_root" && git rev-parse --abbrev-ref HEAD 2>/dev/null) || _dl_base=main
+
+    _dl_run=$(fleet_run_create "fraim: сборка $_dl_build") || return 1
+    printf 'Run: %s\n' "$_dl_run"
+
+    _dl_file=$(build_fleet_file "$_dl_root" "$_dl_build")
+    printf '# сборка %s · run %s · снято %s\n' \
+        "$_dl_build" "$_dl_run" "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" > "$_dl_file"
+
+    _dl_bad=0
+    # Not a pipe into `while`: the loop must write $_dl_bad and the cache file, and in a
+    # subshell both would be lost the moment the pipeline ends.
+    _dl_recs=$(dispatch_parse_plan "$_dl_plan")
+    for _dl_id in $(printf '%s\n' "$_dl_recs" | cut -d'|' -f1); do
+        [ -n "$_dl_id" ] || continue
+        _dl_role=$(dispatch_field "$_dl_plan" "$_dl_id" 2)
+        _dl_sum=$(dispatch_field "$_dl_plan" "$_dl_id" 3)
+
+        _dl_ex=$(roles_resolve "$_dl_role" "$_dl_root") || { _dl_bad=1; continue; }
+        _dl_ag=$(printf '%s' "$_dl_ex" | cut -f1)
+        _dl_mo=$(printf '%s' "$_dl_ex" | cut -f2)
+        _dl_ef=$(printf '%s' "$_dl_ex" | cut -f3)
+
+        # The assignment is the file we already wrote for this subtask: it is
+        # self-contained by construction (G1), which is exactly what a worker that never
+        # saw this conversation needs.
+        _dl_task_md="$_dl_root/ai/parallel/$_dl_build/$_dl_id/task.md"
+        if [ -f "$_dl_task_md" ]; then
+            _dl_spec=$(cat "$_dl_task_md")
+        else
+            _dl_spec=$_dl_sum
+        fi
+
+        _dl_task=$(fleet_task_create "$_dl_run" "$_dl_id" "$_dl_spec") || { _dl_bad=1; continue; }
+        _dl_disp=$(fleet_worker_start "$_dl_task" "$_dl_ag" "$_dl_mo" "$_dl_ef" \
+                       "$_dl_build-$_dl_id" "$_dl_root" "$_dl_base") || {
+            printf '%s\t%s\t—\t%s\n' "$_dl_id" "$_dl_task" \
+                "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" >> "$_dl_file"
+            _dl_bad=1; continue
+        }
+
+        # Written per worker rather than at the end: a failure on the third subtask must
+        # not lose the ids of the two already running.
+        printf '%s\t%s\t%s\t%s\n' "$_dl_id" "$_dl_task" "$_dl_disp" \
+            "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" >> "$_dl_file"
+        printf '  %s → %s (%s %s %s)\n' "$_dl_id" "$_dl_disp" "$_dl_ag" "$_dl_mo" "$_dl_ef"
+    done
+
+    [ "$_dl_bad" -eq 0 ]
+}
+
+# The dispatch ids of a build, as cached at launch.
+build_fleet_rows() {
+    _bf=$(build_fleet_file "$1" "$2")
+    [ -f "$_bf" ] || return 1
+    grep -v '^#' "$_bf" 2>/dev/null | grep '[^[:space:]]' || :
+}
+
 # The build journal — MODES.md §11.4, answer D. Deliberately created empty of
 # lessons: what belongs in it is not knowable before the first real build, and a
 # template invented now would teach the wrong thing.
