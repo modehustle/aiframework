@@ -21,6 +21,7 @@
 #
 #     ## Subtask: A
 #     **Role**: run-task
+#     **Tier**: strong          (optional — how hard THIS subtask is)
 #     **Summary**: one line, for the worker's task.md
 #
 #     ### `path/to/file`
@@ -31,20 +32,34 @@
 # effort; it is the plan's only statement about the executor, on purpose.
 # ---------------------------------------------------------------------------
 
-# One record per subtask: id|role|summary|comma-separated paths
+# One record per subtask: id|role|tier|summary|comma-separated paths
 # Fields are emitted even when empty so the validator can name what is missing
 # rather than silently skipping the block.
+#
+# `**Tier**:` is optional and answers a different question than Role. Role says WHICH
+# PROCEDURE executes the subtask; Tier says HOW HARD this particular one is. Without it
+# every subtask of a build would run on the same model, because in practice every subtask
+# names the same procedure — `run-task` — and its frontmatter tier then decides for all of
+# them. "Tidy up error messages" and "design the auth module" are both run-task and are
+# not the same job.
+#
+# Tier stays portable for the same reason a role does: it is a class, not a model id. What
+# `strong` costs is a fact about one person's subscriptions, and that fact lives in their
+# config, not in the plan.
 dispatch_parse_plan() {
     [ -f "$1" ] || return 0
     awk '
         function flush() {
-            if (id != "") print id "|" role "|" summary "|" paths
-            id = ""; role = ""; summary = ""; paths = ""
+            if (id != "") print id "|" role "|" tier "|" summary "|" paths
+            id = ""; role = ""; tier = ""; summary = ""; paths = ""
         }
         /^## Subtask:/ { flush(); id = $3; next }
         id == "" { next }
         /^\*\*Role\*\*:/ {
             role = $0; sub(/^\*\*Role\*\*:[[:space:]]*/, "", role); next
+        }
+        /^\*\*Tier\*\*:/ {
+            tier = $0; sub(/^\*\*Tier\*\*:[[:space:]]*/, "", tier); next
         }
         /^\*\*Summary\*\*:/ {
             summary = $0; sub(/^\*\*Summary\*\*:[[:space:]]*/, "", summary); next
@@ -90,7 +105,7 @@ dispatch_check() {
     _dc_bad=0
 
     # 1. Structure: every subtask says who, what and where.
-    _dc_struct=$(printf '%s\n' "$_dc_recs" | while IFS='|' read -r _id _role _sum _paths; do
+    _dc_struct=$(printf '%s\n' "$_dc_recs" | while IFS='|' read -r _id _role _tier _sum _paths; do
         [ -n "$_id" ] || continue
         [ -n "$_role" ]  || printf 'подзадача %s: нет «**Role**:»\n' "$_id"
         [ -n "$_sum" ]   || printf 'подзадача %s: нет «**Summary**:»\n' "$_id"
@@ -102,7 +117,7 @@ dispatch_check() {
     fi
 
     # 2. Collision: the same path claimed by two subtasks.
-    _dc_pairs=$(printf '%s\n' "$_dc_recs" | while IFS='|' read -r _id _role _sum _paths; do
+    _dc_pairs=$(printf '%s\n' "$_dc_recs" | while IFS='|' read -r _id _role _tier _sum _paths; do
         [ -n "$_paths" ] || continue
         printf '%s\n' "$_paths" | tr ',' '\n' | while read -r _p; do
             [ -n "$_p" ] && printf '%s\t%s\n' "$_p" "$_id"
@@ -157,14 +172,14 @@ dispatch_report() {
     _dr_plan=$1; _dr_root=${2:-}
     # Literal: POSIX printf pads bytes, and Cyrillic headings would land short.
     printf 'подзадача  роль            агент   модель   усилие  источник\n'
-    dispatch_parse_plan "$_dr_plan" | while IFS='|' read -r _id _role _sum _paths; do
+    dispatch_parse_plan "$_dr_plan" | while IFS='|' read -r _id _role _tier _sum _paths; do
         [ -n "$_id" ] || continue
-        _ex=$(roles_resolve "$_role" "$_dr_root") || continue
+        _ex=$(roles_resolve "$_role" "$_dr_root" "$_tier") || continue
         _ag=$(printf '%s' "$_ex" | cut -f1)
         _mo=$(printf '%s' "$_ex" | cut -f2)
         _ef=$(printf '%s' "$_ex" | cut -f3)
         printf '%-10s %-15s %-7s %-8s %-7s %s\n' \
-            "$_id" "$_role" "$_ag" "$_mo" "$_ef" "$(roles_source "$_role" "$_dr_root")"
+            "$_id" "$_role" "$_ag" "$_mo" "$_ef" "$(roles_source "$_role" "$_dr_root" "$_tier")"
     done
 }
 
@@ -278,9 +293,10 @@ dispatch_launch() {
     for _dl_id in $(printf '%s\n' "$_dl_recs" | cut -d'|' -f1); do
         [ -n "$_dl_id" ] || continue
         _dl_role=$(dispatch_field "$_dl_plan" "$_dl_id" 2)
-        _dl_sum=$(dispatch_field "$_dl_plan" "$_dl_id" 3)
+        _dl_sum=$(dispatch_field "$_dl_plan" "$_dl_id" 4)
+        _dl_tier=$(dispatch_field "$_dl_plan" "$_dl_id" 3)
 
-        _dl_ex=$(roles_resolve "$_dl_role" "$_dl_root") || { _dl_bad=1; continue; }
+        _dl_ex=$(roles_resolve "$_dl_role" "$_dl_root" "$_dl_tier") || { _dl_bad=1; continue; }
         _dl_ag=$(printf '%s' "$_dl_ex" | cut -f1)
         _dl_mo=$(printf '%s' "$_dl_ex" | cut -f2)
         _dl_ef=$(printf '%s' "$_dl_ex" | cut -f3)
@@ -338,7 +354,7 @@ build_seal() {
         printf -- '- План: ai/builds/%s/plan.md\n\n' "$_bs_id"
         printf '| подзадача | роль | исход | вне своих путей |\n'
         printf '|---|---|---|---|\n'
-        dispatch_parse_plan "$_bs_plan" | while IFS='|' read -r _id _role _sum _paths; do
+        dispatch_parse_plan "$_bs_plan" | while IFS='|' read -r _id _role _tier _sum _paths; do
             [ -n "$_id" ] && printf '| %s | %s | — | — |\n' "$_id" "$_role"
         done
         printf '\n## Уроки дирижёра\n\n'

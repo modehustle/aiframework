@@ -13,17 +13,23 @@
 # saying `**Role**: run-task` says which procedure its worker executes, and the table
 # says on what.
 #
-# Resolution walks four steps, and the second is what makes the table cheap to fill:
+# Resolution walks five steps, and the third is what makes the table cheap to fill:
 #
 #   1. role_<procedure>   — this exact procedure, e.g. role_investigate
-#   2. tier_<tier>        — the tier declared in that procedure's own frontmatter
-#   3. role_default       — one answer for everything
-#   4. ROLES_BUILTIN      — the middle tier
+#   2. tier_<from plan>   — the tier the plan named for THIS subtask (see roles_resolve)
+#   3. tier_<procedure>   — the tier declared in that procedure's own frontmatter
+#   4. role_default       — one answer for everything
+#   5. ROLES_BUILTIN      — the middle tier
 #
-# Step 2 means three lines of config (tier_cheap, tier_capable, tier_strong) already
+# Step 3 means three lines of config (tier_cheap, tier_capable, tier_strong) already
 # answer for every procedure, because each procedure declares what class of model it
 # needs. Naming a single procedure explicitly is then the exception, which is what
 # C4 asks for: configuration where the fork is real, not everywhere.
+#
+# WHAT A TIER MEANS, because the names mislead: a tier is what an execution COSTS YOU,
+# not how clever the model is. Someone whose subscription includes a frontier model at no
+# marginal cost puts it in tier_cheap, and everything that "only needs the cheap one" then
+# runs on a frontier model. That is the table working, not a misuse of it.
 #
 # Why a plan names a role and not a model: a plan travels between machines, and a model
 # name is a fact about one person's subscriptions.
@@ -100,10 +106,27 @@ roles_parse() {
 # Resolve a role to its executor. Prints `agent<TAB>model<TAB>effort`.
 # Returns 1 only when a value exists but is malformed — an absent role is not a failure,
 # it is the default.
+# Third argument: a tier the PLAN named for this particular subtask, overriding the one
+# the procedure declares. It sits between the two config lookups on purpose:
+#
+#   role_<procedure>  — the human said "every run-task of mine runs on this". Deliberate
+#                       and rare; it wins, because it is the one statement made about this
+#                       procedure specifically.
+#   tier_<from plan>  — the conductor said "this subtask is heavy". It beats the
+#                       procedure's own tier because the conductor read the subtask and
+#                       the frontmatter could not.
+#   tier_<procedure>  — the class the procedure declares for itself.
+#
+# Without the middle step every worker of a build lands on the same model: in practice
+# every subtask names `run-task`, whose tier is `cheap`, so "tidy the error strings" and
+# "design the auth module" would be given identical executors.
 roles_resolve() {
-    _rr_role=$1; _rr_root=${2:-}
+    _rr_role=$1; _rr_root=${2:-}; _rr_plan_tier=${3:-}
 
     _rr_v=$(config_get "role_$_rr_role" "$_rr_root")
+    if [ -z "$_rr_v" ] && [ -n "$_rr_plan_tier" ]; then
+        _rr_v=$(config_get "tier_$_rr_plan_tier" "$_rr_root")
+    fi
     if [ -z "$_rr_v" ]; then
         _rr_t=$(roles_tier_of "$_rr_role" 2>/dev/null || :)
         [ -n "$_rr_t" ] && _rr_v=$(config_get "tier_$_rr_t" "$_rr_root")
@@ -121,9 +144,13 @@ roles_resolve() {
 # so the conductor can see that a subtask is about to run on the machine default rather
 # than on what the project asked for.
 roles_source() {
-    _rs_role=$1; _rs_root=${2:-}
+    _rs_role=$1; _rs_root=${2:-}; _rs_plan_tier=${3:-}
     if [ -n "$(config_get "role_$_rs_role" "$_rs_root")" ]; then
         config_source "role_$_rs_role" "$_rs_root"; return
+    fi
+    if [ -n "$_rs_plan_tier" ] && [ -n "$(config_get "tier_$_rs_plan_tier" "$_rs_root")" ]; then
+        printf '%s (tier_%s из плана)\n' \
+            "$(config_source "tier_$_rs_plan_tier" "$_rs_root")" "$_rs_plan_tier"; return
     fi
     _rs_t=$(roles_tier_of "$_rs_role" 2>/dev/null || :)
     if [ -n "$_rs_t" ] && [ -n "$(config_get "tier_$_rs_t" "$_rs_root")" ]; then

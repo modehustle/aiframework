@@ -967,7 +967,7 @@ cmd_dispatch() {
             _b=$2; _s=$3
             _plan="$_root/ai/builds/$_b/plan.md"
             [ -f "$_plan" ] || die "нет плана сборки $_b"
-            _paths=$(dispatch_field "$_plan" "$_s" 4)
+            _paths=$(dispatch_field "$_plan" "$_s" 5)
             [ -n "$_paths" ] || die "в сборке $_b нет подзадачи $_s"
             _base=${4:-$(cd "$_root" && git rev-parse HEAD 2>/dev/null)}
             dispatch_verify_tree "$_root" "$_base" "$_paths"
@@ -1016,7 +1016,7 @@ cmd_dispatch() {
             dispatch_report "$_plan" "$_root"
             say ""
 
-            dispatch_parse_plan "$_plan" | while IFS='|' read -r _id _role _sum _paths; do
+            dispatch_parse_plan "$_plan" | while IFS='|' read -r _id _role _tier _sum _paths; do
                 [ -n "$_id" ] || continue
                 _d=$(dispatch_write_task "$_root" "$_bid" "$_id" "$_role" "$_sum" "$_paths") ||
                     die "не удалось записать задачу подзадачи $_id"
