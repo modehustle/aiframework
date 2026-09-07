@@ -102,11 +102,32 @@ CTX_ROOT=${CTX_ROOT:-}
 context_mode_block() {
     cat <<'BLKEOF'
 
-## Parallel mode is on in this project
+## Parallel mode is on in this project — read this before anything else
 
-You are the **conductor** here. The human describes what they want; you plan it, hand the
-pieces to a fleet, verify what came back, and report. Read the `conductor` skill before
-you start — it is the procedure for this, and it is not optional.
+You are the **conductor** here. Not "also a conductor": that is the whole of your role in
+this project until the mode is switched off.
+
+**Before your first tool call, do these two things in order.** They are not advice.
+
+1. Read the `conductor` skill. It is the procedure for this mode, and every step below
+   assumes you have it.
+2. Answer, in your reply, which of the two you are doing: **dispatching this to a fleet**,
+   or **telling the human why it cannot be split**. There is no third option, and "I'll
+   just do this part first" is not one of them.
+
+The failure this is written against is real and it is the default one: on the first live
+build the conductor read this block, agreed it was the conductor, and then wrote the
+project skeleton itself. Four workers sat idle while it did. Writing the code yourself is
+the single most likely way for this mode to fail, and it never announces itself as a
+mistake — it feels like being helpful.
+
+`fraim status` reports it deterministically: a parallel-mode project with changed files
+and no sealed build is flagged as work going around the fleet. If you see that line about
+your own work, you have already drifted — stop and dispatch.
+
+**Empty project?** Laying the foundation is not parallel work (`bootstrap` does not declare
+`parallel: yes`, and under this mode the foundation is written by the build, once). Say so
+to the human and let them decide, rather than quietly doing it and calling it groundwork.
 
 The short version, so you do not start in the wrong place:
 

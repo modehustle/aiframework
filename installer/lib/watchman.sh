@@ -394,6 +394,47 @@ wm_check_remote() {
 #     of them is modified and uncommitted, a verb was interrupted or bypassed. Code and
 #     settings are the human's business and are deliberately not counted — a watchman that
 #     comments on work in progress stops being read.
+# Work happening outside a build while the project is in parallel mode.
+#
+# Why this exists: in the first live build the conductor read AGENTS.md, was told it was
+# the conductor here, and then wrote the project skeleton itself instead of dispatching
+# it. Text in a context block is a request to a model, and a request is not a guarantee —
+# the only thing that holds deterministically is a check over files and git, which is
+# exactly what the watchman is (`fraim status`: files, git log and mtime; no model, no
+# network, writes nothing).
+#
+# It looks for one shape and no other: the mode says the work goes through builds, the
+# tree says work happened, and ai/builds says no build was ever sealed. That combination
+# cannot occur when the mode is being followed, and it occurs immediately when it is not.
+#
+# Deliberately silent on a freshly switched project with a clean tree: switching the mode
+# and then thinking for a while is not drift, and a watchman that comments on nothing
+# stops being read.
+wm_check_parallel_drift() {
+    _root=$1
+    [ "$(config_get mode "$_root" 2>/dev/null || :)" = parallel ] || return 0
+    wm_is_git "$_root" || return 0
+
+    # A build exists the moment `dispatch` seals its journal.
+    for _wp in "$_root"/ai/builds/*/journal.md; do
+        [ -f "$_wp" ] && return 0
+    done
+
+    # Switching the mode is itself a change — it rewrites AGENTS.md and ai/fraim.conf — so
+    # counting those would make the check fire the instant it was switched on, on a project
+    # where nobody had done anything yet. What it is looking for is WORK: the project's own
+    # files moving while no build exists to account for them.
+    _wp_n=$(git -C "$_root" status --porcelain --untracked-files=normal 2>/dev/null |
+            sed 's/^...//' |
+            grep -v '^ai/' | grep -v '^AGENTS\.md$' | grep -v '^CLAUDE\.md$' |
+            grep -c '[^[:space:]]' || :)
+    [ "${_wp_n:-0}" -gt 0 ] || return 0
+
+    wm_add parallel-drift attention \
+        "режим параллельный, но работа идёт мимо сборки: изменено $_wp_n $(wm_plural "$_wp_n" файл файла файлов), сборок нет" \
+        "fraim dispatch ПЛАН"
+}
+
 wm_check_dirty() {
     _root=$1
     wm_is_git "$_root" || return 0
@@ -749,6 +790,7 @@ wm_run() {
     config_is_on check_git            "$_root" && wm_check_git "$_root"
     config_is_on check_remote         "$_root" && wm_check_remote "$_root"
     config_is_on check_dirty          "$_root" && wm_check_dirty "$_root"
+    config_is_on check_parallel_drift "$_root" && wm_check_parallel_drift "$_root"
     config_is_on check_worktrees      "$_root" && wm_check_worktrees "$_root"
     config_is_on check_ade            "$_root" && wm_check_ade "$_root"
     wm_check_queue "$_root"

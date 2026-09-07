@@ -150,6 +150,20 @@ dispatch_check() {
         fi
     done
 
+    # 5. Known refusals. Not a failure — the launch will handle it — but the conductor
+    #    should read it here rather than discover it in the launch output, because it
+    #    changes what the build will actually cost.
+    printf '%s\n' "$_dc_recs" | while IFS='|' read -r _id _role _sum _paths; do
+        [ -n "$_role" ] || continue
+        _ex=$(roles_resolve "$_role" "$_dc_root" 2>/dev/null) || continue
+        _ag=$(printf '%s' "$_ex" | cut -f1)
+        _mo=$(printf '%s' "$_ex" | cut -f2)
+        if [ -n "$_mo" ] && fleet_caps_has "$_ag" no-launch-model 2>/dev/null; then
+            printf >&2 'подзадача %s: агент %s не принимает модель при запуске — %s не применится\n' \
+                "$_id" "$_ag" "$_mo"
+        fi
+    done
+
     [ "$_dc_bad" -eq 0 ] || return 1
     return 0
 }
@@ -377,7 +391,14 @@ dispatch_launch() {
         # not lose the ids of the two already running.
         printf '%s\t%s\t%s\t%s\n' "$_dl_id" "$_dl_task" "$_dl_disp" \
             "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" >> "$_dl_file"
-        printf '  %s → %s (%s %s %s)\n' "$_dl_id" "$_dl_disp" "$_dl_ag" "$_dl_mo" "$_dl_ef"
+        # Do not print a model that was not applied: the launch may have dropped it for
+        # an agent that refuses one, and a report naming it would be a quiet lie about
+        # what this build actually ran on.
+        if fleet_caps_has "$_dl_ag" no-launch-model 2>/dev/null; then
+            printf '  %s → %s (%s, модель не применяется)\n' "$_dl_id" "$_dl_disp" "$_dl_ag"
+        else
+            printf '  %s → %s (%s %s %s)\n' "$_dl_id" "$_dl_disp" "$_dl_ag" "$_dl_mo" "$_dl_ef"
+        fi
     done
 
     [ "$_dl_bad" -eq 0 ]

@@ -62,6 +62,45 @@ fleet_id() {
 # Named here rather than inlined so that the day it changes, it changes in one place.
 FLEET_DISPATCH_KIND=ctx
 
+# ---------------------------------------------------------------------------
+# What an agent can be launched with
+#
+# The problem this solves, from the first live build: the role table said devin:glm-5.2,
+# nothing could have known that Orca's devin agent rejects a launch-time model, and all
+# four workers died on it. Retrying without the model fixes that one case; it does not
+# help with whatever the next agent refuses for its own reason.
+#
+# The general answer is not a catalogue of agent capabilities — that is the treadmill P0
+# warns about, and it would be stale the week it was written. It is to LEARN FROM THE
+# REFUSAL: the environment already tells us what it will not accept, once, at the moment
+# we ask. Writing that down turns a repeated failure into a single one.
+#
+# A cache, not a registry: the environment's capabilities are its truth, ours is a note of
+# what it told us and when (§10). Stale entries cost one extra launch attempt to correct,
+# which is why forgetting is safe and `fraim clean` may drop this file at any time.
+#
+# Format: one line per fact, `agent<TAB>fact<TAB>when`.
+fleet_caps_file() { printf '%s/agent-caps\n' "$FRAIM_HOME"; }
+
+fleet_caps_has() {
+    _fch=$(fleet_caps_file)
+    [ -f "$_fch" ] || return 1
+    grep -q "^$1	$2	" "$_fch" 2>/dev/null
+}
+
+fleet_caps_note() {
+    _fcn=$(fleet_caps_file)
+    mkdir -p "$(dirname -- "$_fcn")" 2>/dev/null || return 0
+    fleet_caps_has "$1" "$2" && return 0
+    printf '%s\t%s\t%s\n' "$1" "$2" "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" >> "$_fcn" 2>/dev/null || :
+}
+
+# Human-readable line for `fraim roles`, or nothing.
+fleet_caps_describe() {
+    fleet_caps_has "$1" no-launch-model && printf 'модель при запуске не принимает\n'
+    return 0
+}
+
 # Every Orca response carries `"ok": true|false`. This is the one field name we do rely
 # on, because it is the envelope rather than the payload, and because the alternative —
 # trusting the exit code alone — loses the distinction their own help draws between a
@@ -120,19 +159,33 @@ fleet_worker_start() {
     _fws_name=$5; _fws_root=$6; _fws_base=$7
 
     _fws_cmd=$(fleet_cli) || return 1
+
+    # Known from a previous refusal: do not ask again. This is what turns "the fleet dies
+    # every time" into "the fleet died once, and only until it was told why".
+    if [ -n "$_fws_model" ] && fleet_caps_has "$_fws_agent" no-launch-model; then
+        printf >&2 'агент %s модель при запуске не принимает (известно с прошлого раза) — %s пойдёт без неё\n' \
+            "$_fws_agent" "$_fws_name"
+        _fws_model=
+    fi
+
+    # `_fws_out=$(cmd)` followed by `_fws_rc=$?` looks right and is not: under `set -e`
+    # the assignment itself carries the command's exit status, so a failing launch killed
+    # the whole run before the retry below could ever be reached. Captured through `if`
+    # instead, which is the one place a non-zero status is allowed to be read.
     if [ -n "$_fws_model" ]; then
-        _fws_out=$("$_fws_cmd" orchestration worker-start \
+        if _fws_out=$("$_fws_cmd" orchestration worker-start \
             --task "$_fws_task" --agent "$_fws_agent" \
             --model "$_fws_model" --effort "$_fws_effort" \
             --worktree new-top-level --name "$_fws_name" \
             --repo "path:$_fws_root" --base-branch "$_fws_base" --json 2>&1)
+        then _fws_rc=0; else _fws_rc=$?; fi
     else
-        _fws_out=$("$_fws_cmd" orchestration worker-start \
+        if _fws_out=$("$_fws_cmd" orchestration worker-start \
             --task "$_fws_task" --agent "$_fws_agent" \
             --worktree new-top-level --name "$_fws_name" \
             --repo "path:$_fws_root" --base-branch "$_fws_base" --json 2>&1)
+        then _fws_rc=0; else _fws_rc=$?; fi
     fi
-    _fws_rc=$?
 
     # Not every agent accepts a model at launch. The first live build died whole on this:
     # the role table said devin:glm-5.2, dispatch-check passed it (it validates shape, and
@@ -145,13 +198,15 @@ fleet_worker_start() {
     # invisible three hours later.
     if [ "$_fws_rc" -ne 0 ] && [ -n "$_fws_model" ] &&
        printf '%s' "$_fws_out" | grep -qi 'launch-time model\|does not support.*model'; then
+        fleet_caps_note "$_fws_agent" no-launch-model
         printf >&2 'агент %s не принимает модель при запуске — поднимаю %s без неё (модель %s не применена)\n' \
             "$_fws_agent" "$_fws_name" "$_fws_model"
-        _fws_out=$("$_fws_cmd" orchestration worker-start \
+        printf >&2 '  запомнено: следующие сборки не будут пытаться\n'
+        if _fws_out=$("$_fws_cmd" orchestration worker-start \
             --task "$_fws_task" --agent "$_fws_agent" \
             --worktree new-top-level --name "$_fws_name" \
             --repo "path:$_fws_root" --base-branch "$_fws_base" --json 2>&1)
-        _fws_rc=$?
+        then _fws_rc=0; else _fws_rc=$?; fi
     fi
 
     if [ "$_fws_rc" -ne 0 ]; then

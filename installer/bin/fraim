@@ -1244,11 +1244,14 @@ cmd_roles() {
     printf 'роль            агент   модель   усилие  источник\n'
     for _r in $_rs; do
         _ex=$(roles_resolve "$_r" "$_root") || continue
-        printf '%-15s %-7s %-8s %-7s %s\n' "$_r" \
-            "$(printf '%s' "$_ex" | cut -f1)" \
+        _ra=$(printf '%s' "$_ex" | cut -f1)
+        _rnote=$(fleet_caps_describe "$_ra" 2>/dev/null || :)
+        printf '%-15s %-7s %-8s %-7s %s%s\n' "$_r" \
+            "$_ra" \
             "$(printf '%s' "$_ex" | cut -f2)" \
             "$(printf '%s' "$_ex" | cut -f3)" \
-            "$(roles_source "$_r" "$_root")"
+            "$(roles_source "$_r" "$_root")" \
+            "${_rnote:+  ← $_rnote}"
     done
 }
 
