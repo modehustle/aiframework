@@ -422,6 +422,102 @@ wm_check_dirty() {
     return 0
 }
 
+# 4f. Parallel checkouts. Until the fleet appeared, «the project» and «the directory» were
+#     the same thing, and every other check in this file still assumes it: they read
+#     $_root and nothing else. One `git worktree add` — by hand, or by an ADE creating a
+#     checkout per task — and the verdict describes one directory while the work happens
+#     in another. That is drift of exactly the kind this file exists to catch, on a layer
+#     that did not exist when it was written.
+#
+#     The register of checkouts is git itself, not the ADE. That matters twice: the answer
+#     stays true when the runtime is closed or was never installed, and it costs no
+#     dependency — git already keeps this list, so there is nothing to keep in sync (A3).
+wm_check_worktrees() {
+    _root=$1
+    wm_is_git "$_root" || return 0
+    _wt_list=$(git -C "$_root" worktree list --porcelain 2>/dev/null) || return 0
+
+    # Split on newlines only: a checkout path may contain spaces, and `set -f` keeps a
+    # path with a glob character in it from expanding into something else entirely.
+    _wt_old_ifs=$IFS
+    set -f
+    IFS='
+'
+    _wt_n=0
+    _wt_names=
+    for _wt_p in $(printf '%s\n' "$_wt_list" | sed -n 's/^worktree //p'); do
+        [ -d "$_wt_p" ] || continue
+        _wt_real=$(cd -- "$_wt_p" 2>/dev/null && pwd -P) || continue
+        [ "$_wt_real" = "$_root" ] && continue
+        _wt_n=$((_wt_n + 1))
+        _wt_name=$(basename -- "$_wt_real")
+
+        # Globbing back on for the body: `set -f` above protects the path list from
+        # pathname expansion, and it would just as happily stop the two globs below from
+        # matching anything at all — silently, which is the worst way for a check to fail.
+        set +f
+        if [ -z "$_wt_names" ]; then _wt_names=$_wt_name; else _wt_names="$_wt_names, $_wt_name"; fi
+
+        # The two states that mean unfinished work, asked in the same order and by the
+        # same evidence as in the current checkout (4a and 4b) — the checks differ only
+        # in which directory they read.
+        for _wt_b in "$_wt_real"/ai/tasks/*/blockers.md; do
+            [ -f "$_wt_b" ] || continue
+            _wt_slug=$(basename -- "$(dirname -- "$_wt_b")")
+            wm_add worktree-blocked attention \
+                "задача «$_wt_slug» заблокирована в чекауте «$_wt_name»" "/revise-task"
+        done
+        for _wt_r in "$_wt_real"/ai/tasks/*/result.md; do
+            [ -f "$_wt_r" ] || continue
+            _wt_dir=$(dirname -- "$_wt_r")
+            [ -f "$_wt_dir/blockers.md" ] && continue
+            _wt_slug=$(basename -- "$_wt_dir")
+            wm_add worktree-unsealed attention \
+                "задача «$_wt_slug» исполнена в чекауте «$_wt_name» и не запечатана" \
+                "fraim task-seal $_wt_slug"
+        done
+        set -f
+    done
+    IFS=$_wt_old_ifs
+    set +f
+
+    [ "$_wt_n" -gt 0 ] || return 0
+    wm_add worktree info \
+        "$_wt_n $(wm_plural "$_wt_n" "параллельный чекаут" "параллельных чекаута" "параллельных чекаутов"): $_wt_names" \
+        "fraim fleet"
+    return 0
+}
+
+# 4g. The fleet runtime, when there is one. Read-only, offline, no model: the same contract
+#     as every other check here (SCHEDULING.md). An environment that is installed but not
+#     running is silence, not a finding — whether it runs is the operator's business (C1).
+#
+#     The one thing worth saying out loud is a scheduled free-form prompt against this
+#     project. It is not forbidden and we do not touch it, but it explains drift that
+#     otherwise looks causeless: code appears in the morning and nothing in the git log
+#     says who asked for it. A scheduled watchman is the opposite case and stays silent —
+#     that is layer 2 of SCHEDULING.md working as designed.
+wm_check_ade() {
+    _root=$1
+    _ade_det=$(ade_detect)
+    [ -n "$_ade_det" ] || return 0
+    _ade_old_ifs=$IFS
+    IFS='
+'
+    for _ade_row in $_ade_det; do
+        _ade_label=$(printf '%s' "$_ade_row" | cut -f2)
+        _ade_cmd=$(printf '%s' "$_ade_row" | cut -f3)
+        ade_alive "$_ade_cmd" || continue
+        _ade_a=$(ade_automations "$_ade_cmd" "$_root")
+        [ "$(printf '%s' "$_ade_a" | cut -f1)" = 1 ] || continue
+        [ "$(printf '%s' "$_ade_a" | cut -f2)" = 0 ] || continue
+        wm_add ade-automation info \
+            "$_ade_label: по этому проекту работает агент по расписанию" "fraim fleet"
+    done
+    IFS=$_ade_old_ifs
+    return 0
+}
+
 # 5. Queue depth. Informational — a full queue is normal, an empty one is too.
 # The queue as DATA, not as a sentence. Three places used to walk ai/tasks/ and label
 # each folder — /run-task 1.3-1.10 and /make-task 1.2-1.6 by prose, the watchman in code.
@@ -653,6 +749,8 @@ wm_run() {
     config_is_on check_git            "$_root" && wm_check_git "$_root"
     config_is_on check_remote         "$_root" && wm_check_remote "$_root"
     config_is_on check_dirty          "$_root" && wm_check_dirty "$_root"
+    config_is_on check_worktrees      "$_root" && wm_check_worktrees "$_root"
+    config_is_on check_ade            "$_root" && wm_check_ade "$_root"
     wm_check_queue "$_root"
     config_is_on check_foundation   "$_root" && wm_check_foundation "$_root"
     config_is_on check_lessons      "$_root" && wm_check_lessons "$_root"

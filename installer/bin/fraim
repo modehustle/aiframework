@@ -29,6 +29,7 @@ _libdir=$(cd -- "$(dirname -- "$_self")/../lib" 2>/dev/null && pwd -P) || {
 . "$_libdir/core.sh"
 . "$_libdir/skills.sh"
 . "$_libdir/harness.sh"
+. "$_libdir/ade.sh"
 . "$_libdir/registry.sh"
 . "$_libdir/context.sh"
 . "$_libdir/config.sh"
@@ -48,6 +49,7 @@ fraim — эксплуатационный слой для проектов на
   fraim                     меню (в терминале) — то же, что fraim menu
   fraim menu                экран со сканом, обновлением, доктором, реестром
   fraim status [ПУТЬ]       что происходит в проекте (--json для машины)
+  fraim fleet [ПУТЬ]        где живёт работа: чекауты проекта и среда флота
   fraim undo [ХЕШ]          показать точки сохранения / вернуть, как было
   fraim scaffold [ПУТЬ]     завести проект под систему
   fraim upgrade [ПУТЬ]      довести существующий фундамент до стандарта
@@ -258,6 +260,138 @@ cmd_status() {
     wm_run "$_root"
     if [ "$_json" = 1 ]; then wm_report_json "$_root"; else wm_report_human "$_root"; fi
     if wm_has_attention; then exit 1; fi
+    exit 0
+}
+
+# --- fleet ------------------------------------------------------------------
+# Read-only, like `status`: where the work of this project actually lives.
+#
+# The register of checkouts is git, not the ADE, so this answers even with no fleet
+# runtime installed — and that is the common case today. The environment section only
+# adds what git cannot know: whether a runtime is answering, and whether something is
+# scheduled against this project.
+
+# Task counts for one checkout: runnable<TAB>blocked<TAB>unsealed
+fleet_counts() {
+    _f_root=$1; _f_run=0; _f_blk=0; _f_uns=0
+    for _f_t in "$_f_root"/ai/tasks/*/; do
+        [ -d "$_f_t" ] || continue
+        [ -f "$_f_t/task.md" ] || continue
+        if   [ -f "$_f_t/blockers.md" ]; then _f_blk=$((_f_blk + 1))
+        elif [ -f "$_f_t/result.md" ];   then _f_uns=$((_f_uns + 1))
+        else _f_run=$((_f_run + 1))
+        fi
+    done
+    printf '%s\t%s\t%s\n' "$_f_run" "$_f_blk" "$_f_uns"
+}
+
+fleet_state_words() {
+    _fs_run=$1; _fs_blk=$2; _fs_uns=$3; _fs_out=
+    [ "$_fs_blk" -gt 0 ] && _fs_out="$_fs_blk заблокировано"
+    if [ "$_fs_uns" -gt 0 ]; then
+        [ -n "$_fs_out" ] && _fs_out="$_fs_out, "
+        _fs_out="$_fs_out$_fs_uns не запечатано"
+    fi
+    if [ "$_fs_run" -gt 0 ]; then
+        [ -n "$_fs_out" ] && _fs_out="$_fs_out, "
+        _fs_out="$_fs_out$_fs_run в очереди"
+    fi
+    [ -n "$_fs_out" ] || _fs_out="чисто"
+    printf '%s\n' "$_fs_out"
+}
+
+cmd_fleet() {
+    _json=0; _path=
+    for _a in "$@"; do
+        case $_a in
+            --json) _json=1 ;;
+            -*) die "неизвестный флаг: $_a" ;;
+            *) _path=$_a ;;
+        esac
+    done
+    [ -n "$_path" ] || _path=$(pwd -P)
+    _root=$(cd -- "$_path" 2>/dev/null && pwd -P) || die "нет такого каталога: $_path"
+    verb_is_git "$_root" || die "$_root не репозиторий — чекаутов нет и быть не может"
+
+    _list=$(git -C "$_root" worktree list --porcelain 2>/dev/null) || _list=
+
+    [ "$_json" = 1 ] || printf '%s%s%s\n' "$C_BLD" "$(basename -- "$_root")" "$C_OFF"
+    [ "$_json" = 1 ] && printf '{\n  "project": "%s",\n  "checkouts": [' "$_root"
+
+    _old_ifs=$IFS
+    set -f
+    IFS='
+'
+    _first=1
+    for _p in $(printf '%s\n' "$_list" | sed -n 's/^worktree //p'); do
+        [ -d "$_p" ] || continue
+        _real=$(cd -- "$_p" 2>/dev/null && pwd -P) || continue
+        set +f                      # fleet_counts globs; `set -f` above would mute it
+        _c=$(fleet_counts "$_real")
+        set -f
+        _run=$(printf '%s' "$_c" | cut -f1)
+        _blk=$(printf '%s' "$_c" | cut -f2)
+        _uns=$(printf '%s' "$_c" | cut -f3)
+        _here=false; [ "$_real" = "$_root" ] && _here=true
+        if [ "$_json" = 1 ]; then
+            [ "$_first" = 1 ] || printf ','
+            _first=0
+            printf '\n    { "path": "%s", "current": %s, "runnable": %s, "blocked": %s, "unsealed": %s }' \
+                "$(wm_json_escape "$_real")" "$_here" "$_run" "$_blk" "$_uns"
+        else
+            _mark='  '; [ "$_here" = true ] && _mark=' ▸'
+            printf '%s %s  %s%s%s\n' "$_mark" "$(wm_pad "$_real" 48)" \
+                "$C_DIM" "$(fleet_state_words "$_run" "$_blk" "$_uns")" "$C_OFF"
+        fi
+    done
+    IFS=$_old_ifs
+    set +f
+
+    [ "$_json" = 1 ] && printf '\n  ],\n  "ade": ['
+
+    # The environment, when there is one. Absence is silence: an ADE is the operator's
+    # choice, and a project without one is not a project with a problem (C1).
+    _det=$(ade_detect)
+    _old_ifs=$IFS
+    IFS='
+'
+    _first=1
+    for _row in $_det; do
+        _label=$(printf '%s' "$_row" | cut -f2)
+        _key=$(printf '%s' "$_row" | cut -f1)
+        _cmd=$(printf '%s' "$_row" | cut -f3)
+        if ade_alive "$_cmd"; then _alive=true; else _alive=false; fi
+        _auto=none
+        if [ "$_alive" = true ]; then
+            _a=$(ade_automations "$_cmd" "$_root")
+            if [ "$(printf '%s' "$_a" | cut -f1)" = 1 ]; then
+                if [ "$(printf '%s' "$_a" | cut -f2)" = 1 ]; then _auto=watchman; else _auto=free; fi
+            fi
+        fi
+        if [ "$_json" = 1 ]; then
+            [ "$_first" = 1 ] || printf ','
+            _first=0
+            printf '\n    { "key": "%s", "command": "%s", "alive": %s, "automations": "%s" }' \
+                "$_key" "$(wm_json_escape "$_cmd")" "$_alive" "$_auto"
+        else
+            if [ "$_alive" = true ]; then
+                ok "$_label ($_cmd) — рантайм отвечает"
+            else
+                dim "  $_label ($_cmd) — установлен, рантайм не отвечает"
+            fi
+            case $_auto in
+                free) warn "$_label: по этому проекту работает агент по расписанию — проверь, что он не правит код без тебя" ;;
+                watchman) dim "  $_label: по расписанию ходит сторож — это наблюдение, не правка" ;;
+            esac
+        fi
+    done
+    IFS=$_old_ifs
+
+    if [ "$_json" = 1 ]; then
+        printf '\n  ]\n}\n'
+    elif [ -z "$_det" ]; then
+        dim "  среда исполнения флота на этой машине не найдена"
+    fi
     exit 0
 }
 
@@ -826,6 +960,7 @@ case $_cmd in
     prune-mark)    cmd_prune_mark "$@" ;;
     stack-passport) cmd_stack_passport "$@" ;;
     status)        cmd_status "$@" ;;
+    fleet)         cmd_fleet "$@" ;;
     projects)      cmd_projects "$@" ;;
     doctor)        cmd_doctor "$@" ;;
     show)          cmd_show "$@" ;;
