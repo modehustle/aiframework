@@ -6,25 +6,42 @@
 # machine file, then built-in default, and a role is just a key. Adding a third config
 # file for roles would have been a second implementation of a thing that works (B2).
 #
-# A role lives under the `role_` prefix and its value is three colon-separated fields:
+# WHAT A ROLE IS, and this is the part that is easy to get wrong: a role is the name of
+# a PROCEDURE. MODES.md §10 forbids inventing an onion of our own — "роли у нас уже
+# названы: make-task, run-task, investigate, prune" — so the table binds names that
+# already exist rather than a fresh vocabulary of refactor/design/migration. A subtask
+# saying `**Role**: run-task` says which procedure its worker executes, and the table
+# says on what.
 #
-#     role_refactor = claude:haiku:medium
-#     role_design   = claude:opus:high
-#                     ^agent  ^model ^effort
+# Resolution walks four steps, and the second is what makes the table cheap to fill:
 #
-# Why the plan names a ROLE and not a model: a plan travels between machines, and a
-# model name is a fact about one person's subscriptions. `**Role**: refactor` still
-# resolves on a machine where the cheap tier is a different product entirely.
+#   1. role_<procedure>   — this exact procedure, e.g. role_investigate
+#   2. tier_<tier>        — the tier declared in that procedure's own frontmatter
+#   3. role_default       — one answer for everything
+#   4. ROLES_BUILTIN      — the middle tier
 #
-# The unknown role is not an error here — it falls back to role_default — because the
-# alternative is a plan that cannot run on a machine that never heard of "migration".
-# What IS an error is a malformed value, and it is caught before dispatch, not on the
-# third worker.
+# Step 2 means three lines of config (tier_cheap, tier_capable, tier_strong) already
+# answer for every procedure, because each procedure declares what class of model it
+# needs. Naming a single procedure explicitly is then the exception, which is what
+# C4 asks for: configuration where the fork is real, not everywhere.
+#
+# Why a plan names a role and not a model: a plan travels between machines, and a model
+# name is a fact about one person's subscriptions.
 
-# Built-in fallback, used when neither config file names the role and no role_default
-# is set. Deliberately the middle tier: an unknown role is an unknown cost, and the
-# cheap tier failing a task it cannot do is more expensive than the middle tier doing it.
+# Used when nothing else answers. Deliberately the middle tier: an unknown role is an
+# unknown cost, and the cheap tier failing a job it cannot do costs more than the middle
+# tier doing it.
 ROLES_BUILTIN='claude:sonnet:medium'
+
+# The tier a procedure declares for itself. Read from the frontmatter, which skills.sh
+# calls the source of truth — manifest.json is generated from it, so reading the JSON
+# here would be reading a copy.
+roles_tier_of() {
+    _rt_f=$(fraim_procedure_file "$1" 2>/dev/null) || return 1
+    _rt_t=$(fm_get "$_rt_f" tier 2>/dev/null) || return 1
+    [ -n "$_rt_t" ] || return 1
+    printf '%s\n' "$_rt_t"
+}
 
 # Split one `agent:model:effort` value. Prints three tab-separated fields, or fails.
 # The check is on shape only — whether THIS machine has that agent is the adapter's
@@ -50,11 +67,15 @@ roles_parse() {
 # it is the default.
 roles_resolve() {
     _rr_role=$1; _rr_root=${2:-}
+
     _rr_v=$(config_get "role_$_rr_role" "$_rr_root")
     if [ -z "$_rr_v" ]; then
-        _rr_v=$(config_get role_default "$_rr_root")
-        [ -n "$_rr_v" ] || _rr_v=$ROLES_BUILTIN
+        _rr_t=$(roles_tier_of "$_rr_role" 2>/dev/null || :)
+        [ -n "$_rr_t" ] && _rr_v=$(config_get "tier_$_rr_t" "$_rr_root")
     fi
+    [ -n "$_rr_v" ] || _rr_v=$(config_get role_default "$_rr_root")
+    [ -n "$_rr_v" ] || _rr_v=$ROLES_BUILTIN
+
     roles_parse "$_rr_v" || {
         printf >&2 'роль %s: значение «%s» не в форме агент:модель:усилие\n' "$_rr_role" "$_rr_v"
         return 1
@@ -68,6 +89,10 @@ roles_source() {
     _rs_role=$1; _rs_root=${2:-}
     if [ -n "$(config_get "role_$_rs_role" "$_rs_root")" ]; then
         config_source "role_$_rs_role" "$_rs_root"; return
+    fi
+    _rs_t=$(roles_tier_of "$_rs_role" 2>/dev/null || :)
+    if [ -n "$_rs_t" ] && [ -n "$(config_get "tier_$_rs_t" "$_rs_root")" ]; then
+        printf '%s (tier_%s)\n' "$(config_source "tier_$_rs_t" "$_rs_root")" "$_rs_t"; return
     fi
     if [ -n "$(config_get role_default "$_rs_root")" ]; then
         printf '%s (role_default)\n' "$(config_source role_default "$_rs_root")"; return
@@ -84,10 +109,15 @@ roles_source() {
 roles_list() {
     _rl_root=${1:-}
     {
+        # Every procedure is a role whether or not anyone configured it — that is what
+        # "the vocabulary already exists" means. Listing only configured keys would hide
+        # the ones running on a tier or built-in default, which are exactly the ones
+        # worth seeing before a dispatch.
+        fraim_procedures 2>/dev/null || :
         if [ -n "$_rl_root" ]; then
             cat "$(config_project_file "$_rl_root")" 2>/dev/null || :
         fi
         cat "$(config_machine_file)" 2>/dev/null || :
-    } | sed -n 's/^[[:space:]]*role_\([a-zA-Z0-9_-]*\)[[:space:]]*=.*/\1/p' |
+    } | sed -n 's/^[[:space:]]*role_\([a-zA-Z0-9_-]*\)[[:space:]]*=.*/\1/p; /^[a-z][a-z0-9-]*$/p' |
         grep -vx default | sort -u || :
 }

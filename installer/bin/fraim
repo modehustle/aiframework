@@ -1019,10 +1019,12 @@ cmd_roles() {
         dim "    задать: fraim config set role_refactor claude:haiku:medium"
         return 0
     fi
-    printf 'роль        агент   модель   усилие  источник\n'
+    # Literal, not a printf format: POSIX printf pads to BYTES, and these headings are
+    # Cyrillic — %-15s on «роль» pads 8 bytes to 15 and lands 4 characters wide.
+    printf 'роль            агент   модель   усилие  источник\n'
     for _r in $_rs; do
         _ex=$(roles_resolve "$_r" "$_root") || continue
-        printf '%-11s %-7s %-8s %-7s %s\n' "$_r" \
+        printf '%-15s %-7s %-8s %-7s %s\n' "$_r" \
             "$(printf '%s' "$_ex" | cut -f1)" \
             "$(printf '%s' "$_ex" | cut -f2)" \
             "$(printf '%s' "$_ex" | cut -f3)" \

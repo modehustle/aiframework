@@ -20,14 +20,15 @@
 # A subtask block:
 #
 #     ## Subtask: A
-#     **Role**: refactor
+#     **Role**: run-task
 #     **Summary**: one line, for the worker's task.md
 #
 #     ### `path/to/file`
 #     - why
 #
-# Role is looked up in the role table (roles.sh); it is the plan's only statement
-# about the executor, on purpose — see the header of roles.sh.
+# Role is the name of a PROCEDURE, not a word invented per plan (MODES.md §10 —
+# "свою онтологию ролей не заводим"). roles.sh resolves it to agent, model and
+# effort; it is the plan's only statement about the executor, on purpose.
 # ---------------------------------------------------------------------------
 
 # One record per subtask: id|role|summary|comma-separated paths
@@ -134,14 +135,15 @@ dispatch_check() {
 # is obvious here and invisible three hours later.
 dispatch_report() {
     _dr_plan=$1; _dr_root=${2:-}
-    printf 'подзадача  роль        агент   модель   усилие  источник\n'
+    # Literal: POSIX printf pads bytes, and Cyrillic headings would land short.
+    printf 'подзадача  роль            агент   модель   усилие  источник\n'
     dispatch_parse_plan "$_dr_plan" | while IFS='|' read -r _id _role _sum _paths; do
         [ -n "$_id" ] || continue
         _ex=$(roles_resolve "$_role" "$_dr_root") || continue
         _ag=$(printf '%s' "$_ex" | cut -f1)
         _mo=$(printf '%s' "$_ex" | cut -f2)
         _ef=$(printf '%s' "$_ex" | cut -f3)
-        printf '%-10s %-11s %-7s %-8s %-7s %s\n' \
+        printf '%-10s %-15s %-7s %-8s %-7s %s\n' \
             "$_id" "$_role" "$_ag" "$_mo" "$_ef" "$(roles_source "$_role" "$_dr_root")"
     done
 }
