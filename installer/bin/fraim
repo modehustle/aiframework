@@ -64,6 +64,7 @@ fraim — эксплуатационный слой для проектов на
                             watch СБОРКА — что среда говорит о воркерах
                             verify СБОРКА ПОДЗАДАЧА — сверить дерево с путями
                             check ПЛАН · accept СБОРКА · list
+  fraim conduct "ЗАДАЧА"    отдать работу дирижёру: он спланирует, раздаст и сверит
   fraim roles [set [ИМЯ]]   таблица ролей: во что разворачивается роль на этой машине
                             (set — выбрать агента, модель и усилие из списка)
   fraim init                поставить скиллы / подхватить новый харнес
@@ -1061,10 +1062,22 @@ cmd_roles_set() {
         *)      _rs_ckey=role_$_rs_key ;;
     esac
 
-    # 2-4. The three fields.
-    _rs_agent=$(roles_agents_available | roles_pick "Агент:" ) || die "отменено"
-    _rs_model=$(roles_models_seen "$_rs_root" | roles_pick "Модель:") || die "отменено"
+    # 2-4. The three fields. Models offered are the ones already configured here plus the
+    #      suggestion for this tier — so the first run has something to pick and later
+    #      runs mostly re-pick what this machine already uses.
+    _rs_agent=$(roles_agents_available | roles_pick "Агент:" 1) || die "отменено"
+    case $_rs_key in
+        tier_*) _rs_tier=${_rs_key#tier_} ;;
+        *)      _rs_tier=$(roles_tier_of "${_rs_key#role_}" 2>/dev/null || :) ;;
+    esac
+    _rs_model=$({ roles_models_seen "$_rs_root"; roles_models_suggested "$_rs_tier"; } |
+                grep '[^[:space:]]' | awk '!seen[$0]++' |
+                roles_pick "Модель:" 1) || die "отменено"
     _rs_effort=$(roles_efforts | roles_pick "Усилие:" 2) || die "отменено"
+
+    # The agent list carries "(недоступен: …)" on entries the environment cannot launch.
+    # Strip it: the reason is there to inform the choice, not to end up in the config.
+    _rs_agent=${_rs_agent%% (недоступен:*}
 
     _rs_val="$_rs_agent:$_rs_model:$_rs_effort"
     roles_parse "$_rs_val" >/dev/null || die "получилось «$_rs_val» — это не агент:модель:усилие"
@@ -1084,6 +1097,39 @@ cmd_roles_set() {
     say ""
     ok "$_rs_ckey = $_rs_val"
     dim "    → $_rs_file"
+}
+
+# Hand a job to the conductor. This is the entry point of the whole mode for the human:
+# one sentence in, a fleet out — the planning, the dispatch and the verification are the
+# conductor's, and the acceptance stays the human's (B5).
+cmd_conduct() {
+    _cd_root=$(verb_root)
+    [ $# -ge 1 ] || die "нужно: fraim conduct \"что сделать\""
+    _cd_job=$*
+
+    _cd_ex=$(roles_resolve conductor "$_cd_root") || die "роль conductor не разворачивается"
+    _cd_ag=$(printf '%s' "$_cd_ex" | cut -f1)
+    _cd_mo=$(printf '%s' "$_cd_ex" | cut -f2)
+
+    _cd_prompt="Исполни процедуру conductor (skill: conductor) для этой задачи.
+
+Задача от человека: $_cd_job
+
+Начни с шага 0: прочитай фундамент, определи, распадается ли работа на независимые блоки,
+и если нет — скажи об этом вместо раздачи."
+
+    say "Дирижёр: $_cd_ag $_cd_mo · роль conductor ($(roles_source conductor "$_cd_root"))"
+
+    if ! fleet_present || ! fleet_ready; then
+        warn "среда исполнения недоступна — запусти дирижёра сам"
+        say ""
+        printf '%s\n' "$_cd_prompt"
+        return 0
+    fi
+
+    _cd_term=$(fleet_conductor_start "$_cd_ag" "$_cd_mo" "$_cd_prompt") || die "не удалось поднять дирижёра"
+    ok "дирижёр работает в терминале $_cd_term"
+    dim "    следить за сборками: fraim dispatch list"
 }
 
 # The role table (MODES.md §11.3): what a role resolves to here, and from which level.
@@ -1148,6 +1194,7 @@ case $_cmd in
     fleet)         cmd_fleet "$@" ;;
     dispatch)      cmd_dispatch "$@" ;;
     roles)         cmd_roles "$@" ;;
+    conduct)       cmd_conduct "$@" ;;
     projects)      cmd_projects "$@" ;;
     doctor)        cmd_doctor "$@" ;;
     show)          cmd_show "$@" ;;

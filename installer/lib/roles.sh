@@ -31,7 +31,25 @@
 # Used when nothing else answers. Deliberately the middle tier: an unknown role is an
 # unknown cost, and the cheap tier failing a job it cannot do costs more than the middle
 # tier doing it.
-ROLES_BUILTIN='claude:sonnet:medium'
+#
+# The model is a full provider model id, not a nickname. `sonnet` was here and was wrong:
+# the environment passes --model through as an opaque provider id, so a nickname reaches
+# the provider unrecognised and the worker fails at launch.
+ROLES_BUILTIN='claude:claude-sonnet-5:medium'
+
+# One suggested model per tier, so the very first `fraim roles set` has something to pick
+# rather than a blank prompt. This is NOT a catalogue of the world's models — that is the
+# treadmill P0 warns about, and roles.sh does not keep one. It is three values attached to
+# the three tiers we already have, and every picker that shows them also accepts a typed
+# value, which is what keeps an aging list harmless.
+roles_models_suggested() {
+    case ${1:-} in
+        cheap)   printf 'claude-haiku-4-5\n' ;;
+        capable) printf 'claude-sonnet-5\n' ;;
+        strong)  printf 'claude-opus-5\n' ;;
+        *)       printf 'claude-opus-5\nclaude-sonnet-5\nclaude-haiku-4-5\n' ;;
+    esac
+}
 
 # Whether a procedure may be handed to a fleet worker at all.
 #
@@ -205,7 +223,7 @@ roles_models_seen() {
 # Effort levels. Orca calls --effort "reasoning effort for the selected model" and does
 # not enumerate the values, so these are the common rungs offered as a convenience —
 # the picker always allows a typed value, which is what makes an incomplete list safe.
-roles_efforts() { printf 'low\nmedium\nhigh\nmax\n'; }
+roles_efforts() { printf 'low\nmedium\nhigh\nxhigh\nmax\n'; }
 
 # Pick one value: a numbered list on stderr, the answer on stdout. The list arrives on
 # stdin and may be empty, in which case the only option is to type one.
