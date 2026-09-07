@@ -933,22 +933,46 @@ cmd_restore() { verb_restore "$(pwd -P)" "$@"; }
 # Takes an optional plan file; without it, looks for build-plan.md in project.
 cmd_dispatch() {
     _root=$(verb_root)
-    _plan=${1:-"$_root/build-plan.md"}
+    _subcmd=${1:-}
 
-    [ -f "$_plan" ] || die "план не найден: $_plan"
+    case $_subcmd in
+        status)
+            [ $# -ge 2 ] || die "fraim dispatch status BUILD-ID"
+            dispatch_status "$_root" "$2"
+            ;;
+        collect)
+            [ $# -ge 2 ] || die "fraim dispatch collect BUILD-ID"
+            say "Собираю результаты..."
+            collect_results "$_root" "$2" || die "сборка не удалась"
+            ok "Результаты собраны в ai/builds/$2/result.md"
+            ;;
+        accept)
+            [ $# -ge 2 ] || die "fraim dispatch accept BUILD-ID"
+            say "Принимаю сборку..."
+            dispatch_accept "$_root" "$2" || die "приёмка не удалась"
+            ok "Сборка принята. Фундамент обновлён."
+            ;;
+        *)
+            # Default: dispatch a new build
+            _plan=${1:-"$_root/build-plan.md"}
+            [ -f "$_plan" ] || die "план не найден: $_plan"
 
-    dispatch_check "$_plan" || die "dispatch-check не прошла"
+            dispatch_check "$_plan" || die "dispatch-check не прошла"
 
-    say "Разбор плана..."
-    _build_id=$(printf 'build-%s' "$(date +%Y%m%d-%H%M%S)")
+            say "Разбор плана..."
+            _build_id=$(printf 'build-%s' "$(date +%Y%m%d-%H%M%S)")
+            mkdir -p "$_root/ai/builds/$_build_id"
+            cp "$_plan" "$_root/ai/builds/$_build_id/plan.md"
 
-    say "Раздача подзадач..."
-    dispatch_to_workers "$_root" "$_plan" | while IFS=$'\t' read -r _id _task_dir; do
-        printf 'Worker %s → %s\n' "$_id" "$_task_dir"
-    done
+            say "Раздача подзадач..."
+            dispatch_to_workers "$_root" "$_plan" | while IFS=$'\t' read -r _id _task_dir; do
+                printf 'Worker %s → %s\n' "$_id" "$_task_dir"
+            done
 
-    say "Сборка запечатана: $build_id"
-    ok "Флот готов к запуску. Следующий шаг: запустить воркеров в ADE"
+            say "Сборка запечатана: $_build_id"
+            ok "Флот готов к запуску. Следующий шаг: запустить воркеров в ADE"
+            ;;
+    esac
 }
 
 # --- dispatch ---------------------------------------------------------------

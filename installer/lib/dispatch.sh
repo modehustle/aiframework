@@ -225,3 +225,71 @@ list_pending_builds() {
         fi
     done
 }
+
+# Conductor's review: show which workers are ready
+dispatch_status() {
+    _root=$1
+    _build_id=$2
+
+    _build_dir="$_root/ai/builds/$_build_id"
+    [ -d "$_build_dir" ] || return 1
+
+    printf 'Build: %s\n' "$_build_id"
+    printf 'Status: '
+    if [ -f "$_build_dir/build.accepted" ]; then
+        printf 'ACCEPTED\n'
+    elif [ -f "$_build_dir/result.md" ]; then
+        printf 'COLLECTED (ready for review)\n'
+    elif [ -d "$_root/ai/parallel" ]; then
+        printf 'DISPATCHED\n'
+    fi
+
+    printf '\nWorker status:\n'
+    for _worker in "$_root/ai/parallel"/*; do
+        [ -d "$_worker" ] || continue
+        _id=$(basename "$_worker")
+        if [ -f "$_worker/result.md" ]; then
+            printf '  %s: DONE\n' "$_id"
+        else
+            printf '  %s: IN PROGRESS\n' "$_id"
+        fi
+    done
+}
+
+# Accept the entire build: one acceptance for the package.
+# This is the conductor's single approval that replaces N per-task approvals.
+dispatch_accept() {
+    _root=$1
+    _build_id=$2
+
+    _build_dir="$_root/ai/builds/$_build_id"
+    [ -d "$_build_dir" ] || return 1
+    [ -f "$_build_dir/result.md" ] || {
+        printf >&2 'dispatch_accept: run dispatch:collect first\n'
+        return 1
+    }
+
+    # 1. Create acceptance marker (immutable record).
+    cat > "$_build_dir/build.accepted" <<EOF
+Accepted at: $(date -u '+%Y-%m-%dT%H:%M:%SZ')
+Conductor: $(whoami)
+Build: $_build_id
+Result: $(_build_dir/result.md)
+EOF
+
+    # 2. Write to DECISIONS.md (fundi update).
+    if [ -f "$_root/DECISIONS.md" ]; then
+        cat >> "$_root/DECISIONS.md" <<EOF
+
+## Build $_build_id accepted
+
+- **Date**: $(date -u '+%Y-%m-%d %H:%M:%S UTC')
+- **Type**: parallel (conductor mode)
+- **Workers**: $(ls -1 "$_root/ai/parallel" 2>/dev/null | wc -l | tr -d ' ')
+- **Result**: $(head -1 "$_build_dir/result.md" | sed 's/^# //')"
+
+EOF
+    fi
+
+    printf 'Build %s accepted. DECISIONS.md updated.\n' "$_build_id"
+}
