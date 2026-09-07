@@ -3,7 +3,7 @@ name: make-task
 description: "Capture the agreed plan into a new task folder under ai/tasks/ so it can be executed without this conversation — by a fresh chat, a cheaper model, or /run-task right here"
 metadata:
   tier: strong
-  version: 0.9.0
+  version: 0.10.0
   source: fraim
 ---
 # /make-task — Plan Handoff

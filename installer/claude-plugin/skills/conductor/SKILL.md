@@ -3,7 +3,7 @@ name: conductor
 description: "Split one job into independent subtasks, hand them to a fleet in an execution environment, verify each against the tree rather than its own report, and ratify the whole build once instead of once per subtask"
 metadata:
   tier: capable
-  version: 0.9.0
+  version: 0.10.0
   source: fraim
 ---
 # Дирижёр: параллельная сборка
