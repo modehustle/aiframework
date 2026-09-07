@@ -68,7 +68,8 @@ fraim — эксплуатационный слой для проектов на
   fraim roles [set [ИМЯ]]   таблица ролей: во что разворачивается роль на этой машине
                             (set — выбрать агента, модель и усилие из списка)
   fraim init                поставить скиллы / подхватить новый харнес
-  fraim update [--check]    привезти новую версию и разложить (--check — только узнать)
+  fraim update [--check]    привезти новую версию и разложить (--check — только узнать;
+                            --quiet — для автозапуска: молча, и никогда не мешает старту)
   fraim doctor              что и куда установлено, что разошлось
   fraim config              что действует и откуда (set КЛЮЧ ЗНАЧЕНИЕ)
   fraim projects            реестр проектов (add ПУТЬ / rm ПУТЬ)
@@ -191,6 +192,24 @@ cmd_update() {
                          return 1 ;;
                 *)       ok "установлена последняя версия ($(fraim_version))"; return 0 ;;
             esac ;;
+        --quiet)
+            # For an image or a VM recipe: run at every start, say nothing when there is
+            # nothing to say, and NEVER stand between the human and their session.
+            #
+            # Every failure path here exits 0 on purpose. A dead network, a private repo
+            # without credentials, a source that is not a clone — none of those are reasons
+            # to stop an agent from starting. Working on a version one commit old beats not
+            # working at all, and the person finds out from `fraim version` either way.
+            update_src_is_clone || exit 0
+            update_probe >/dev/null 2>&1 || exit 0
+            [ "$(update_state)" = behind ] || exit 0
+            _u_before=$(fraim_version)
+            if update_apply >/dev/null 2>&1; then
+                ok "fraim обновлён: $_u_before → $(fraim_version)"
+                exec "$(update_src)/installer/bin/fraim" init >/dev/null 2>&1
+            fi
+            exit 0
+            ;;
         "") ;;
         *)  die "fraim update: неизвестный ключ: $1" ;;
     esac
@@ -967,7 +986,7 @@ cmd_dispatch() {
             _b=$2; _s=$3
             _plan="$_root/ai/builds/$_b/plan.md"
             [ -f "$_plan" ] || die "нет плана сборки $_b"
-            _paths=$(dispatch_field "$_plan" "$_s" 5)
+            _paths=$(dispatch_field "$_plan" "$_s" 4)
             [ -n "$_paths" ] || die "в сборке $_b нет подзадачи $_s"
             _base=${4:-$(cd "$_root" && git rev-parse HEAD 2>/dev/null)}
             dispatch_verify_tree "$_root" "$_base" "$_paths"
@@ -1016,7 +1035,7 @@ cmd_dispatch() {
             dispatch_report "$_plan" "$_root"
             say ""
 
-            dispatch_parse_plan "$_plan" | while IFS='|' read -r _id _role _tier _sum _paths; do
+            dispatch_parse_plan "$_plan" | while IFS='|' read -r _id _role _sum _paths; do
                 [ -n "$_id" ] || continue
                 _d=$(dispatch_write_task "$_root" "$_bid" "$_id" "$_role" "$_sum" "$_paths") ||
                     die "не удалось записать задачу подзадачи $_id"
