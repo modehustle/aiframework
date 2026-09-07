@@ -61,7 +61,7 @@ fraim — эксплуатационный слой для проектов на
                             (--brief — задание агенту вычистить найденное)
   fraim dispatch ПЛАН       параллельный режим: проверить план и завести сборку
                             run СБОРКА — поднять флот в среде исполнения
-                            watch СБОРКА — что среда говорит о воркерах
+                            watch СБОРКА [СЕК] — ждать отчётов воркеров
                             verify СБОРКА ПОДЗАДАЧА — сверить дерево с путями
                             check ПЛАН · accept СБОРКА · list
   fraim mode [task|parallel]  режим проекта: обычный или дирижёр с флотом
@@ -958,6 +958,145 @@ cmd_undo() {
 }
 cmd_restore() { verb_restore "$(pwd -P)" "$@"; }
 
+# Wait for the fleet to settle, and say what settled.
+#
+# This blocks on purpose. The previous version asked the environment for terminal state
+# and returned instantly with an answer to a question nobody had; in the second live build
+# it printed `ready · input_accepted` for three workers that had finished minutes earlier,
+# and the conductor fell back to `sleep 25` loops and then to reading git by hand. Waiting
+# is the whole job of this command: `fleet_check_wait` blocks inside Orca until a worker
+# actually reports, which is cheaper and truer than any poll we could write.
+#
+# Rolling waits rather than one long one, because their contract says a Delivery is a
+# bounded batch and not every future completion, and because a settled worker should
+# appear on screen when it settles instead of at the end.
+cmd_dispatch_watch() {
+    _dw_root=$1; _dw_build=$2; _dw_budget=$3
+
+    _dw_rows=$(build_fleet_rows "$_dw_root" "$_dw_build") ||
+        die "сборка $_dw_build не поднималась — нет ai/builds/$_dw_build/fleet.tsv"
+    [ -n "$_dw_rows" ] || die "в ai/builds/$_dw_build/fleet.tsv нет ни одного воркера"
+
+    case $_dw_budget in
+        ''|*[!0-9]*) die "СЕКУНД должно быть числом, а не «$_dw_budget»" ;;
+    esac
+
+    # Everything already known, printed before any waiting: a build that finished while
+    # nobody was looking should answer instantly.
+    printf '%s\n' "$_dw_rows" | while IFS='	' read -r _s _t _d _at; do
+        [ -n "$_s" ] || continue
+        if [ -z "$_d" ] || [ "$_d" = "—" ]; then
+            printf '  %s — не поднялась\n' "$_s"
+        elif _o=$(build_outcome_of "$_dw_root" "$_dw_build" "$_d"); then
+            # `worker_done succeeded` reads as one verdict; an escalation has no
+            # outcome at all, and printing its empty field as a dash reads as a bug.
+            printf '  %s — %s\n' "$_s" \
+                "$(printf '%s' "$_o" | awk -F'\t' '{ print ($2 == "-" || $2 == "") ? $1 : $1 " " $2 }')"
+        else
+            printf '  %s — ещё работает\n' "$_s"
+        fi
+    done
+
+    _dw_left=$(dispatch_watch_pending "$_dw_root" "$_dw_build")
+    if [ -z "$_dw_left" ]; then
+        say ""
+        dispatch_watch_summary "$_dw_root" "$_dw_build"
+        dim "    сверить с деревом: fraim dispatch verify $_dw_build ПОДЗАДАЧА"
+        return 0
+    fi
+
+    if ! fleet_present || ! fleet_ready; then
+        say ""
+        warn "среда исполнения не отвечает — ждать нечем"
+        dim "    что сделано на самом деле, покажет: fraim dispatch verify $_dw_build ПОДЗАДАЧА"
+        return 1
+    fi
+
+    say ""
+    say "Жду отчётов (до ${_dw_budget}с). Ctrl-C не потеряет их: они придут в следующий watch."
+
+    _dw_spent=0
+    while [ "$_dw_spent" -lt "$_dw_budget" ]; do
+        _dw_slice=$((_dw_budget - _dw_spent))
+        if [ "$_dw_slice" -gt 60 ]; then _dw_slice=60; fi
+        _dw_out=$(fleet_check_wait $((_dw_slice * 1000)) 2>/dev/null) || _dw_out=
+        _dw_spent=$((_dw_spent + _dw_slice))
+
+        if [ -n "$_dw_out" ]; then
+            # Record before acknowledging. The ack destroys the message, so an ack that
+            # ran first would consume a report we never wrote down.
+            printf '%s\n' "$_dw_out" | fleet_outcomes |
+                while IFS='	' read -r _d _ty _oc _sub; do
+                    case $_d in ctx_*) ;; *) continue ;; esac
+                    _s=$(dispatch_watch_subtask "$_dw_root" "$_dw_build" "$_d") || continue
+                    if build_outcome_of "$_dw_root" "$_dw_build" "$_d" >/dev/null 2>&1; then
+                        continue
+                    fi
+                    build_outcome_note "$_dw_root" "$_dw_build" "$_s" "$_d" "$_ty" "$_oc" "$_sub"
+                    case $_ty in
+                        worker_done) printf '  %s — %s: %s\n' "$_s" "$_oc" "$_sub" ;;
+                        *)           printf '  %s — %s: %s\n' "$_s" "$_ty" "$_sub" ;;
+                    esac
+                done
+
+            _dw_del=$(printf '%s\n' "$_dw_out" | fleet_id delivery 2>/dev/null || :)
+            if [ -n "$_dw_del" ]; then
+                fleet_check_ack "$_dw_del" >/dev/null 2>&1 || :
+            fi
+        fi
+
+        _dw_left=$(dispatch_watch_pending "$_dw_root" "$_dw_build")
+        [ -n "$_dw_left" ] || break
+    done
+
+    say ""
+    if [ -z "$_dw_left" ]; then
+        dispatch_watch_summary "$_dw_root" "$_dw_build"
+    else
+        warn "ещё работают: $(printf '%s' "$_dw_left" | tr '\n' ' ')"
+        dim "    это не сбой: сборка может идти десятки минут. Повтори watch —"
+        dim "    отчёты не теряются, среда отдаст их следующему ожиданию."
+        dispatch_watch_stuck "$_dw_root" "$_dw_build"
+    fi
+    dim "    отчёт воркера — не доказательство: сверить с деревом (MODES.md §3)"
+    dim "    fraim dispatch verify $_dw_build ПОДЗАДАЧА"
+}
+
+# "Everyone reported" and "everyone succeeded" are different sentences, and the second
+# one is not ours to say — §3 gives that answer to the tree, not to the mailbox. But a
+# worker that escalated or asked a question is stopped and waiting on the conductor,
+# which the word «отчитались» alone would bury.
+dispatch_watch_summary() {
+    ok "все воркеры сборки $2 отчитались"
+    dispatch_watch_stuck "$1" "$2"
+}
+
+dispatch_watch_stuck() {
+    _ws_f=$(build_outcomes_file "$1" "$2")
+    [ -f "$_ws_f" ] || return 0
+    _ws_bad=$(awk -F'\t' '$3 != "worker_done" || $4 != "succeeded" { print "    " $1 " — " $3 " · " $6 }' "$_ws_f")
+    if [ -n "$_ws_bad" ]; then
+        say ""
+        warn "не «сделано» — ждут решения дирижёра:"
+        printf '%s\n' "$_ws_bad"
+    fi
+}
+
+# Subtasks of the build whose worker has not settled yet, one per line.
+dispatch_watch_pending() {
+    build_fleet_rows "$1" "$2" 2>/dev/null | while IFS='	' read -r _p_s _p_t _p_d _p_at; do
+        [ -n "$_p_s" ] || continue
+        [ -n "$_p_d" ] && [ "$_p_d" != "—" ] || continue
+        build_outcome_of "$1" "$2" "$_p_d" >/dev/null 2>&1 || printf '%s\n' "$_p_s"
+    done
+}
+
+# Which subtask of this build a dispatch id belongs to.
+dispatch_watch_subtask() {
+    build_fleet_rows "$1" "$2" 2>/dev/null |
+        awk -F'\t' -v d="$3" '$3 == d { print $1; f = 1; exit } END { exit !f }'
+}
+
 # Dispatch: split a task into parallel subtasks for independent workers.
 # Takes an optional plan file; without it, looks for build-plan.md in project.
 # The mechanics of a build. Called by the conductor agent, not typed by the human — the
@@ -988,7 +1127,18 @@ cmd_dispatch() {
             [ -f "$_plan" ] || die "нет плана сборки $_b"
             _paths=$(dispatch_field "$_plan" "$_s" 4)
             [ -n "$_paths" ] || die "в сборке $_b нет подзадачи $_s"
-            _base=${4:-$(cd "$_root" && git rev-parse HEAD 2>/dev/null)}
+            # The build's own base, not the current HEAD — see build_base for what
+            # HEAD did to this check in the second live build.
+            if [ $# -ge 4 ]; then
+                _base=$4
+            elif _base=$(build_base "$_root" "$_b"); then
+                :
+            else
+                _base=$(cd "$_root" && git rev-parse HEAD 2>/dev/null)
+                warn "в журнале сборки нет базы — сверяю от текущего HEAD"
+                dim "    если ветки уже слиты, чужие файлы попадут в outside ложно;"
+                dim "    тогда: fraim dispatch verify $_b $_s КОММИТ-ДО-СБОРКИ"
+            fi
 
             # The worker's own checkout, not the project root — see dispatch_worker_tree.
             # Falling back to the root when there is no checkout keeps the command useful
@@ -1015,32 +1165,8 @@ cmd_dispatch() {
             fi
             ;;
         watch)
-            [ $# -ge 2 ] || die "нужно: fraim dispatch watch СБОРКА"
-            build_fleet_rows "$_root" "$2" | while IFS='	' read -r _s _t _d _at; do
-                if [ -z "$_d" ] || [ "$_d" = "—" ]; then
-                    printf '%-12s не поднялась\n' "$_s"; continue
-                fi
-                _w=$(fleet_worker_show "$_d")
-                # Their two words for how a worker is doing. Pulled out rather than
-                # printing raw JSON — the first live build showed the operator a wall of
-                # it — but the raw answer still shows when neither word is found, because
-                # inventing a verdict we did not read would be worse than a wall (§9.5).
-                _st=$(printf '%s' "$_w" | tr -d '\n' |
-                      grep -oE '"state"[[:space:]]*:[[:space:]]*"[a-z_]*"' | head -1 |
-                      sed 's/.*"\([a-z_]*\)"$/\1/')
-                _sg=$(printf '%s' "$_w" | tr -d '\n' |
-                      grep -oE '"stage"[[:space:]]*:[[:space:]]*"[a-z_]*"' | head -1 |
-                      sed 's/.*"\([a-z_]*\)"$/\1/')
-                if printf '%s' "$_w" | fleet_ok && [ -n "$_st$_sg" ]; then
-                    printf '%-12s %-18s %s %s\n' "$_s" "$_d" "${_st:-—}" "${_sg:+· $_sg}"
-                else
-                    printf '%-12s %-18s среда ответила не так, как ожидалось:\n' "$_s" "$_d"
-                    printf '%s\n' "$_w" | head -4 | sed 's/^/    /'
-                fi
-            done
-            say ""
-            dim "    состояние терминала — не статус задачи: завершённая задача может"
-            dim "    держать живой терминал. Что сделано — покажет dispatch verify."
+            [ $# -ge 2 ] || die "нужно: fraim dispatch watch СБОРКА [СЕКУНД]"
+            cmd_dispatch_watch "$_root" "$2" "${3:-300}"
             ;;
         accept)
             [ $# -ge 2 ] || die "нужно: fraim dispatch accept СБОРКА"
@@ -1068,12 +1194,19 @@ cmd_dispatch() {
 
             dispatch_parse_plan "$_plan" | while IFS='|' read -r _id _role _sum _paths; do
                 [ -n "$_id" ] || continue
-                _d=$(dispatch_write_task "$_root" "$_bid" "$_id" "$_role" "$_sum" "$_paths") ||
+                _d=$(dispatch_write_task "$_root" "$_bid" "$_id" "$_role" "$_sum" "$_paths" "$_plan") ||
                     die "не удалось записать задачу подзадачи $_id"
                 dim "  задание $_id → ${_d#"$_root"/}"
             done
 
             say ""
+            if [ -n "$(dispatch_plan_contract "$_plan")" ]; then
+                dim "  общий контракт сборки вложен в каждое задание"
+            else
+                warn "в плане нет общей части выше первой «## Subtask:»"
+                dim "    воркеры не увидят друг друга: что должно совпасть между ними —"
+                dim "    маршруты, схемы, имена — фиксируй там, иначе каждый придумает своё"
+            fi
             ok "задания записаны, журнал заведён: ai/builds/$_bid/journal.md"
             if fleet_present; then
                 dim "    поднять флот:    fraim dispatch run $_bid"

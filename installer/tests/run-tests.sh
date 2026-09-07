@@ -30,7 +30,7 @@ printf 'check_shape = off\n' > "$FRAIM_HOME/config"
 printf '\nprocedures/\n'
 
 N=$(ls "$REPO"/procedures/*.md | grep -v manifest | wc -l | tr -d ' ')
-check "12 процедур на диске" "$N" "12"
+check "13 процедур на диске" "$N" "13"
 
 BADFM=""
 for f in "$REPO"/procedures/*.md; do
@@ -185,7 +185,7 @@ printf '\nfraim build\n'
 check "build завершился успешно" "$?" "0"
 
 PLUG="$REPO/installer/claude-plugin/skills"
-check "плагин: 13 скиллов" "$(find "$PLUG" -name SKILL.md | wc -l | tr -d ' ')" "13"
+check "плагин: 14 скиллов" "$(find "$PLUG" -name SKILL.md | wc -l | tr -d ' ')" "14"
 
 # The single-file rule is a compatibility constraint, not tidiness:
 # Hermes fetches only SKILL.md when installing from a URL, and omp discovers
@@ -1707,9 +1707,9 @@ check "голый ~/.gemini — это не Antigravity" \
 mkdir -p "$HOME/.gemini/config"
 "$FRAIM" init >/dev/null 2>&1
 check "init завершился успешно" "$?" "0"
-check "Codex: 13 скиллов" "$(find "$HOME/.codex/skills" -name SKILL.md 2>/dev/null | wc -l | tr -d ' ')" "13"
-check "Claude Code: 13 скиллов" "$(find "$HOME/.claude/skills" -name SKILL.md 2>/dev/null | wc -l | tr -d ' ')" "13"
-check "Antigravity: 13 скиллов" "$(find "$HOME/.gemini/config/skills" -name SKILL.md 2>/dev/null | wc -l | tr -d ' ')" "13"
+check "Codex: 14 скиллов" "$(find "$HOME/.codex/skills" -name SKILL.md 2>/dev/null | wc -l | tr -d ' ')" "14"
+check "Claude Code: 14 скиллов" "$(find "$HOME/.claude/skills" -name SKILL.md 2>/dev/null | wc -l | tr -d ' ')" "14"
+check "Antigravity: 14 скиллов" "$(find "$HOME/.gemini/config/skills" -name SKILL.md 2>/dev/null | wc -l | tr -d ' ')" "14"
 check "контекстный блок в ~/.codex/AGENTS.md" "$(grep -c 'fraim:begin' "$HOME/.codex/AGENTS.md" 2>/dev/null)" "1"
 check "контекстный блок в ~/.gemini/AGENTS.md" "$(grep -c 'fraim:begin' "$HOME/.gemini/AGENTS.md" 2>/dev/null)" "1"
 check "GEMINI.md чужой — мы в него не пишем" \
@@ -1950,6 +1950,96 @@ for _l in "$REPO"/installer/lib/*.sh; do
     grep -q "_libdir/$_n" "$REPO/installer/bin/fraim" || UNWIRED="$UNWIRED $_n"
 done
 check "каждая библиотека подключена в диспетчере" "${UNWIRED:-clean}" "clean"
+
+# ---------------------------------------------------- параллельная сборка
+# Три отказа, найденные во ВТОРОМ живом прогоне. Каждый из них уже один раз проехал
+# незамеченным, поэтому каждый закреплён здесь, а не в комментарии.
+printf '\nпараллельная сборка: контракт, база, сигнал исхода\n'
+
+BUILDP="$SANDBOX/build"
+mkdir -p "$BUILDP/ai" "$BUILDP/src" "$BUILDP/web"
+( cd "$BUILDP" && git init -q . && git config user.email t@t && git config user.name t )
+printf 'x\n' > "$BUILDP/src/a.py"; printf 'x\n' > "$BUILDP/web/a.js"
+cat > "$BUILDP/ai/plan.md" <<'PLAN'
+# Build plan: пример
+
+Общая часть плана.
+
+## Fixed HTTP contract
+
+- `GET /api/reports` → список.
+
+## Subtask: back
+**Role**: run-task
+**Summary**: серверная часть
+
+### `src/a.py`
+- код
+
+## Subtask: front
+**Role**: run-task
+**Summary**: клиентская часть
+
+### `web/a.js`
+- код
+PLAN
+printf 'mode=parallel\nrole_run-task=claude:m:medium\n' > "$BUILDP/ai/fraim.conf"
+( cd "$BUILDP" && git add -A && git commit -qm base )
+( cd "$BUILDP" && "$FRAIM" dispatch ai/plan.md >/dev/null 2>&1 )
+BID=$(ls "$BUILDP/ai/parallel" 2>/dev/null | head -1)
+
+# 1. Общий контракт доезжает до воркера. В прогоне 2 он оставался в плане, воркеры его
+#    не видели, и все трое сочинили свой API — тридцать минут ревизий после четырёх
+#    минут работы.
+grep -q 'GET /api/reports' "$BUILDP/ai/parallel/$BID/front/task.md" 2>/dev/null
+check "общий контракт плана попал в задание воркера" "$?" "0"
+grep -q 'GET /api/reports' "$BUILDP/ai/parallel/$BID/back/task.md" 2>/dev/null
+check "и во второе задание тоже" "$?" "0"
+grep -q '^### Fixed HTTP contract' "$BUILDP/ai/parallel/$BID/front/task.md" 2>/dev/null
+check "заголовки контракта понижены под наш «##»" "$?" "0"
+grep -q '^# Build plan' "$BUILDP/ai/parallel/$BID/front/task.md" 2>/dev/null
+check "заголовок плана в задание не продублирован" "$?" "1"
+
+# 2. База берётся из журнала, а не из подвижного HEAD. Проверка §3 — единственное,
+#    чему дирижёр верит; в прогоне 2 она обвинила три чистые ветки.
+BASEJ=$(sed -n 's/^- База:[[:space:]]*//p' "$BUILDP/ai/builds/$BID/journal.md" | head -1)
+check "журнал записал базу сборки" "$([ -n "$BASEJ" ] && echo yes || echo no)" "yes"
+( cd "$BUILDP" && git add -A && git commit -qm dispatched >/dev/null 2>&1
+  git worktree add -q -b wb-front "$SANDBOX/$BID-front" "$BASEJ" 2>/dev/null )
+( cd "$SANDBOX/$BID-front" && printf 'y\n' > web/a.js && git add -A && git commit -qm front >/dev/null 2>&1 )
+# ствол уезжает вперёд чужой работой — ровно момент слияния веток
+( cd "$BUILDP" && printf 'z\n' > src/a.py && git add -A && git commit -qm merged >/dev/null 2>&1 )
+VOUT=$( cd "$BUILDP" && "$FRAIM" dispatch verify "$BID" front 2>/dev/null )
+check "verify от базы журнала: только свой файл" \
+    "$(printf '%s\n' "$VOUT" | grep -c '^inside:web/a.js')" "1"
+check "и ни одного чужого outside" \
+    "$(printf '%s\n' "$VOUT" | grep -c '^outside:')" "0"
+VHEAD=$( cd "$BUILDP" && "$FRAIM" dispatch verify "$BID" front "$(cd "$BUILDP" && git rev-parse HEAD)" 2>/dev/null )
+check "а от текущего HEAD — то самое ложное обвинение" \
+    "$([ "$(printf '%s\n' "$VHEAD" | grep -c '^outside:')" -gt 0 ] && echo yes || echo no)" "yes"
+
+# 3. Сигнал исхода читается из почты среды, а не из состояния терминала.
+DLV="$SANDBOX/delivery.json"
+cat > "$DLV" <<'JSON'
+{"ok":true,"result":{"deliveryId":"delivery_42abd260a9d8","messages":[
+ {"subject":"Done","type":"worker_done",
+  "payload":"{\"taskId\":\"task_aaaaaaaaaaaa\",\"dispatchId\":\"ctx_0ce973865f7f\",\"outcome\":\"succeeded\"}"},
+ {"subject":"Need a file outside my paths","type":"escalation",
+  "payload":"{\"taskId\":\"task_bbbbbbbbbbbb\",\"dispatchId\":\"ctx_e66d3e82be0a\"}"}
+],"count":2}}
+JSON
+. "$REPO/installer/lib/fleet.sh"
+OUTC=$(fleet_outcomes < "$DLV")
+check "исход worker_done разобран" \
+    "$(printf '%s\n' "$OUTC" | awk -F'\t' '$1=="ctx_0ce973865f7f"{print $2"/"$3}')" "worker_done/succeeded"
+check "эскалация разобрана и не выдана за успех" \
+    "$(printf '%s\n' "$OUTC" | awk -F'\t' '$1=="ctx_e66d3e82be0a"{print $2}')" "escalation"
+check "delivery id вынут для подтверждения" "$(fleet_id delivery < "$DLV")" "delivery_42abd260a9d8"
+# Их контракт: keepalive идёт в stderr, и слитые потоки ломают парсер («Extra data:
+# line 2» на первом же живом ожидании). Все остальные вызовы в fleet.sh используют
+# 2>&1, чтобы ошибка среды осталась читаемой, — этот не должен.
+grep -A5 'fleet_check_wait() {' "$REPO/installer/lib/fleet.sh" | grep -q '2>&1'
+check "fleet_check_wait не сливает stderr в парсер" "$?" "1"
 
 printf '\n%s пройдено, %s провалено\n' "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ]

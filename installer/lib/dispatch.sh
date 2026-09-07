@@ -174,28 +174,88 @@ dispatch_check() {
 # is obvious here and invisible three hours later.
 dispatch_report() {
     _dr_plan=$1; _dr_root=${2:-}
-    # Literal: POSIX printf pads bytes, and Cyrillic headings would land short.
-    printf 'подзадача  роль            агент   модель   усилие  источник\n'
-    dispatch_parse_plan "$_dr_plan" | while IFS='|' read -r _id _role _sum _paths; do
+
+    # Widths are measured, not guessed. The fixed %-10s/%-8s of the first version held
+    # for `backend` and fell apart on `frontend-behavior` and `claude-haiku-4-5` — the
+    # second live build's very first output had every column past the second shifted.
+    # Padding is still in BYTES (POSIX printf), which is why the header below is written
+    # in literal spaces rather than composed with the same format string: Cyrillic
+    # headings would each land short by the number of two-byte letters in them.
+    _dr_rows=$(dispatch_parse_plan "$_dr_plan" | while IFS='|' read -r _id _role _sum _paths; do
         [ -n "$_id" ] || continue
         _ex=$(roles_resolve "$_role" "$_dr_root") || continue
-        _ag=$(printf '%s' "$_ex" | cut -f1)
-        _mo=$(printf '%s' "$_ex" | cut -f2)
-        _ef=$(printf '%s' "$_ex" | cut -f3)
-        printf '%-10s %-15s %-7s %-8s %-7s %s\n' \
-            "$_id" "$_role" "$_ag" "$_mo" "$_ef" "$(roles_source "$_role" "$_dr_root")"
-    done
+        printf '%s\t%s\t%s\t%s\t%s\t%s\n' \
+            "$_id" "$_role" \
+            "$(printf '%s' "$_ex" | cut -f1)" \
+            "$(printf '%s' "$_ex" | cut -f2)" \
+            "$(printf '%s' "$_ex" | cut -f3)" \
+            "$(roles_source "$_role" "$_dr_root")"
+    done)
+    [ -n "$_dr_rows" ] || return 0
+
+    printf '%s\n' "$_dr_rows" | awk -F'\t' '
+        { for (i = 1; i <= 5; i++) if (length($i) > w[i]) w[i] = length($i)
+          row[NR] = $0 }
+        END {
+            h[1] = "подзадача"; h[2] = "роль"; h[3] = "агент"
+            h[4] = "модель";    h[5] = "усилие"
+            # A Cyrillic heading is longer in bytes than on screen; two bytes per letter
+            # above U+007F, so the visible width is what the column must fit.
+            for (i = 1; i <= 5; i++) {
+                v = length(h[i]) - gsub(/[\200-\277]/, "&", h[i])
+                if (v > w[i]) w[i] = v
+                pad = w[i] - v; s = ""
+                while (pad-- > 0) s = s " "
+                printf "%s%s  ", h[i], s
+            }
+            print "источник"
+            for (n = 1; n <= NR; n++) {
+                split(row[n], f, "\t")
+                for (i = 1; i <= 5; i++) printf "%-*s  ", w[i], f[i]
+                print f[6]
+            }
+        }'
 }
 
 # ---------------------------------------------------------------------------
 # Worker task folders
 # ---------------------------------------------------------------------------
 
+# Everything in the plan ABOVE the first subtask: the part that belongs to all of them.
+#
+# In the second live build the conductor did the one thing that makes parallel work
+# possible — it fixed a shared contract (exact HTTP routes, exact DOM ids, exact request
+# schema) at the top of the plan, so three workers could build against each other without
+# talking. dispatch_write_task then handed each worker its own subtask and dropped the
+# contract. Their briefs still said "against the fixed HTTP and DOM contracts"; the
+# contract itself was never in the file. All three invented their own API — /api/reports,
+# /api/jobs, /api/report — and the build spent thirty minutes in revision rounds after
+# four minutes of parallel work.
+#
+# The plan already lives in the repository whole. This is the part of it that stops being
+# shared the moment the tasks are written, so it is the part that has to be copied.
+#
+# Headings are pushed down one level so the block nests under our own `##` instead of
+# competing with it. The leading `# Build plan: …` title is dropped: the worker is not
+# reading the plan, it is reading its own task.
+dispatch_plan_contract() {
+    [ -f "$1" ] || return 0
+    awk '
+        /^## Subtask:/ { exit }
+        NR == 1 && /^# / { next }
+        !seen && /^[[:space:]]*$/ { next }
+        { seen = 1 }
+        /^#/ { print "#" $0; next }
+        { print }
+    ' "$1" | sed -e :a -e '/^[[:space:]]*$/{$d;N;ba' -e '}'
+}
+
 # The executor never sees the conductor's conversation (G1), so the task file must
-# carry everything: what to do, where it may write, and the one rule that makes
-# parallel mode safe — staying inside the declared paths.
+# carry everything: what to do, where it may write, the contract it shares with the
+# other workers, and the one rule that makes parallel mode safe — staying inside the
+# declared paths.
 dispatch_write_task() {
-    _wt_root=$1; _wt_build=$2; _wt_id=$3; _wt_role=$4; _wt_sum=$5; _wt_paths=$6
+    _wt_root=$1; _wt_build=$2; _wt_id=$3; _wt_role=$4; _wt_sum=$5; _wt_paths=$6; _wt_plan=${7:-}
 
     _wt_dir="$_wt_root/ai/parallel/$_wt_build/$_wt_id"
     mkdir -p "$_wt_dir" || return 1
@@ -226,6 +286,15 @@ dispatch_write_task() {
         printf -- '- **Закоммить свою работу.** Не оставляй сделанное незакоммиченным: сборку\n'
         printf -- '  собирают слиянием веток, и то, что не в коммите, до неё не доедет.\n'
         printf -- '- Сборка %s. Приёмка одна на всю сборку, отдельной приёмки этой подзадачи нет.\n' "$_wt_build"
+
+        _wt_contract=$(dispatch_plan_contract "$_wt_plan")
+        if [ -n "$_wt_contract" ]; then
+            printf -- '- Ниже — **общий контракт сборки**. Он обязателен: остальные воркеры\n'
+            printf -- '  пишут свои файлы под него же и тебя не увидят. Разойдёшься с ним —\n'
+            printf -- '  твой код не сойдётся с их кодом, и сборку придётся переделывать.\n'
+            printf '\n## Общий контракт сборки\n\n'
+            printf '%s\n' "$_wt_contract"
+        fi
     } > "$_wt_dir/task.md" || return 1
 
     printf '%s\n' "$_wt_dir"
@@ -418,6 +487,31 @@ build_fleet_rows() {
     grep -v '^#' "$_bf" 2>/dev/null | grep '[^[:space:]]' || :
 }
 
+# What the environment reported about each worker, kept because we consumed it.
+#
+# Orca's Delivery is a mailbox: acknowledging it is what lets the next wait return new
+# messages instead of the same batch, and an acknowledged message is gone. So the moment
+# we ack, this file becomes the only record that the worker ever settled — a second
+# `dispatch watch` would otherwise show a finished build as though nothing had happened.
+#
+# It also fills a hole the second live build left in the record: thirteen dispatches ran,
+# fleet.tsv knew three, and the journal recorded outcomes as prose written after the fact.
+build_outcomes_file() { printf '%s/outcomes.tsv\n' "$(build_dir "$1" "$2")"; }
+
+# Has this dispatch already settled? Prints `type<TAB>outcome` when it has.
+build_outcome_of() {
+    _bo_f=$(build_outcomes_file "$1" "$2")
+    [ -f "$_bo_f" ] || return 1
+    awk -F'\t' -v d="$3" '$2 == d { print $3 "\t" $4; f = 1; exit } END { exit !f }' "$_bo_f"
+}
+
+# root build subtask dispatch type outcome subject
+build_outcome_note() {
+    _bn_f=$(build_outcomes_file "$1" "$2")
+    printf '%s\t%s\t%s\t%s\t%s\t%s\n' \
+        "$3" "$4" "$5" "$6" "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" "$7" >> "$_bn_f"
+}
+
 # The build journal — MODES.md §11.4, answer D. Deliberately created empty of
 # lessons: what belongs in it is not knowable before the first real build, and a
 # template invented now would teach the wrong thing.
@@ -445,6 +539,27 @@ build_seal() {
     } > "$_bs_dir/journal.md" || return 1
 
     printf '%s\n' "$_bs_dir/journal.md"
+}
+
+# The commit the build started from, as recorded when it was sealed.
+#
+# Read from the journal rather than from HEAD, because HEAD moves and the build's base
+# does not. In the second live build the conductor merged the finished branches into the
+# trunk and then ran verify: with HEAD as the base, three branches that had touched only
+# their own files were each accused of seven files outside their lane. The same command
+# with the journal's `1d67397` printed two clean `inside:` lines.
+#
+# That is the failure mode this whole mode is least able to afford: §3 makes the tree the
+# only evidence the conductor trusts, so a false accusation there is not a cosmetic bug —
+# it is the check lying in the one direction that costs a rebuild.
+build_base() {
+    _bb=$(build_dir "$1" "$2")/journal.md
+    [ -f "$_bb" ] || return 1
+    _bb_v=$(sed -n 's/^- База:[[:space:]]*//p' "$_bb" 2>/dev/null | head -1)
+    case $_bb_v in
+        ''|'—') return 1 ;;
+        *) printf '%s\n' "$_bb_v" ;;
+    esac
 }
 
 # Acceptance: one per build, and it refuses rather than reports success on a build

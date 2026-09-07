@@ -302,6 +302,88 @@ fleet_worker_show() {
     "$_fwh_cmd" orchestration worker-show --dispatch "$1" --json 2>&1
 }
 
+# §9.5 proper — the signal that a worker has SETTLED, which worker-show above does not
+# give and never did.
+#
+# The second live build is the whole argument. All three workers reported done between
+# 16:47 and 16:49; `dispatch watch`, built on worker-show, printed `ready · input_accepted`
+# for every one of them, because that is terminal state and not task state — the command
+# said so in its own footer. The conductor ran `sleep 25; watch`, then `sleep 35; watch`,
+# then abandoned fraim and read the workers' worktrees with git by hand, and finally found
+# this call in Orca's own help. It had been there the entire time. §9.5 was implemented
+# against the wrong call.
+#
+# Their contract, and each clause of it is load-bearing:
+#   - blocks until a message of one of these types arrives, or the timeout expires;
+#   - returns the oldest Delivery and REPLAYS that same batch until it is acked, so an
+#     unacked delivery means the next call answers with the same thing;
+#   - a timeout, or count 0, is a checkpoint and not a failure — "long coding tasks
+#     routinely run 15-60 minutes";
+#   - one Delivery is not every completion: keep waiting until every dispatch settles.
+#
+# stderr is dropped rather than merged, and that is not tidiness: "check --json prints
+# exactly one JSON document on stdout. While --wait blocks it also prints keepalive lines
+# to stderr… Do not merge the streams before a parser". Every other call in this file uses
+# 2>&1 to keep an error message readable; here it would feed the parser garbage.
+FLEET_WAIT_MS=${FLEET_WAIT_MS:-60000}
+
+fleet_check_wait() {
+    _fcw_cmd=$(fleet_cli) || return 1
+    "$_fcw_cmd" orchestration check --wait \
+        --types worker_done,escalation,question \
+        --timeout-ms "${1:-$FLEET_WAIT_MS}" --json 2>/dev/null
+}
+
+# Consume a Delivery, so the next wait brings new messages instead of the same batch.
+fleet_check_ack() {
+    _fca_cmd=$(fleet_cli) || return 1
+    "$_fca_cmd" orchestration check --ack "$1" --json 2>/dev/null
+}
+
+# One Delivery, reduced to `dispatch<TAB>type<TAB>outcome<TAB>subject` — reads stdin.
+#
+# The fields the conductor acts on live in two places: `type` on the message (worker_done,
+# escalation, question) and `dispatchId`/`outcome` inside `payload`, which is a JSON string
+# nested in the JSON document. python3 parses it properly where it exists; the awk fallback
+# reads Orca's pretty-printed output line by line, where `subject` and `type` both precede
+# `payload` in every message. The fallback is a fallback: it can miss, and a missed message
+# shows as a worker that has not settled, which is the safe direction to be wrong in.
+fleet_outcomes() {
+    if command -v python3 >/dev/null 2>&1; then
+        python3 -c '
+import json, sys
+try:
+    doc = json.load(sys.stdin)
+except Exception:
+    sys.exit(0)
+for m in ((doc.get("result") or {}).get("messages") or []):
+    try:
+        p = json.loads(m.get("payload") or "{}")
+    except Exception:
+        p = {}
+    if not isinstance(p, dict):
+        p = {}
+    row = [p.get("dispatchId") or "-", m.get("type") or "-",
+           p.get("outcome") or "-", (m.get("subject") or "-")]
+    print("\t".join(str(c).replace("\t", " ").replace("\n", " ") for c in row))
+' 2>/dev/null
+        return 0
+    fi
+    awk '
+        function val(s) { sub(/^[^:]*:[[:space:]]*"?/, "", s); sub(/"?,?[[:space:]]*$/, "", s); return s }
+        /"subject"[[:space:]]*:/ { subj = val($0); next }
+        /"type"[[:space:]]*:/    { typ  = val($0); next }
+        /"payload"[[:space:]]*:/ {
+            line = $0; gsub(/\\/, "", line)
+            d = "-"; o = "-"
+            if (match(line, /dispatchId":"[^"]+/)) d = substr(line, RSTART + 13, RLENGTH - 13)
+            if (match(line, /outcome":"[^"]+/))    o = substr(line, RSTART + 10, RLENGTH - 10)
+            print d "\t" (typ ? typ : "-") "\t" o "\t" (subj ? subj : "-")
+            subj = ""; typ = ""
+        }
+    '
+}
+
 # §9.6 — clean up exactly what we created. Their help: "closes only the exact
 # coordinator-owned agent terminal of that worker… never closes setup terminals,
 # configured tabs, reused or pre-existing terminals, user-taken-over terminals".
