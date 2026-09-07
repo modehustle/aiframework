@@ -33,6 +33,23 @@
 # tier doing it.
 ROLES_BUILTIN='claude:sonnet:medium'
 
+# Whether a procedure may be handed to a fleet worker at all.
+#
+# Not every procedure can: `prune` rewrites the foundation, and under parallel mode the
+# foundation is written by the BUILD, once (MODES.md §2, invariant 0.4) — two of them at
+# a time collide by construction, not by accident. `make-task` plans, which happens
+# before dispatch. `conductor` is the dispatcher itself. `bootstrap`/`onboard` act on the
+# whole project.
+#
+# So the default is NO and a procedure opts in by declaring `parallel: yes`. Defaulting
+# the other way would mean every procedure added later is silently dispatchable until
+# someone notices — the failure being a foundation file quietly overwritten by whichever
+# worker finished last.
+roles_is_parallel() {
+    _rp_f=$(fraim_procedure_file "$1" 2>/dev/null) || return 1
+    [ "$(fm_get "$_rp_f" parallel 2>/dev/null || :)" = yes ]
+}
+
 # The tier a procedure declares for itself. Read from the frontmatter, which skills.sh
 # calls the source of truth — manifest.json is generated from it, so reading the JSON
 # here would be reading a copy.
@@ -102,6 +119,91 @@ roles_source() {
 
 # Every role named in the two config files, for `fraim roles`. Sorted, one per line,
 # without the prefix. Reads both levels so the listing shows what the project adds.
+# ---------------------------------------------------------------------------
+# Where the choices come from
+#
+# The rule is: we do not keep a catalogue of the world's models. Models ship weekly, and
+# a list baked into fraim is stale between releases — the treadmill P0 names outright.
+# So each source below asks whoever actually knows, and returns nothing when nobody does.
+# Nothing is a valid answer: the picker then takes a typed value instead of pretending
+# the list is complete.
+# ---------------------------------------------------------------------------
+
+# Agents available for launching. The environment knows: it is the thing that will run
+# them, and its answer is about THIS machine.
+#
+# NOT IMPLEMENTED YET, and deliberately empty rather than guessed. ade.sh states the
+# discipline this follows: "we ask by PATH, not by field name — the environment's own
+# JSON schema is not documented, and code written against guessed field names breaks
+# silently on the first release that renames one." An agent id is a field, not a path,
+# so this stays empty until the real shape of `account list --json` is on the table.
+roles_agents_available() {
+    return 0
+}
+
+# Models already in use on this machine — the honest list that costs no network and no
+# catalogue: whatever the two config files already name. On a first run it is empty and
+# the picker asks for a typed value; from the second role onward it answers well, because
+# people reuse the same few models.
+roles_models_seen() {
+    _rm_root=${1:-}
+    {
+        if [ -n "$_rm_root" ]; then cat "$(config_project_file "$_rm_root")" 2>/dev/null || :; fi
+        cat "$(config_machine_file)" 2>/dev/null || :
+    } | sed -n 's/^[[:space:]]*\(role_\|tier_\)[a-zA-Z0-9_-]*[[:space:]]*=[[:space:]]*//p' |
+        cut -d: -f2 | grep '[^[:space:]]' | sort -u || :
+}
+
+# Effort levels. Orca calls --effort "reasoning effort for the selected model" and does
+# not enumerate the values, so these are the common rungs offered as a convenience —
+# the picker always allows a typed value, which is what makes an incomplete list safe.
+roles_efforts() { printf 'low\nmedium\nhigh\nmax\n'; }
+
+# Pick one value: a numbered list on stderr, the answer on stdout. The list arrives on
+# stdin and may be empty, in which case the only option is to type one.
+#
+# stderr for the prompt and stdout for the answer, so the caller can capture the choice
+# with $( ) while the person still sees the menu. Reading from /dev/tty rather than stdin
+# for the same reason: stdin is carrying the list.
+roles_pick() {
+    _rk_title=$1; _rk_dflt=${2:-}
+    _rk_items=$(grep '[^[:space:]]' || :)
+    _rk_n=$(printf '%s' "$_rk_items" | grep -c '[^[:space:]]' || :)
+    [ -n "$_rk_items" ] || _rk_n=0
+
+    printf >&2 '\n%s\n' "$_rk_title"
+    [ "$_rk_n" -gt 0 ] && printf '%s\n' "$_rk_items" |
+        awk '{ printf "  %d) %s\n", NR, $0 }' >&2
+    printf >&2 '  %d) ввести своё\n' $((_rk_n + 1))
+    if [ -n "$_rk_dflt" ]; then
+        printf >&2 'Выбор [%s]: ' "$_rk_dflt"
+    else
+        printf >&2 'Выбор: '
+    fi
+
+    read -r _rk_c </dev/tty 2>/dev/null || return 1
+    [ -n "$_rk_c" ] || _rk_c=$_rk_dflt
+    [ -n "$_rk_c" ] || return 1
+
+    # A number picks from the list; anything else is taken as the value itself, so
+    # someone who already knows what they want does not have to walk the menu.
+    case $_rk_c in
+        ''|*[!0-9]*) printf '%s\n' "$_rk_c"; return 0 ;;
+    esac
+    if [ "$_rk_c" -ge 1 ] 2>/dev/null && [ "$_rk_c" -le "$_rk_n" ]; then
+        printf '%s\n' "$_rk_items" | sed -n "${_rk_c}p"
+        return 0
+    fi
+    if [ "$_rk_c" -eq $((_rk_n + 1)) ] 2>/dev/null; then
+        printf >&2 'Значение: '
+        read -r _rk_v </dev/tty 2>/dev/null || return 1
+        [ -n "$_rk_v" ] || return 1
+        printf '%s\n' "$_rk_v"
+        return 0
+    fi
+    return 1
+}
+
 # `[ -n "$x" ] && cat …` would have been the obvious spelling and it is a trap: under
 # `set -e` that compound returns 1 when the root is empty, and inside the caller's
 # `$(…)` that kills the subshell before the machine file is ever read. The listing then

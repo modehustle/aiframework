@@ -61,7 +61,8 @@ fraim — эксплуатационный слой для проектов на
   fraim dispatch ПЛАН       параллельный режим: проверить план и завести сборку
                             (check ПЛАН — только проверка; verify СБОРКА ПОДЗАДАЧА —
                             сверить дерево с объявленными путями; accept / list)
-  fraim roles               таблица ролей: во что разворачивается роль на этой машине
+  fraim roles [set [ИМЯ]]   таблица ролей: во что разворачивается роль на этой машине
+                            (set — выбрать агента, модель и усилие из списка)
   fraim init                поставить скиллы / подхватить новый харнес
   fraim update [--check]    привезти новую версию и разложить (--check — только узнать)
   fraim doctor              что и куда установлено, что разошлось
@@ -1007,8 +1008,60 @@ cmd_dispatch() {
     esac
 }
 
+# Interactive assignment. The point is P0: nobody should have to remember that the value
+# is three colon-separated fields, nor type a model id from memory. Where a list can be
+# had it is offered; where it cannot, a typed value is still accepted — see roles.sh for
+# why we do not keep a catalogue of models.
+cmd_roles_set() {
+    _rs_root=$(pwd -P)
+    project_is_managed "$_rs_root" || _rs_root=
+
+    menu_supported || die "интерактивная настройка требует терминала (иначе: fraim config set role_ИМЯ агент:модель:усилие)"
+
+    # 1. Which procedure. A tier key is offered too, because setting tier_cheap once is
+    #    usually the right move and setting thirteen roles one by one is usually not.
+    if [ $# -ge 1 ]; then
+        _rs_key=$1
+    else
+        _rs_key=$({ printf 'tier_cheap\ntier_capable\ntier_strong\n'
+                    fraim_procedures 2>/dev/null || :
+                  } | roles_pick "Что настраиваем — класс моделей или отдельную процедуру?") ||
+            die "отменено"
+    fi
+    case $_rs_key in
+        tier_*) _rs_ckey=$_rs_key ;;
+        role_*) _rs_ckey=$_rs_key ;;
+        *)      _rs_ckey=role_$_rs_key ;;
+    esac
+
+    # 2-4. The three fields.
+    _rs_agent=$(roles_agents_available | roles_pick "Агент:" ) || die "отменено"
+    _rs_model=$(roles_models_seen "$_rs_root" | roles_pick "Модель:") || die "отменено"
+    _rs_effort=$(roles_efforts | roles_pick "Усилие:" 2) || die "отменено"
+
+    _rs_val="$_rs_agent:$_rs_model:$_rs_effort"
+    roles_parse "$_rs_val" >/dev/null || die "получилось «$_rs_val» — это не агент:модель:усилие"
+
+    # 5. Which level. Project beats machine (§11.3, C), so the question is real whenever
+    #    we are standing inside a project.
+    _rs_file=$(config_machine_file)
+    if [ -n "$_rs_root" ]; then
+        _rs_lvl=$(printf 'эта машина (~/.fraim/config)\nтолько этот проект (ai/fraim.conf)\n' |
+                  roles_pick "Где записать?" 1) || die "отменено"
+        case $_rs_lvl in
+            *fraim.conf*) _rs_file=$(config_project_file "$_rs_root") ;;
+        esac
+    fi
+
+    config_set_file "$_rs_file" "$_rs_ckey" "$_rs_val" || die "не удалось записать в $_rs_file"
+    say ""
+    ok "$_rs_ckey = $_rs_val"
+    dim "    → $_rs_file"
+}
+
 # The role table (MODES.md §11.3): what a role resolves to here, and from which level.
 cmd_roles() {
+    if [ "${1:-}" = set ]; then shift; cmd_roles_set "$@"; return; fi
     _root=$(pwd -P)
     project_is_managed "$_root" || _root=
     _rs=$(roles_list "$_root")

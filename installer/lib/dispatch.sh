@@ -120,9 +120,29 @@ dispatch_check() {
     fi
 
     # 3. Every role resolves to an executor on THIS machine's table.
+    # The loop variable carries a `_dc_` prefix because core.sh's fraim_procedure_file
+    # assigns a bare `_r` internally, and sh has no locals: a plain `_r` here comes back
+    # holding the install path after the first call into it.
     _dc_roles=$(printf '%s\n' "$_dc_recs" | cut -d'|' -f2 | grep '[^[:space:]]' | sort -u)
-    for _r in $_dc_roles; do
-        roles_resolve "$_r" "$_dc_root" >/dev/null || _dc_bad=1
+    for _dc_r in $_dc_roles; do
+        roles_resolve "$_dc_r" "$_dc_root" >/dev/null || _dc_bad=1
+    done
+
+    # 4. A known procedure that may not run in parallel. `prune` and the rest write the
+    #    foundation, and under this mode the foundation is written by the build once
+    #    (invariant 0.4) — dispatching two of them is a collision no path check can see,
+    #    because they collide inside the same file the plan never listed.
+    #    An UNKNOWN role is not refused here: it already fell back to a default executor
+    #    in step 3, and refusing a plan because this machine lacks a procedure would make
+    #    plans non-portable, which is the thing roles exist to avoid.
+    for _dc_r in $_dc_roles; do
+        if fraim_procedure_file "$_dc_r" >/dev/null 2>&1 && ! roles_is_parallel "$_dc_r"; then
+            printf >&2 'dispatch-check: роль %s нельзя раздавать воркеру\n' "$_dc_r"
+            printf >&2 '  процедура %s не объявляет «parallel: yes» — она пишет фундамент\n' "$_dc_r"
+            printf >&2 '  или действует на весь проект, а под параллелизмом фундамент пишет\n'
+            printf >&2 '  сборка, один раз (MODES.md §2, инвариант 0.4)\n'
+            _dc_bad=1
+        fi
     done
 
     [ "$_dc_bad" -eq 0 ] || return 1

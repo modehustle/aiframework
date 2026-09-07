@@ -4,6 +4,7 @@ description: "Pick a task from the ai/tasks/ queue, execute it literally, then a
 metadata:
   tier: cheap
   order: 6
+  parallel: yes
 ---
 # /run-task — Execute Prepared Task
 
