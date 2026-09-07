@@ -39,6 +39,7 @@ _libdir=$(cd -- "$(dirname -- "$_self")/../lib" 2>/dev/null && pwd -P) || {
 . "$_libdir/clean.sh"
 . "$_libdir/publish.sh"
 . "$_libdir/update.sh"
+. "$_libdir/dispatch.sh"
 . "$_libdir/menu.sh"
 
 usage() {
@@ -56,6 +57,7 @@ fraim — эксплуатационный слой для проектов на
   fraim clean [--yes]       прибрать всё, что чинится без суждения
   fraim publish [--check]   копия проекта вне этой машины: создать, отправить, сверить
                             (--brief — задание агенту вычистить найденное)
+  fraim dispatch [ПЛАН]     параллельный режим: разбить задачу, проверить пути, раздать флоту
   fraim init                поставить скиллы / подхватить новый харнес
   fraim update [--check]    привезти новую версию и разложить (--check — только узнать)
   fraim doctor              что и куда установлено, что разошлось
@@ -927,6 +929,28 @@ cmd_undo() {
 }
 cmd_restore() { verb_restore "$(pwd -P)" "$@"; }
 
+# Dispatch: split a task into parallel subtasks for independent workers.
+# Takes an optional plan file; without it, looks for build-plan.md in project.
+cmd_dispatch() {
+    _root=$(verb_root)
+    _plan=${1:-"$_root/build-plan.md"}
+
+    [ -f "$_plan" ] || die "план не найден: $_plan"
+
+    dispatch_check "$_plan" || die "dispatch-check не прошла"
+
+    say "Разбор плана..."
+    _build_id=$(printf 'build-%s' "$(date +%Y%m%d-%H%M%S)")
+
+    say "Раздача подзадач..."
+    dispatch_to_workers "$_root" "$_plan" | while IFS=$'\t' read -r _id _task_dir; do
+        printf 'Worker %s → %s\n' "$_id" "$_task_dir"
+    done
+
+    say "Сборка запечатана: $build_id"
+    ok "Флот готов к запуску. Следующий шаг: запустить воркеров в ADE"
+}
+
 # --- dispatch ---------------------------------------------------------------
 # A bare `fraim` is the most common thing typed by someone who does not know
 # what to type — answering it with a list of twenty commands is the worst
@@ -961,6 +985,7 @@ case $_cmd in
     stack-passport) cmd_stack_passport "$@" ;;
     status)        cmd_status "$@" ;;
     fleet)         cmd_fleet "$@" ;;
+    dispatch)      cmd_dispatch "$@" ;;
     projects)      cmd_projects "$@" ;;
     doctor)        cmd_doctor "$@" ;;
     show)          cmd_show "$@" ;;
