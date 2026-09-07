@@ -391,11 +391,18 @@ dispatch_launch() {
         # not lose the ids of the two already running.
         printf '%s\t%s\t%s\t%s\n' "$_dl_id" "$_dl_task" "$_dl_disp" \
             "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" >> "$_dl_file"
-        # Do not print a model that was not applied: the launch may have dropped it for
-        # an agent that refuses one, and a report naming it would be a quiet lie about
-        # what this build actually ran on.
+        # An agent that would not take the model as a flag may still take it as its first
+        # input. Try that before reporting the model as not applied — and report honestly
+        # either way, because a build's cost depends on which model actually ran.
         if fleet_caps_has "$_dl_ag" no-launch-model 2>/dev/null; then
-            printf '  %s → %s (%s, модель не применяется)\n' "$_dl_id" "$_dl_disp" "$_dl_ag"
+            if _dl_sent=$(fleet_worker_set_model "$_dl_disp" "$_dl_ag" "$_dl_mo" "$_dl_root"); then
+                printf '  %s → %s (%s %s, задана командой «%s»)\n' \
+                    "$_dl_id" "$_dl_disp" "$_dl_ag" "$_dl_mo" "$_dl_sent"
+            else
+                printf '  %s → %s (%s, модель не применяется)\n' "$_dl_id" "$_dl_disp" "$_dl_ag"
+                printf '     как %s меняет модель изнутри — неизвестно; научить:\n' "$_dl_ag"
+                printf '     fraim config set --machine modelcmd_%s "/model %%s"\n' "$_dl_ag"
+            fi
         else
             printf '  %s → %s (%s %s %s)\n' "$_dl_id" "$_dl_disp" "$_dl_ag" "$_dl_mo" "$_dl_ef"
         fi

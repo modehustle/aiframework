@@ -101,6 +101,74 @@ fleet_caps_describe() {
     return 0
 }
 
+# ---------------------------------------------------------------------------
+# Setting the model from inside the session
+#
+# The owner's idea, and it is the right shape: an agent that refuses `--model` at launch
+# may still be able to switch models once it is running, the way a person types `/model`.
+# So instead of giving up on the model, hand the worker the instruction as its first input.
+#
+# What we do NOT do is guess the command. Sending `/model X` to an agent that has no such
+# command does not fail — the agent reads it as the first line of its task, which is worse
+# than not setting the model at all. So a command is sent only when it is KNOWN:
+#
+#   1. built in for agents whose command we have read (claude);
+#   2. `modelcmd_<agent>` in the config, for everything else.
+#
+# The second is what makes this universal without a catalogue: the person who has the agent
+# in front of them can teach us its command in one line, without waiting for a release.
+#
+#     fraim config set --machine modelcmd_devin '/model %s'
+#
+# `%s` is where the model id goes. No `%s` means the value is sent verbatim.
+fleet_model_command() {
+    _fmc_agent=$1; _fmc_model=$2
+    _fmc_tpl=$(config_get "modelcmd_$_fmc_agent" "${3:-}" 2>/dev/null || :)
+    if [ -z "$_fmc_tpl" ]; then
+        case $_fmc_agent in
+            claude) _fmc_tpl='/model %s' ;;
+            *) return 1 ;;
+        esac
+    fi
+    # Substituted with shell parameter expansion rather than printf: the template comes
+    # from a config file, and feeding foreign text to printf as a FORMAT makes every %
+    # in it an instruction. The first attempt here did exactly that and shipped the
+    # literal "/model %s" to the worker.
+    case $_fmc_tpl in
+        *%s*)
+            _fmc_pre=${_fmc_tpl%%'%s'*}
+            _fmc_post=${_fmc_tpl#*'%s'}
+            printf '%s%s%s\n' "$_fmc_pre" "$_fmc_model" "$_fmc_post"
+            ;;
+        *)  printf '%s\n' "$_fmc_tpl" ;;
+    esac
+}
+
+# The terminal a worker runs in, so something can be typed into it.
+fleet_worker_terminal() {
+    fleet_worker_show "$1" | fleet_id term
+}
+
+# Type one line into a worker's terminal and press enter.
+fleet_worker_send() {
+    _fws2_term=$1; _fws2_text=$2
+    _fws2_cmd=$(fleet_cli) || return 1
+    "$_fws2_cmd" terminal send --terminal "$_fws2_term" \
+        --text "$_fws2_text" --enter --json >/dev/null 2>&1
+}
+
+# Ask a running worker to switch to the model its role asked for. Returns 1 when we do not
+# know how to say it to this agent — the caller then reports the model as not applied,
+# which is the truth.
+fleet_worker_set_model() {
+    _fwsm_disp=$1; _fwsm_agent=$2; _fwsm_model=$3; _fwsm_root=${4:-}
+    _fwsm_line=$(fleet_model_command "$_fwsm_agent" "$_fwsm_model" "$_fwsm_root") || return 1
+    _fwsm_term=$(fleet_worker_terminal "$_fwsm_disp")
+    [ -n "$_fwsm_term" ] || return 1
+    fleet_worker_send "$_fwsm_term" "$_fwsm_line" || return 1
+    printf '%s\n' "$_fwsm_line"
+}
+
 # Every Orca response carries `"ok": true|false`. This is the one field name we do rely
 # on, because it is the envelope rather than the payload, and because the alternative —
 # trusting the exit code alone — loses the distinction their own help draws between a
