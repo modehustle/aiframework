@@ -130,7 +130,7 @@ CARDOUT=$(sh -c '
     . "'"$REPO"'/installer/lib/core.sh"; . "'"$REPO"'/installer/lib/config.sh"
     . "'"$REPO"'/installer/lib/registry.sh"; . "'"$REPO"'/installer/lib/context.sh"
     . "'"$REPO"'/installer/lib/scaffold.sh"; . "'"$REPO"'/installer/lib/verbs.sh"
-    . "'"$REPO"'/installer/lib/watchman.sh"; . "'"$REPO"'/installer/lib/update.sh"; . "'"$REPO"'/installer/lib/menu.sh"
+    . "'"$REPO"'/installer/lib/ade.sh"; . "'"$REPO"'/installer/lib/watchman.sh"; . "'"$REPO"'/installer/lib/update.sh"; . "'"$REPO"'/installer/lib/menu.sh"
     cd "'"$CARD"'" && menu_card && printf "%s\n" "$MENU_CARD"' 2>&1)
 check "карточка меню не падает на числах сторожа" "$(printf '%s' "$CARDOUT" | grep -c 'Illegal number')" "0"
 check "карточка меню показывает текст находок" \
@@ -150,7 +150,7 @@ NAV=$(sh -c '
     . "'"$REPO"'/installer/lib/core.sh"; . "'"$REPO"'/installer/lib/config.sh"
     . "'"$REPO"'/installer/lib/registry.sh"; . "'"$REPO"'/installer/lib/context.sh"
     . "'"$REPO"'/installer/lib/scaffold.sh"; . "'"$REPO"'/installer/lib/verbs.sh"
-    . "'"$REPO"'/installer/lib/watchman.sh"; . "'"$REPO"'/installer/lib/update.sh"; . "'"$REPO"'/installer/lib/menu.sh"
+    . "'"$REPO"'/installer/lib/ade.sh"; . "'"$REPO"'/installer/lib/watchman.sh"; . "'"$REPO"'/installer/lib/update.sh"; . "'"$REPO"'/installer/lib/menu.sh"
     cd "'"$CARD"'" || exit 1
     MENU_N=$(menu_count); MENU_SEL=1
     menu_card
@@ -1259,7 +1259,7 @@ printf '\nfraim publish (копия вне машины)\n'
 PUBLIB_CANCEL='. "'"$REPO"'/installer/lib/core.sh"; . "'"$REPO"'/installer/lib/config.sh"
     . "'"$REPO"'/installer/lib/registry.sh"; . "'"$REPO"'/installer/lib/context.sh"
     . "'"$REPO"'/installer/lib/scaffold.sh"; . "'"$REPO"'/installer/lib/verbs.sh"
-    . "'"$REPO"'/installer/lib/watchman.sh"; . "'"$REPO"'/installer/lib/update.sh"; . "'"$REPO"'/installer/lib/publish.sh"'
+    . "'"$REPO"'/installer/lib/ade.sh"; . "'"$REPO"'/installer/lib/watchman.sh"; . "'"$REPO"'/installer/lib/update.sh"; . "'"$REPO"'/installer/lib/publish.sh"'
 
 # Всё здесь работает без сети и без gh: «хостом» служит локальный bare-репозиторий.
 # Это не упрощение ради теста — это тот же путь, которым идёт --url, то есть пол,
@@ -1543,7 +1543,7 @@ GIT_CONFIG_COUNT=0; export GIT_CONFIG_COUNT
 PUBLIB='. "'"$REPO"'/installer/lib/core.sh"; . "'"$REPO"'/installer/lib/config.sh"
         . "'"$REPO"'/installer/lib/registry.sh"; . "'"$REPO"'/installer/lib/context.sh"
         . "'"$REPO"'/installer/lib/scaffold.sh"; . "'"$REPO"'/installer/lib/verbs.sh"
-        . "'"$REPO"'/installer/lib/watchman.sh"; . "'"$REPO"'/installer/lib/update.sh"; . "'"$REPO"'/installer/lib/publish.sh"'
+        . "'"$REPO"'/installer/lib/ade.sh"; . "'"$REPO"'/installer/lib/watchman.sh"; . "'"$REPO"'/installer/lib/update.sh"; . "'"$REPO"'/installer/lib/publish.sh"'
 
 CONV=$(sh -c "$PUBLIB"'
     for u in git@github.com:me/proj.git ssh://git@gitlab.com/g/p.git https://github.com/a/b.git; do
@@ -1761,7 +1761,7 @@ git -C "$UPHOST" symbolic-ref HEAD refs/heads/main
 git clone -q "$UPHOST" "$UPSRC" >/dev/null 2>&1
 
 UPLIB='. "'"$REPO"'/installer/lib/core.sh"; . "'"$REPO"'/installer/lib/config.sh"
-    . "'"$REPO"'/installer/lib/update.sh"; . "'"$REPO"'/installer/lib/watchman.sh"'
+    . "'"$REPO"'/installer/lib/update.sh"; . "'"$REPO"'/installer/lib/ade.sh"; . "'"$REPO"'/installer/lib/watchman.sh"'
 
 # Проверка ходит в сеть и записывает вердикт в кэш.
 sh -c "FRAIM_ROOT='$UPSRC' $UPLIB"'; update_probe' >/dev/null 2>&1
@@ -1842,6 +1842,114 @@ sh -c "FRAIM_ROOT='$SANDBOX/handmade' $UPLIB"'; update_src_is_clone'
 check "не git-клон источником обновления не считается" "$?" "1"
 
 rm -f "$FRAIM_HOME/update-check"
+
+# ---------------------------------------------------------------- флот
+printf '\nфлот: чекауты и среда исполнения\n'
+
+# Проект с двумя чекаутами: в основном задача в очереди, в соседнем — исполненная и
+# не запечатанная. До этого модуля сторож второго чекаута не видел вовсе.
+FLEET="$SANDBOX/fleetproj"
+mkdir -p "$FLEET/ai/tasks/add-auth"
+git -C "$FLEET" init -q
+git -C "$FLEET" config user.email t@t; git -C "$FLEET" config user.name t
+printf 'x\n' > "$FLEET/ai/tasks/add-auth/task.md"
+printf '# arch\n' > "$FLEET/ARCHITECTURE.md"
+git -C "$FLEET" add -A >/dev/null 2>&1; git -C "$FLEET" commit -qm init >/dev/null 2>&1
+git -C "$FLEET" worktree add -q "$SANDBOX/wt-rate-limit" -b rate-limit >/dev/null 2>&1
+mkdir -p "$SANDBOX/wt-rate-limit/ai/tasks/rate-limit"
+printf 'x\n' > "$SANDBOX/wt-rate-limit/ai/tasks/rate-limit/task.md"
+printf 'done\n' > "$SANDBOX/wt-rate-limit/ai/tasks/rate-limit/result.md"
+
+FJ=$("$FRAIM" status "$FLEET" --json 2>/dev/null || true)
+printf '%s' "$FJ" | grep -q '"id": "worktree"'
+check "параллельный чекаут виден в вердикте" "$?" "0"
+printf '%s' "$FJ" | grep -q '"id": "worktree-unsealed"'
+check "незапечатанная задача в чужом чекауте — находка" "$?" "0"
+printf '%s' "$FJ" | grep -q '"id": "worktree-unsealed", "severity": "attention"'
+check "и она attention, а не info" "$?" "0"
+
+# Реестр чекаутов ведёт git, а не среда: ответ тот же, когда среды на машине нет вовсе.
+FLJ=$("$FRAIM" fleet "$FLEET" --json 2>/dev/null || true)
+check "fleet перечисляет оба чекаута" "$(printf '%s' "$FLJ" | grep -c '"path"')" "2"
+printf '%s' "$FLJ" | grep -q '"path": ".*wt-rate-limit", "current": false, "runnable": 1, "blocked": 0, "unsealed": 1'
+check "и считает состояние каждого" "$?" "0"
+check "без среды раздел про неё пуст" "$(printf '%s' "$FLJ" | grep -c '"key": "orca"')" "0"
+
+# --- среда исполнения -------------------------------------------------------
+# Стаб вместо Orca: у нас её нет и в CI не будет, а зависим мы не от установленной
+# программы, а от ФОРМЫ её ответа. Сломается контракт — упадёт тест, а не пользователь.
+ADEBIN="$SANDBOX/adebin"; mkdir -p "$ADEBIN"
+cat > "$ADEBIN/orca-ide" <<'STUB'
+#!/bin/sh
+case "$1 $2" in
+  "status --json")     [ -n "${STUB_DEAD:-}" ] && exit 1; printf '{"running":true}\n' ;;
+  "automations list")  printf '[{"name":"n","prompt":"%s","repo":"%s"}]\n' "${STUB_PROMPT:-разбери очередь}" "$STUB_REPO" ;;
+  *) exit 1 ;;
+esac
+STUB
+chmod +x "$ADEBIN/orca-ide"
+
+ADEENV="PATH=$ADEBIN:$PATH STUB_REPO=$FLEET"
+AJ=$(env PATH="$ADEBIN:$PATH" STUB_REPO="$FLEET" "$FRAIM" status "$FLEET" --json 2>/dev/null || true)
+printf '%s' "$AJ" | grep -q '"id": "ade-automation"'
+check "свободный промпт по расписанию — находка" "$?" "0"
+printf '%s' "$AJ" | grep -q '"id": "ade-automation", "severity": "info"'
+check "и она info: это чужая среда, мы её не запрещаем" "$?" "0"
+
+# Сторож по расписанию — это слой 2 SCHEDULING.md, а не находка.
+AJ2=$(env PATH="$ADEBIN:$PATH" STUB_REPO="$FLEET" STUB_PROMPT="fraim status" \
+        "$FRAIM" status "$FLEET" --json 2>/dev/null || true)
+check "запланированный сторож находкой не становится" "$(printf '%s' "$AJ2" | grep -c 'ade-automation')" "0"
+
+# Рантайм не отвечает — молчание: запущен он или нет, решает человек (C1).
+AJ3=$(env PATH="$ADEBIN:$PATH" STUB_REPO="$FLEET" STUB_DEAD=1 \
+        "$FRAIM" status "$FLEET" --json 2>/dev/null || true)
+check "закрытый рантайм не порождает находок" "$(printf '%s' "$AJ3" | grep -c 'ade-automation')" "0"
+FLJ2=$(env PATH="$ADEBIN:$PATH" STUB_REPO="$FLEET" STUB_DEAD=1 "$FRAIM" fleet "$FLEET" --json 2>/dev/null || true)
+printf '%s' "$FLJ2" | grep -q '"alive": false'
+check "но fleet честно говорит, что он не отвечает" "$?" "0"
+
+# Ловушка имени: на Linux голый `orca` — это программа чтения с экрана GNOME, и её
+# запуск включает синтез речи на машине человека. Проверяем не «мы выбрали другое имя»,
+# а «мы её не позвали»: подсадной orca оставляет след, которого быть не должно.
+cat > "$ADEBIN/orca" <<STUB
+#!/bin/sh
+printf 'spoke\n' > "$SANDBOX/screen-reader-ran"
+STUB
+chmod +x "$ADEBIN/orca"
+rm -f "$SANDBOX/screen-reader-ran"
+env PATH="$ADEBIN:$PATH" STUB_REPO="$FLEET" "$FRAIM" fleet "$FLEET" >/dev/null 2>&1 || true
+check "голый orca на Linux не запускается" "$([ -f "$SANDBOX/screen-reader-ran" ] && echo ran || echo silent)" "silent"
+
+# И проверка живости выбирает безопасное имя, а не первое попавшееся.
+rm -f "$ADEBIN/orca-ide"
+env PATH="$ADEBIN:$PATH" "$FRAIM" fleet "$FLEET" --json 2>/dev/null | grep -q '"key": "orca"'
+check "без orca-ide среда на Linux не считается найденной" "$?" "1"
+check "и подсадной orca всё ещё молчит" "$([ -f "$SANDBOX/screen-reader-ran" ] && echo ran || echo silent)" "silent"
+rm -f "$ADEBIN/orca"
+
+# Обе проверки выключаемы, как всякая проверка сторожа.
+"$FRAIM" config set --machine check_worktrees off >/dev/null 2>&1
+"$FRAIM" status "$FLEET" --json 2>/dev/null | grep -q '"id": "worktree'
+check "check_worktrees off — находок про чекауты нет" "$?" "1"
+"$FRAIM" config set --machine check_worktrees on >/dev/null 2>&1
+"$FRAIM" config set --machine check_ade off >/dev/null 2>&1
+env PATH="$ADEBIN:$PATH" STUB_REPO="$FLEET" "$FRAIM" status "$FLEET" --json 2>/dev/null | grep -q 'ade-automation'
+check "check_ade off — находок про среду нет" "$?" "1"
+"$FRAIM" config set --machine check_ade on >/dev/null 2>&1
+
+# Контракт сторожа: ни сети, ни модели. Спрашиваем локальный рантайм и читаем git.
+NETADE=$(grep -c 'curl\|wget\|https\?://' "$REPO/installer/lib/ade.sh" || true)
+check "модуль среды в сеть не ходит" "$NETADE" "0"
+
+# Рельс: библиотека, положенная в lib/ и не подключённая в bin/fraim, ломается не сразу
+# и не там. Так уже вышло с ade.sh — упал тест меню, а не тот, что её добавил.
+UNWIRED=""
+for _l in "$REPO"/installer/lib/*.sh; do
+    _n=$(basename "$_l")
+    grep -q "_libdir/$_n" "$REPO/installer/bin/fraim" || UNWIRED="$UNWIRED $_n"
+done
+check "каждая библиотека подключена в диспетчере" "${UNWIRED:-clean}" "clean"
 
 printf '\n%s пройдено, %s провалено\n' "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ]

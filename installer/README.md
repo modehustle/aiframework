@@ -187,6 +187,7 @@ installer/
   lib/core.sh            пути, вывод, чтение фронтматтера
   lib/skills.sh          генератор скиллов, мастер-скилл, манифест
   lib/harness.sh         таблица харнесов и раскладка по ним
+  lib/ade.sh             таблица сред исполнения флота: заметить и спросить
   lib/registry.sh        реестр проектов
   lib/context.sh         блок для AGENTS.md / CLAUDE.md
   lib/watchman.sh        сторож: детерминированный вердикт по проекту
