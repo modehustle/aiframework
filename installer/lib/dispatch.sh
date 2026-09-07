@@ -199,6 +199,18 @@ dispatch_write_task() {
         printf -- '  другим воркерам этой сборки: правка вне списка сольётся молча и без конфликта.\n'
         printf -- '- Нужен файл вне списка — не трогай его, а останови работу и скажи об этом.\n'
         printf -- '  Дирижёр перепланирует сборку; это дешевле молчаливого пересечения.\n'
+        printf -- '\n'
+        printf -- '- **Фундамент проекта в этой подзадаче не твой.** `DECISIONS.md`,\n'
+        printf -- '  `ARCHITECTURE.md`, `CONVENTIONS.md` не трогай, даже если `AGENTS.md` проекта\n'
+        printf -- '  велит обновлять их после изменения. Здесь это правило отменено: под\n'
+        printf -- '  параллелизмом фундамент пишет сборка, один раз, после приёмки\n'
+        printf -- '  (MODES.md §2, инвариант 0.4). Два воркера, дописавшие DECISIONS.md\n'
+        printf -- '  каждый от себя, дают конфликт слияния на ровном месте.\n'
+        printf -- '- Что стоило бы записать в фундамент — напиши словами в свой отчёт. Дирижёр\n'
+        printf -- '  соберёт это со всей сборки и внесёт одной записью.\n'
+        printf -- '\n'
+        printf -- '- **Закоммить свою работу.** Не оставляй сделанное незакоммиченным: сборку\n'
+        printf -- '  собирают слиянием веток, и то, что не в коммите, до неё не доедет.\n'
         printf -- '- Сборка %s. Приёмка одна на всю сборку, отдельной приёмки этой подзадачи нет.\n' "$_wt_build"
     } > "$_wt_dir/task.md" || return 1
 
@@ -218,11 +230,50 @@ dispatch_write_task() {
 # Prints one line per changed file: `inside:PATH` for a file the subtask declared,
 # `outside:PATH` for one it did not. No line at all means the worker changed nothing,
 # which is its own kind of answer.
+# Where a worker of this build actually works.
+#
+# Found from the FIRST live parallel build: the environment gives each worker its own
+# checkout (`--worktree new-top-level`), so the workers' changes are not in the project
+# root at all — they are in /…/workspaces/<repo>/<build>-<subtask>. Verifying the root
+# therefore compared the conductor's own tree against itself and saw nothing, which made
+# the one load-bearing check of the whole mode (§3) silently useless.
+#
+# Asked of git rather than of the environment: `git worktree list` is the same answer no
+# matter who created the checkout, and ade.sh already states the principle — the registry
+# of checkouts is kept by git, the environment is an optional enricher.
+#
+# The `if` is not style: `[ … ] && …` as the last command of a loop body returns 1 on the
+# final non-matching iteration, and under `set -e` that kills the caller's `$( … )` with
+# no output and no message. It cost this function a silent exit-1 the first time it ran.
+dispatch_worker_tree() {
+    _wt_root=$1; _wt_name=$2
+    git -C "$_wt_root" worktree list --porcelain 2>/dev/null |
+        sed -n 's/^worktree //p' |
+        while read -r _wt_p; do
+            if [ "$(basename -- "$_wt_p")" = "$_wt_name" ]; then
+                printf '%s\n' "$_wt_p"
+                break
+            fi
+        done
+    return 0
+}
+
+# Prints one line per changed file: `inside:PATH` / `outside:PATH`.
+#
+# Uncommitted work counts. The first live build had a worker finish its job and leave it
+# unstaged; `git diff <base>` in that checkout still shows it, and calling that "nothing
+# changed" would have been a lie about work that was done.
 dispatch_verify_tree() {
     _vt_root=$1; _vt_ref=$2; _vt_paths=$3
 
-    _vt_changed=$(cd "$_vt_root" 2>/dev/null && git diff --name-only "$_vt_ref" 2>/dev/null) ||
-        { printf >&2 'не могу прочитать дерево от %s\n' "$_vt_ref"; return 1; }
+    # Two questions, because one of them alone leaves a blind spot the check exists to
+    # cover: `git diff` reports what changed against the base but says nothing about files
+    # that did not exist there. A worker that CREATES a file outside its lane — a new
+    # module, a stray script, a foundation file — would pass a diff-only check silently.
+    _vt_changed=$(cd "$_vt_root" 2>/dev/null && {
+            git diff --name-only "$_vt_ref" 2>/dev/null
+            git ls-files --others --exclude-standard 2>/dev/null
+        }) || { printf >&2 'не могу прочитать дерево от %s\n' "$_vt_ref"; return 1; }
     _vt_decl=$(printf '%s\n' "$_vt_paths" | tr ',' '\n' | grep '[^[:space:]]' | sort -u)
 
     printf '%s\n' "$_vt_changed" | grep '[^[:space:]]' | sort -u | while read -r _p; do
@@ -263,6 +314,20 @@ dispatch_launch() {
     _dl_dir=$(build_dir "$_dl_root" "$_dl_build")
     _dl_plan="$_dl_dir/plan.md"
     [ -f "$_dl_plan" ] || { printf >&2 'нет плана сборки %s\n' "$_dl_build"; return 1; }
+
+    # The journal is what makes this a BUILD rather than a directory that happens to hold
+    # a plan. In the first live build the conductor ran `dispatch run v2-core` — the folder
+    # where the plan was written by hand — while `dispatch` had sealed the build under
+    # build-20260907-140427. The fleet started against a build that had no journal, and the
+    # mismatch only surfaced at acceptance, after all four workers had finished.
+    if [ ! -f "$_dl_dir/journal.md" ]; then
+        printf >&2 'сборка %s не заводилась: нет журнала ai/builds/%s/journal.md\n' \
+            "$_dl_build" "$_dl_build"
+        printf >&2 '  сборку заводит «fraim dispatch ПЛАН» — он и назовёт её имя\n'
+        _dl_have=$(build_list "$_dl_root" 2>/dev/null | head -3)
+        [ -n "$_dl_have" ] && { printf >&2 '  заведённые сборки:\n'; printf '%s\n' "$_dl_have" | sed 's/^/    /' >&2; }
+        return 1
+    fi
 
     fleet_present || { printf >&2 'среда исполнения не найдена на этой машине\n'; return 1; }
     fleet_ready   || { printf >&2 'среда исполнения не отвечает — запусти её (orca open)\n'; return 1; }
@@ -376,12 +441,17 @@ build_accept() {
 }
 
 # Pending builds, newest first: id and whether it has been accepted.
+# A directory under ai/builds is a BUILD only if it has a journal. Anything else is a
+# folder someone put a plan in — that is what ai/builds/v2-core was in the first live
+# build, and listing it as a build is what let `dispatch run` be aimed at it.
 build_list() {
     _bl_root=$1
     [ -d "$_bl_root/ai/builds" ] || return 0
     for _b in "$_bl_root/ai/builds"/*; do
         [ -d "$_b" ] || continue
-        if [ -f "$_b/accepted" ]; then
+        if [ ! -f "$_b/journal.md" ]; then
+            printf '%s\tне сборка (нет журнала)\n' "$(basename -- "$_b")"
+        elif [ -f "$_b/accepted" ]; then
             printf '%s\tпринята\n' "$(basename -- "$_b")"
         else
             printf '%s\tне принята\n' "$(basename -- "$_b")"

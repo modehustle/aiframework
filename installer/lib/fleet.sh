@@ -36,16 +36,31 @@ fleet_ready() {
 # Pull one typed identifier out of a response. Reads stdin, prints the first id of that
 # type, fails when there is none.
 #
-# The colon is what makes this correct, and leaving it out is a mistake I made and the
-# test caught: searching for `"run_…"` alone matches the FIELD NAME `"run_id"` and returns
+# Two things make this correct, and each was learned by getting it wrong.
+#
+# The colon: searching for `"run_…"` alone matches the FIELD NAME `"run_id"` and returns
 # the string `run_id` as though it were an identifier. An id is always a VALUE, so it is
 # always preceded by a colon; a field name never is.
+#
+# Hex only, and at least eight of them: in the first live build the response carried
+# `"stage": "dispatch_input"`, a state name that sat after a colon and began with the
+# prefix being searched for. It was written into fleet.tsv as every worker's identifier,
+# and watch and verify were useless for the rest of the session. Orca's ids are hex
+# (run_167eb45dfa55, task_cd10350c41cf, ctx_797e84aa5091), and a state name is words —
+# `input` contains no hex digit at all, so requiring hex separates data from vocabulary.
 fleet_id() {
     _fi_kind=$1
     tr -d '\n' 2>/dev/null |
-        grep -o ":[[:space:]]*\"${_fi_kind}_[0-9a-zA-Z][0-9a-zA-Z-]*\"" 2>/dev/null |
+        grep -oE ":[[:space:]]*\"${_fi_kind}_[0-9a-f][0-9a-f-]{7,}\"" 2>/dev/null |
         head -1 | sed 's/^:[[:space:]]*//; s/"//g'
 }
+
+# The prefix Orca uses for the identifier of one dispatched worker.
+#
+# It is `ctx_`, not `dispatch_` — established from the first live build, where
+# `worker-list --json` reported ctx_797e84aa5091 and friends for the four running workers.
+# Named here rather than inlined so that the day it changes, it changes in one place.
+FLEET_DISPATCH_KIND=ctx
 
 # Every Orca response carries `"ok": true|false`. This is the one field name we do rely
 # on, because it is the envelope rather than the payload, and because the alternative —
@@ -119,13 +134,34 @@ fleet_worker_start() {
     fi
     _fws_rc=$?
 
+    # Not every agent accepts a model at launch. The first live build died whole on this:
+    # the role table said devin:glm-5.2, dispatch-check passed it (it validates shape, and
+    # cannot know an agent's capabilities), and all four workers failed with "Agent devin
+    # does not support launch-time model selection."
+    #
+    # Retried without the model rather than refused, because the alternative is a fleet
+    # that will not start over a flag the agent simply ignores. The human is told: which
+    # model was dropped for whom is exactly the kind of thing that is obvious now and
+    # invisible three hours later.
+    if [ "$_fws_rc" -ne 0 ] && [ -n "$_fws_model" ] &&
+       printf '%s' "$_fws_out" | grep -qi 'launch-time model\|does not support.*model'; then
+        printf >&2 'агент %s не принимает модель при запуске — поднимаю %s без неё (модель %s не применена)\n' \
+            "$_fws_agent" "$_fws_name" "$_fws_model"
+        _fws_out=$("$_fws_cmd" orchestration worker-start \
+            --task "$_fws_task" --agent "$_fws_agent" \
+            --worktree new-top-level --name "$_fws_name" \
+            --repo "path:$_fws_root" --base-branch "$_fws_base" --json 2>&1)
+        _fws_rc=$?
+    fi
+
     if [ "$_fws_rc" -ne 0 ]; then
         printf >&2 'worker-start не поднял воркера %s:\n%s\n' "$_fws_name" "$_fws_out"
         return 1
     fi
-    _fws_id=$(printf '%s' "$_fws_out" | fleet_id dispatch)
+    _fws_id=$(printf '%s' "$_fws_out" | fleet_id "$FLEET_DISPATCH_KIND")
     [ -n "$_fws_id" ] || {
-        printf >&2 'worker-start: в ответе нет dispatch_… идентификатора:\n%s\n' "$_fws_out"
+        printf >&2 'worker-start: в ответе нет %s_… идентификатора:\n%s\n' \
+            "$FLEET_DISPATCH_KIND" "$_fws_out"
         return 1
     }
     printf '%s\n' "$_fws_id"
