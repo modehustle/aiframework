@@ -1044,7 +1044,34 @@ cmd_roles_set() {
     _rs_root=$(pwd -P)
     project_is_managed "$_rs_root" || _rs_root=
 
-    menu_supported || die "интерактивная настройка требует терминала (иначе: fraim config set role_ИМЯ агент:модель:усилие)"
+    _rs_force_machine=
+    if [ "${1:-}" = --machine ]; then _rs_force_machine=1; shift; fi
+
+    # Non-interactive form: `fraim roles set КЛЮЧ ЗНАЧЕНИЕ`. This is the path a Dockerfile
+    # or a VM recipe takes — an image is built without a terminal, and baking the role
+    # table into the image is the whole point of building one. `fraim config set` cannot
+    # do it: it validates the key against config_table, and role_/tier_ keys are open-ended
+    # by design, so it refuses every one of them.
+    if [ $# -ge 2 ]; then
+        _rs_key=$1; _rs_val=$2
+        case $_rs_key in
+            tier_*|role_*) ;;
+            *) _rs_key=role_$_rs_key ;;
+        esac
+        roles_parse "$_rs_val" >/dev/null ||
+            die "«$_rs_val» не в форме агент:модель:усилие"
+        if [ -n "$_rs_force_machine" ] || [ -z "$_rs_root" ]; then
+            _rs_file=$(config_machine_file)
+        else
+            _rs_file=$(config_project_file "$_rs_root")
+        fi
+        config_set_file "$_rs_file" "$_rs_key" "$_rs_val" || die "не удалось записать в $_rs_file"
+        ok "$_rs_key = $_rs_val"
+        dim "    → $_rs_file"
+        return 0
+    fi
+
+    menu_supported || die "нужен терминал для выбора — или задай сразу: fraim roles set КЛЮЧ агент:модель:усилие"
 
     # 1. Which procedure. A tier key is offered too, because setting tier_cheap once is
     #    usually the right move and setting thirteen roles one by one is usually not.
