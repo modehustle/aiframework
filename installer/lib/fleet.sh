@@ -156,43 +156,6 @@ fleet_worker_release() {
     "$_fwr_cmd" orchestration worker-release --dispatch "$1" --json 2>&1
 }
 
-# Start the conductor itself: an agent in a terminal on the CURRENT checkout, told to run
-# the conductor procedure against the human's request.
-#
-# Not a worker: no worktree of its own (it works where the human is), no Task, no
-# supervision. Orca's own help points at this exact shape — "to start a fresh agent in the
-# current worktree, use: orca terminal create --worktree active --command <agent>".
-#
-# The model reaches the agent through the agent's own CLI flag, not through Orca — this
-# terminal is a plain command line, not a supervised worker, so --model belongs to whoever
-# is being launched. That flag is known for claude; for anything else the agent starts on
-# its own default and the caller is told so, because inventing a flag for a CLI we have
-# not read is how the last three bugs happened.
-fleet_conductor_start() {
-    _fcs_agent=$1; _fcs_model=$2; _fcs_prompt=$3
-
-    _fcs_cmd=$(fleet_cli) || return 1
-    case $_fcs_agent in
-        claude) _fcs_launch="claude --model $_fcs_model" ;;
-        *)      _fcs_launch=$_fcs_agent ;;
-    esac
-
-    _fcs_out=$("$_fcs_cmd" terminal create --worktree current \
-        --title "fraim: дирижёр" --command "$_fcs_launch" --focus --json 2>&1) || {
-        printf >&2 'terminal create не удался:\n%s\n' "$_fcs_out"; return 1
-    }
-    _fcs_term=$(printf '%s' "$_fcs_out" | fleet_id term)
-    [ -n "$_fcs_term" ] || {
-        printf >&2 'terminal create: в ответе нет term_… ручки:\n%s\n' "$_fcs_out"; return 1
-    }
-
-    "$_fcs_cmd" terminal send --terminal "$_fcs_term" --text "$_fcs_prompt" --enter --json >/dev/null 2>&1 || {
-        printf >&2 'терминал %s поднят, но задание не ушло — пошли его сам\n' "$_fcs_term"
-        printf '%s\n' "$_fcs_term"; return 1
-    }
-    printf '%s\n' "$_fcs_term"
-}
-
 # All workers of one build, as the environment accounts for them.
 #
 # Note the trap their help spells out: "terminal state is process accounting and is

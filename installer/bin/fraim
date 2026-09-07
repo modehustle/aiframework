@@ -64,7 +64,7 @@ fraim — эксплуатационный слой для проектов на
                             watch СБОРКА — что среда говорит о воркерах
                             verify СБОРКА ПОДЗАДАЧА — сверить дерево с путями
                             check ПЛАН · accept СБОРКА · list
-  fraim conduct "ЗАДАЧА"    отдать работу дирижёру: он спланирует, раздаст и сверит
+  fraim mode [task|parallel]  режим проекта: обычный или дирижёр с флотом
   fraim roles [set [ИМЯ]]   таблица ролей: во что разворачивается роль на этой машине
                             (set — выбрать агента, модель и усилие из списка)
   fraim init                поставить скиллы / подхватить новый харнес
@@ -148,6 +148,7 @@ cmd_init() {
         # the machine block here would have overwritten what `fraim scaffold` puts in a
         # project's AGENTS.md — and it would be the wrong text anyway: a routing table for
         # skills installed on this machine says nothing to the agent that clones the repo.
+        CTX_ROOT=$_cwd
         if context_install "$_cwd/AGENTS.md" context_project_block; then
             dim "    контекстный блок → $_cwd/AGENTS.md"
         fi
@@ -940,10 +941,9 @@ cmd_restore() { verb_restore "$(pwd -P)" "$@"; }
 
 # Dispatch: split a task into parallel subtasks for independent workers.
 # Takes an optional plan file; without it, looks for build-plan.md in project.
-# The conductor's command. It stops one step short of launching on purpose: the
-# adapter that performs the six operations of MODES.md §9 is not written yet, and a
-# command that says "dispatched" while nothing runs is the defect this whole rewrite
-# came from. Everything up to the launch is real and checked.
+# The mechanics of a build. Called by the conductor agent, not typed by the human — the
+# human says what they want and reads the report; these are the steps the agent takes to
+# get there. `accept` is the exception and belongs to the human alone (B5).
 cmd_dispatch() {
     _sub=${1:-}
 
@@ -1099,37 +1099,54 @@ cmd_roles_set() {
     dim "    → $_rs_file"
 }
 
-# Hand a job to the conductor. This is the entry point of the whole mode for the human:
-# one sentence in, a fleet out — the planning, the dispatch and the verification are the
-# conductor's, and the acceptance stays the human's (B5).
-cmd_conduct() {
-    _cd_root=$(verb_root)
-    [ $# -ge 1 ] || die "нужно: fraim conduct \"что сделать\""
-    _cd_job=$*
+# The mode of this project: which of the three defined modes is in force here.
+#
+# Not a preset of behaviours — MODES.md §1 is explicit that a mode answers "who has the
+# right to do what", and the authority inside each mode lives in the foundation and is not
+# configurable. What this switches is which mode is active, and the visible effect is the
+# context block in AGENTS.md: that is where an agent entering the project learns whether it
+# is a conductor. So there is no command to "start conducting" — being in the mode is the
+# whole mechanism.
+cmd_mode() {
+    _md_root=$(verb_root)
+    _md_cur=$(config_get mode "$_md_root")
 
-    _cd_ex=$(roles_resolve conductor "$_cd_root") || die "роль conductor не разворачивается"
-    _cd_ag=$(printf '%s' "$_cd_ex" | cut -f1)
-    _cd_mo=$(printf '%s' "$_cd_ex" | cut -f2)
-
-    _cd_prompt="Исполни процедуру conductor (skill: conductor) для этой задачи.
-
-Задача от человека: $_cd_job
-
-Начни с шага 0: прочитай фундамент, определи, распадается ли работа на независимые блоки,
-и если нет — скажи об этом вместо раздачи."
-
-    say "Дирижёр: $_cd_ag $_cd_mo · роль conductor ($(roles_source conductor "$_cd_root"))"
-
-    if ! fleet_present || ! fleet_ready; then
-        warn "среда исполнения недоступна — запусти дирижёра сам"
+    if [ $# -eq 0 ]; then
+        say "режим: ${C_BLD}$_md_cur${C_OFF} · $(config_source mode "$_md_root")"
         say ""
-        printf '%s\n' "$_cd_prompt"
+        case $_md_cur in
+            parallel)
+                dim "    агент, входящий в проект, работает дирижёром: планирует, раздаёт"
+                dim "    флоту и сверяет, но приёмка — твоя (B5)"
+                dim "    вернуть обычный режим: fraim mode task" ;;
+            *)
+                dim "    одна задача — одна приёмка, исполняет одна сессия"
+                dim "    включить дирижёра и флот: fraim mode parallel" ;;
+        esac
         return 0
     fi
 
-    _cd_term=$(fleet_conductor_start "$_cd_ag" "$_cd_mo" "$_cd_prompt") || die "не удалось поднять дирижёра"
-    ok "дирижёр работает в терминале $_cd_term"
-    dim "    следить за сборками: fraim dispatch list"
+    case $1 in
+        task|parallel) _md_new=$1 ;;
+        *) die "режим бывает task или parallel, а не «$1»" ;;
+    esac
+
+    if [ "$_md_new" = parallel ] && ! fleet_present; then
+        warn "среды исполнения на этой машине нет — флот поднять будет нечем"
+        dim "    планирование и проверки работают, а «fraim dispatch run» откажет"
+    fi
+
+    config_set_file "$(config_project_file "$_md_root")" mode "$_md_new" ||
+        die "не удалось записать режим"
+
+    # The block is the mechanism, not a side effect: without rewriting it the switch
+    # would change a config key and nothing an agent can see.
+    CTX_ROOT=$_md_root
+    context_install "$_md_root/AGENTS.md" context_project_block ||
+        die "режим записан, но AGENTS.md обновить не удалось — агент его не увидит"
+
+    ok "режим: $_md_new"
+    dim "    AGENTS.md обновлён — новая сессия агента прочитает это на входе"
 }
 
 # The role table (MODES.md §11.3): what a role resolves to here, and from which level.
@@ -1194,7 +1211,7 @@ case $_cmd in
     fleet)         cmd_fleet "$@" ;;
     dispatch)      cmd_dispatch "$@" ;;
     roles)         cmd_roles "$@" ;;
-    conduct)       cmd_conduct "$@" ;;
+    mode)          cmd_mode "$@" ;;
     projects)      cmd_projects "$@" ;;
     doctor)        cmd_doctor "$@" ;;
     show)          cmd_show "$@" ;;

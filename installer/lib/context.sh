@@ -82,6 +82,51 @@ BLKEOF
 #
 # Hence it names no slash-commands and assumes no CLI: it states the invariant, then says
 # what to do with fraim and what to do without it.
+# The project root whose block is being written. Set by the caller before context_install,
+# because the block functions take no arguments and sh has no locals. Empty means "do not
+# know" — the mode section is then omitted rather than guessed.
+CTX_ROOT=${CTX_ROOT:-}
+
+# The parallel-mode section of the project block.
+#
+# This is how the mode reaches the agent at all: it reads AGENTS.md on entering the
+# project, and that is where it learns whether it is a conductor here. No command starts
+# the mode — the mode IS the answer to "who am I in this project", which is exactly what
+# MODES.md §1 says a mode is.
+#
+# What a switch may and may not do: it selects which of the three defined modes is in
+# force; it does NOT hand out authority. The wall and the ratification of each mode live
+# in MODES.md and are not configurable — a conductor does not become allowed to accept
+# because someone flipped a key. That distinction is what keeps this on the right side of
+# §1 ("mode is not a setting") and of B5.
+context_mode_block() {
+    cat <<'BLKEOF'
+
+## Parallel mode is on in this project
+
+You are the **conductor** here. The human describes what they want; you plan it, hand the
+pieces to a fleet, verify what came back, and report. Read the `conductor` skill before
+you start — it is the procedure for this, and it is not optional.
+
+The short version, so you do not start in the wrong place:
+
+- **Do not write the subtasks' code yourself.** Your job is planning, dispatch and
+  verification. Writing the code is what the fleet is for.
+- **Split only what is genuinely independent.** Two blocks are parallel only if neither
+  reads the other's result. "Frontend and backend" qualifies only when the contract
+  between them already exists; without it that is one sequential piece, not two.
+  If nothing splits cleanly, say so and offer the ordinary task route instead — that is a
+  correct answer, not a failure.
+- **Judge the work by the tree, never by the workers' reports.** A report is written by
+  the party being judged. `fraim dispatch verify` shows what git says actually changed.
+- **You never accept the build.** One acceptance per build, and it belongs to the human.
+
+Mechanics: `fraim dispatch check ПЛАН` before anything is handed out, then
+`fraim dispatch ПЛАН`, `fraim dispatch run СБОРКА`, `fraim dispatch watch СБОРКА`,
+`fraim dispatch verify СБОРКА ПОДЗАДАЧА`. The human runs `fraim dispatch accept`.
+BLKEOF
+}
+
 context_project_block() {
     cat <<'BLKEOF'
 ## Project foundation
@@ -124,6 +169,13 @@ fraim commit <kind> "<what changed>" <path>…  # a save point over the named pa
 If it is not installed, do the same with ordinary git — the rules above are the point, the
 CLI is only the convenience.
 BLKEOF
+
+    # Appended only where the project actually runs in parallel mode. In task mode the
+    # block is byte-identical to what it has always been, so switching a project into the
+    # mode and back leaves no trace in AGENTS.md.
+    if [ -n "$CTX_ROOT" ] && [ "$(config_get mode "$CTX_ROOT" 2>/dev/null || :)" = parallel ]; then
+        context_mode_block
+    fi
 }
 
 # Harness-specific context files (CLAUDE.md and friends) get a pointer, not a copy.
