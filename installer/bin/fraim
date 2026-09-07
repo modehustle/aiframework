@@ -1188,6 +1188,14 @@ cmd_mode() {
     _md_root=$(verb_root)
     _md_cur=$(config_get mode "$_md_root")
 
+    # Called by the harness at session start, not by a human: prints the mode's briefing
+    # as JSON for `additionalContext`. Silent and successful in task mode, so the hook can
+    # stay installed harmlessly if someone leaves it behind.
+    if [ "${1:-}" = --hook ]; then
+        context_hook_payload "$_md_root" || :
+        return 0
+    fi
+
     if [ $# -eq 0 ]; then
         say "режим: ${C_BLD}$_md_cur${C_OFF} · $(config_source mode "$_md_root")"
         say ""
@@ -1216,14 +1224,31 @@ cmd_mode() {
     config_set_file "$(config_project_file "$_md_root")" mode "$_md_new" ||
         die "не удалось записать режим"
 
-    # The block is the mechanism, not a side effect: without rewriting it the switch
-    # would change a config key and nothing an agent can see.
     CTX_ROOT=$_md_root
     context_install "$_md_root/AGENTS.md" context_project_block ||
         die "режим записан, но AGENTS.md обновить не удалось — агент его не увидит"
 
     ok "режим: $_md_new"
-    dim "    AGENTS.md обновлён — новая сессия агента прочитает это на входе"
+
+    # The hook is what actually STARTS the mode: AGENTS.md is a file the agent may read,
+    # a SessionStart hook is text the harness puts into its context before the first turn.
+    case $_md_new in parallel) _md_hook=on ;; *) _md_hook=off ;; esac
+    if context_hook_set "$_md_root" "$_md_hook"; then
+        case $_md_new in
+            parallel) dim "    хук SessionStart поставлен — дирижёрская инструкция придёт" ;;
+            *)        dim "    хук SessionStart снят" ;;
+        esac
+        dim "    в контекст агента на старте сессии, без единого нажатия"
+    else
+        _md_rc=$?
+        if [ "$_md_rc" -eq 2 ]; then
+            warn "нет python3 — хук SessionStart не поставлен"
+            dim "    режим держится только на AGENTS.md, а это агент может и пролистать"
+        else
+            warn ".claude/settings.json не удалось обновить — хук не поставлен"
+        fi
+    fi
+    dim "    AGENTS.md обновлён"
 }
 
 # The role table (MODES.md §11.3): what a role resolves to here, and from which level.

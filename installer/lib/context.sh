@@ -148,6 +148,87 @@ Mechanics: `fraim dispatch check ПЛАН` before anything is handed out, then
 BLKEOF
 }
 
+# ---------------------------------------------------------------------------
+# Starting the mode, rather than asking for it
+#
+# A context block is a file the agent MAY read. The first live build proved what that is
+# worth: the conductor read the block, agreed it was the conductor, and then wrote the
+# project skeleton itself. A watchman finding after the fact is diagnosis, not a start —
+# nobody reads `fraim status` in the middle of being helpful.
+#
+# A SessionStart hook is different in kind. The harness runs it before the agent's first
+# turn and puts `additionalContext` INTO the context — the agent does not choose to read
+# it, the same way it does not choose to read the system prompt. That is the closest thing
+# to a deterministic start a harness offers.
+#
+# This is DETERMINISM.md's own plan: "хуки харнеса ложатся вторым поясом там, где среда
+# даёт: SessionStart может сам прогнать fraim status, чтобы вердикт приезжал в контекст
+# без единого нажатия". The gate in the CLI stays the first belt for environments with no
+# hooks; this is the second, and for the mode it is the one that matters.
+# ---------------------------------------------------------------------------
+
+# What the hook prints. Read by the harness, not by a human.
+context_hook_payload() {
+    _chp_root=$1
+    [ "$(config_get mode "$_chp_root" 2>/dev/null || :)" = parallel ] || return 1
+    if command -v python3 >/dev/null 2>&1; then
+        context_mode_block | python3 -c '
+import json, sys
+print(json.dumps({"hookSpecificOutput": {
+    "hookEventName": "SessionStart",
+    "additionalContext": sys.stdin.read(),
+}}, ensure_ascii=False))'
+        return 0
+    fi
+    return 1
+}
+
+CTX_HOOK_MARK='fraim mode --hook'
+
+# Add or remove the hook in the project's .claude/settings.json.
+#
+# Merged, never replaced: the file belongs to the project and may already carry hooks and
+# permissions somebody depends on. Where no JSON-safe editor exists we touch nothing and
+# say so — the same rule the permission hint follows.
+context_hook_set() {
+    _chs_root=$1; _chs_on=$2
+    command -v python3 >/dev/null 2>&1 || return 2
+    mkdir -p "$_chs_root/.claude" 2>/dev/null || return 1
+    python3 - "$_chs_root/.claude/settings.json" "$_chs_on" "$CTX_HOOK_MARK" <<'PY'
+import json, sys
+path, on, mark = sys.argv[1], sys.argv[2] == "on", sys.argv[3]
+try:
+    with open(path) as f:
+        data = json.load(f)
+except FileNotFoundError:
+    data = {}
+except (json.JSONDecodeError, OSError):
+    sys.exit(1)
+if not isinstance(data, dict):
+    sys.exit(1)
+
+hooks = data.setdefault("hooks", {})
+starts = hooks.setdefault("SessionStart", [])
+# Drop any entry of ours, so this is idempotent and `task` is a clean removal.
+starts[:] = [
+    g for g in starts
+    if not (isinstance(g, dict) and any(
+        isinstance(h, dict) and mark in str(h.get("command", ""))
+        for h in g.get("hooks", [])))
+]
+if on:
+    starts.append({"hooks": [{"type": "command", "command": mark, "timeout": 10}]})
+if not starts:
+    hooks.pop("SessionStart", None)
+if not hooks:
+    data.pop("hooks", None)
+
+with open(path, "w") as f:
+    json.dump(data, f, indent=2, ensure_ascii=False)
+    f.write("\n")
+PY
+}
+
 context_project_block() {
     cat <<'BLKEOF'
 ## Project foundation
