@@ -65,7 +65,6 @@ Design constraints to carry into the plan (from PRINCIPLES/MODES, already ratifi
   plugs in as another stdin producer, no new mechanism.
 
 ### DEAD-END
-(not used)
 
 ## Touched / created manifest — REPO
 - ai/investigations/model-selection-gap/findings.md (created by fraim investigate-new, filled by this session)
