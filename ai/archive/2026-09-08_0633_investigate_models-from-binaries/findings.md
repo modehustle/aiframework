@@ -35,6 +35,7 @@ forms, and fraim can read it at `fraim roles set` time:
 | codex | `~/.codex/models_cache.json` | model slugs + display names + **effort levels** (self-refreshed, etag'd) |
 | pi | `pi --list-models` | live catalogue incl. provider-key providers (OpenRouter), thinking flags |
 | cursor-agent | `cursor-agent models` | account models, effort encoded in id |
+| devin | `devin models list` | 46 model families with ids, effort levels AND prices, `--model` flag + `DEVIN_MODEL` env; current model in `~/.config/devin/config.json` |
 | claude | (none) | typed value fallback — the existing behaviour, harmless |
 
 Design shape for `/make-task` (structural):
