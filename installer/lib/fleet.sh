@@ -227,8 +227,16 @@ fleet_call() {
 # An isolated checkout WITHOUT an agent — the first half of the low-level
 # recipe. The selector is built from the returned path (selectors accept
 # path:<path>), because worktree ids carry the repo id we do not know here.
+# Orca silently REUSES an existing worktree of the same name (a previous
+# failed attempt's), so _FLEET_WT_CREATED records whether THIS call created
+# it — cleanup must never delete a checkout it did not create.
+#
+# Results travel in globals, not stdout: the caller must be able to read them
+# after the call, and a `$()` would run the function in a subshell where its
+# assignments die.
 fleet_worktree_create() {
     _fwc_name=$1; _fwc_root=$2; _fwc_base=$3
+    _FLEET_WT=; _FLEET_WT_CREATED=0
     _fwc_out=$(fleet_call worktree create --name "$_fwc_name" \
         --repo "path:$_fwc_root" --base-branch "$_fwc_base" --json) || return 1
     # The receipt names the checkout's path under worktreePath on current
@@ -238,7 +246,15 @@ fleet_worktree_create() {
     [ -n "$_fwc_path" ] || {
         printf >&2 'worktree create: в ответе нет пути:\n%s\n' "$_fwc_out"; return 1
     }
-    printf 'path:%s\n' "$_fwc_path"
+    _fwc_created=$(printf '%s' "$_fwc_out" | fleet_json_num createdAt)
+    case $_fwc_created in
+        ''|*[!0-9]*) : ;;
+        # A checkout created in the last minute is ours; anything older is a
+        # reused leftover, and its fate is not ours to decide.
+        *) [ "$_fwc_created" -gt $(( $(date +%s) * 1000 - 60000 )) ] && _FLEET_WT_CREATED=1 ;;
+    esac
+    _FLEET_WT="path:$_fwc_path"
+    return 0
 }
 
 # One string value out of an Orca JSON response: the FIRST occurrence of
@@ -252,11 +268,22 @@ fleet_json_str() {
         head -1 | sed "s/^\"$_fjs_key\"[[:space:]]*:[[:space:]]*//; s/\"//g"
 }
 
+# One numeric value out of an Orca JSON response — timestamps arrive unquoted,
+# where the string extractor must not look.
+fleet_json_num() {
+    _fjn_key=$1
+    tr -d '\n' 2>/dev/null |
+        grep -oE "\"$_fjn_key\"[[:space:]]*:[[:space:]]*[0-9]+" 2>/dev/null |
+        head -1 | sed "s/^\"$_fjn_key\"[[:space:]]*:[[:space:]]*//"
+}
+
 # A terminal in the worktree running exactly our argv — the model travels
 # inside the command, which is the only channel Orca leaves open for agents
-# outside its --model allow-list.
+# outside its --model allow-list. The handle travels in $_FLEET_TERM (globals,
+# not stdout — see fleet_worktree_create).
 fleet_terminal_create() {
     _ftc_wt=$1; _ftc_cmdline=$2
+    _FLEET_TERM=
     _ftc_out=$(fleet_call terminal create --worktree "$_ftc_wt" \
         --command "$_ftc_cmdline" --json) || return 1
     _ftc_term=$(printf '%s' "$_ftc_out" | fleet_id term)
@@ -264,7 +291,8 @@ fleet_terminal_create() {
         printf >&2 'terminal create: в ответе нет term_… идентификатора:\n%s\n' "$_ftc_out"
         return 1
     }
-    printf '%s\n' "$_ftc_term"
+    _FLEET_TERM=$_ftc_term
+    return 0
 }
 
 # The readiness gate. Exit code is the whole verdict: Orca's `terminal wait`
@@ -290,7 +318,10 @@ fleet_launch_cleanup() {
     [ -n "$_flc_wt" ] && {
         _flc_cmd=$(fleet_cli) || return 0
         "$_flc_cmd" terminal stop --worktree "$_flc_wt" --json >/dev/null 2>&1 || :
-        "$_flc_cmd" worktree rm --worktree "$_flc_wt" --json >/dev/null 2>&1 || :
+        # Only a checkout THIS launch created may be removed — a reused one
+        # belongs to a previous attempt and is not ours to delete.
+        [ "${_FLEET_WT_CREATED:-0}" = "1" ] &&
+            "$_flc_cmd" worktree rm --worktree "$_flc_wt" --json >/dev/null 2>&1 || :
     }
     return 0
 }
@@ -369,16 +400,21 @@ fleet_task_create() {
 # What was actually used is reported back through _FLEET_LAST_LAUNCH (the argv)
 # and _FLEET_LAST_LAUNCH_MODEL (the model that travelled inside it, empty when
 # none did) — the caller's reporting reads these rather than re-deriving the
-# path, because "which model actually ran" is the caller's contract.
+# path, because "which model actually ran" is the caller's contract. When the
+# caller runs this inside a command substitution it could not read globals, so
+# the same facts are appended, tab-separated, to $_FLEET_INFO when that file
+# path is set.
 fleet_worker_start_custom() {
     _fwsc_task=$1; _fwsc_agent=$2; _fwsc_model=$3
     _fwsc_name=$4; _fwsc_root=$5; _fwsc_base=$6
 
     _FLEET_LAST_LAUNCH=; _FLEET_LAST_LAUNCH_MODEL=
+    _FLEET_WT=; _FLEET_WT_CREATED=0; _FLEET_TERM=
 
-    if _fwsc_wt=$(fleet_worktree_create "$_fwsc_name" "$_fwsc_root" "$_fwsc_base"); then :; else
+    if fleet_worktree_create "$_fwsc_name" "$_fwsc_root" "$_fwsc_base"; then :; else
         return 1
     fi
+    _fwsc_wt=$_FLEET_WT
 
     if _fwsc_launch=$(fleet_launch_command "$_fwsc_agent" "$_fwsc_model" "$_fwsc_root"); then :; else
         # No launch command is known for this agent — the bare name is the same
@@ -388,10 +424,11 @@ fleet_worker_start_custom() {
     _FLEET_LAST_LAUNCH=$_fwsc_launch
     [ -n "$_fwsc_model" ] && _FLEET_LAST_LAUNCH_MODEL=$_fwsc_model
 
-    if _fwsc_term=$(fleet_terminal_create "$_fwsc_wt" "$_fwsc_launch"); then :; else
+    if fleet_terminal_create "$_fwsc_wt" "$_fwsc_launch"; then :; else
         fleet_launch_cleanup "" "$_fwsc_wt" ""
         return 1
     fi
+    _fwsc_term=$_FLEET_TERM
 
     if fleet_terminal_wait_idle "$_fwsc_term" "$_fwsc_root"; then :; else
         _fwsc_ms=$(fleet_ready_timeout_ms "$_fwsc_root")
@@ -402,9 +439,14 @@ fleet_worker_start_custom() {
     fi
 
     _fwsc_cmd=$(fleet_cli) || { fleet_launch_cleanup "" "$_fwsc_wt" "$_fwsc_term"; return 1; }
+    # The bind timeout must cover a COLD agent start, not just prompt delivery:
+    # Orca's own default (~33s) is what produced agent_prompt_stalled on a
+    # healthy-but-slow Devin. The readiness budget is the same clock the TUI
+    # already had, and a worker that needs longer fails honestly at the gate.
+    _fwsc_ms=$(fleet_ready_timeout_ms "$_fwsc_root")
     if _fwsc_out=$("$_fwsc_cmd" orchestration worker-start \
         --task "$_fwsc_task" --terminal "$_fwsc_term" --worktree "$_fwsc_wt" \
-        --json 2>&1)
+        --timeout-ms "$_fwsc_ms" --json 2>&1)
     then _fwsc_rc=0; else _fwsc_rc=$?; fi
 
     if [ "$_fwsc_rc" -ne 0 ]; then
@@ -428,7 +470,17 @@ fleet_worker_start_custom() {
         fleet_launch_cleanup "" "$_fwsc_wt" "$_fwsc_term"
         return 1
     }
+    fleet_launch_report custom "$_FLEET_LAST_LAUNCH" "$_FLEET_LAST_LAUNCH_MODEL"
     printf '%s\n' "$_fwsc_id"
+}
+
+# One line of launch truth for the caller, through the $_FLEET_INFO file when
+# one is set (globals die in the caller's command substitution; a file does
+# not). Silent when nobody is listening.
+fleet_launch_report() {
+    [ -n "${_FLEET_INFO:-}" ] || return 0
+    printf '%s\t%s\t%s\n' "$1" "${2:-}" "${3:-}" >> "$_FLEET_INFO" 2>/dev/null || :
+    return 0
 }
 
 # §9.1 + §9.2: an isolated checkout AND a named agent on a named model — but
@@ -518,6 +570,7 @@ fleet_worker_start() {
             "$FLEET_DISPATCH_KIND" "$_fws_out"
         return 1
     }
+    fleet_launch_report native "" ""
     printf '%s\n' "$_fws_id"
 }
 

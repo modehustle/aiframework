@@ -351,6 +351,11 @@ dispatch_launch() {
     _dl_run=$(fleet_run_create "fraim: сборка $_dl_build") || return 1
     printf 'Run: %s\n' "$_dl_run"
 
+    # The launch-truth channel: fleet_worker_start appends one line per worker
+    # (globals die in its command substitution; a file survives it).
+    _dl_finfo=$(mktemp) || return 1
+    _FLEET_INFO=$_dl_finfo
+
     _dl_file=$(build_fleet_file "$_dl_root" "$_dl_build")
     printf '# сборка %s · run %s · снято %s\n' \
         "$_dl_build" "$_dl_run" "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" > "$_dl_file"
@@ -392,15 +397,21 @@ dispatch_launch() {
         printf '%s\t%s\t%s\t%s\n' "$_dl_id" "$_dl_task" "$_dl_disp" \
             "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" >> "$_dl_file"
         # Which model actually ran is the one thing a build's cost depends on and the
-        # launch is the only place that knows. Three truths, told apart: Orca applied
-        # the model itself (native path), the model rode in the launch command (custom
-        # path with a model), or nothing applied it. The in-session `modelcmd_<agent>`
-        # stays as the explicitly configured fallback AFTER a successful launch — it is
-        # never guessed.
-        if [ -n "$_FLEET_LAST_LAUNCH_MODEL" ]; then
+        # launch is the only place that knows. fleet_worker_start reports the path it
+        # took through $_FLEET_INFO (globals die in the command substitution above):
+        #   native  — Orca applied the model itself;
+        #   custom  — the model rode in the launch command (or nothing did);
+        # The in-session `modelcmd_<agent>` stays only as the explicitly configured
+        # in-session fallback AFTER a successful launch — it is never guessed.
+        _dl_lp=$(tail -1 "$_dl_finfo" 2>/dev/null || :)
+        _dl_lpath=$(printf '%s' "$_dl_lp" | cut -f1)
+        _dl_lcmd=$(printf '%s' "$_dl_lp" | cut -f2)
+        _dl_lmodel=$(printf '%s' "$_dl_lp" | cut -f3)
+        : > "$_dl_finfo"
+        if [ "$_dl_lpath" = custom ] && [ -n "$_dl_lmodel" ]; then
             printf '  %s → %s (%s %s, модель применена командой запуска «%s»)\n' \
-                "$_dl_id" "$_dl_disp" "$_dl_ag" "$_dl_mo" "$_FLEET_LAST_LAUNCH"
-        elif [ -n "$_FLEET_LAST_LAUNCH" ]; then
+                "$_dl_id" "$_dl_disp" "$_dl_ag" "$_dl_mo" "$_dl_lmodel"
+        elif [ "$_dl_lpath" = custom ]; then
             printf '  %s → %s (%s, модель не применяется)\n' "$_dl_id" "$_dl_disp" "$_dl_ag"
             printf '     как %s меняет модель изнутри — неизвестно; научить:\n' "$_dl_ag"
             printf '     fraim config set --machine modelcmd_%s "/model %%s"\n' "$_dl_ag"
@@ -418,6 +429,7 @@ dispatch_launch() {
         fi
     done
 
+    rm -f "$_dl_finfo"
     [ "$_dl_bad" -eq 0 ]
 }
 

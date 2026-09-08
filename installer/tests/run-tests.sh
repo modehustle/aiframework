@@ -1980,7 +1980,8 @@ case "$1 $2" in
        printf '{"running":true}\n' ;;
   "worktree"*)
        [ -n "${STUB_WC_FAIL:-}" ] && { printf '{"ok":false}\n'; exit 1; }
-       printf '{"ok":true,"worktree":{"path":"%s"}}\n' "${STUB_WT:-/tmp/stub-wt}" ;;
+       printf '{"ok":true,"worktree":{"path":"%s","createdAt":%s}}\n' \
+           "${STUB_WT:-/tmp/stub-wt}" "${STUB_WT_CREATED_AT:-$(($(date +%s) * 1000))}" ;;
   "terminal create")
        [ -n "${STUB_TC_FAIL:-}" ] && { printf '{"ok":false}\n'; exit 1; }
        printf '{"ok":true,"terminal":{"handle":"term_aabf0418-1234abcd"}}\n' ;;
@@ -2105,6 +2106,16 @@ check "известный отказ не теряет модель: она в �
 FLD=$(STUB_LOG="$STUB_LOG" STUB_WT="$STUB_WT" FRAIM_HOME="$FLHOME" PATH="$ADEBIN:/usr:/bin" \
       sh -eu -c "$FLLIB"'; fleet_worker_start task_e devin glm-5-2 high b1-t7 "$PWD" main' 2>/dev/null)
 check "запуск живёт под set -eu (без unset-переменных)" "$FLD" "ctx_1234abcd5678"
+
+# 11. Переиспользованный чекаут (остаток прошлой попытки) cleanup не удаляет.
+: > "$STUB_LOG"
+STUB_WT_CREATED_AT=$(( $(date +%s) * 1000 - 3600000 )) STUB_WS_FAIL=1 \
+    STUB_LOG="$STUB_LOG" STUB_WT="$STUB_WT" FRAIM_HOME="$FLHOME" PATH="$ADEBIN:/usr:/bin" \
+    sh -c "$FLLIB"'; fleet_worker_start task_x devin glm-5-2 high b1-t8 "$PWD" main' >/dev/null 2>&1
+grep -q 'worktree rm' "$STUB_LOG"
+check "чужой (переиспользованный) worktree не удаляется" "$?" "1"
+grep -q 'terminal stop' "$STUB_LOG"
+check "но его терминал останавливается" "$?" "0"
 rm -f "$ADEBIN/orca-ide"
 
 # ------------------------------------------------- discovery моделей для ролей
