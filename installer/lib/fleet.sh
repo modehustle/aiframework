@@ -271,11 +271,11 @@ fleet_terminal_create() {
 # exits 0 only when the state was reached, nonzero on timeout — there is
 # nothing in the output to parse and no sleep to guess with.
 fleet_terminal_wait_idle() {
-    _ftw_term=$1; _ftc_root=$2
-    _ftc_ms=$(fleet_ready_timeout_ms "$_ftc_root")
+    _ftw_term=$1; _ftw_root=$2
+    _ftw_ms=$(fleet_ready_timeout_ms "$_ftw_root")
     _ftw_cmd=$(fleet_cli) || return 1
-    "$_ftw_cmd" terminal wait --terminal "$_ftc_term" --for tui-idle \
-        --timeout-ms "$_ftc_ms" --json >/dev/null 2>&1
+    "$_ftw_cmd" terminal wait --terminal "$_ftw_term" --for tui-idle \
+        --timeout-ms "$_ftw_ms" --json >/dev/null 2>&1
 }
 
 # Clean up exactly what a failed launch created, best-effort and in the order

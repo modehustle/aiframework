@@ -2098,6 +2098,13 @@ STUB_LOG="$STUB_LOG" STUB_WT="$STUB_WT" FRAIM_HOME="$FLHOME" PATH="$ADEBIN:/usr:
     sh -c "$FLLIB"'; fleet_worker_start task_c devin glm-5-2 high b1-t6 "$PWD" main' >/dev/null 2>&1
 grep -q -- '--model glm-5-2' "$STUB_LOG"
 check "известный отказ не теряет модель: она в команде запуска" "$?" "0"
+
+# 10. Под set -eu — как в настоящем диспетчере: неинициализированная переменная в
+# пути запуска убивает прогон сборки, а не один воркер.
+: > "$STUB_LOG"
+FLD=$(STUB_LOG="$STUB_LOG" STUB_WT="$STUB_WT" FRAIM_HOME="$FLHOME" PATH="$ADEBIN:/usr:/bin" \
+      sh -eu -c "$FLLIB"'; fleet_worker_start task_e devin glm-5-2 high b1-t7 "$PWD" main' 2>/dev/null)
+check "запуск живёт под set -eu (без unset-переменных)" "$FLD" "ctx_1234abcd5678"
 rm -f "$ADEBIN/orca-ide"
 
 # ------------------------------------------------- discovery моделей для ролей
