@@ -1,7 +1,5 @@
 # CONVENTIONS — aiframework
 
-<!-- fraim:stub — this file is a scaffold. `/bootstrap` or `/onboard` fills it in and deletes this line. Until then `fraim status` reports the foundation as unfilled. -->
-
 > **AGENT DIRECTIVE — load every session, follow it.**
 > Register this as your agent's workspace rule so it auto-loads.
 
@@ -18,10 +16,23 @@
 - Queue discipline: keep the queue shallow. If two queued tasks touch the same files they
   are NOT independent — sequence them explicitly or merge them, or the second plan goes
   stale when the first lands.
-- Code style: <formatter / linter / naming / structure rules>
+- Language: this is a Russian-language product. Procedure text, commit messages, and
+  user-facing CLI output are written in Russian; code identifiers and this foundation
+  file's structural prose in English. Chat may be in another language.
+- Two-layer split: `procedures/` is the canonical engine-agnostic methodology —
+  never import harness specifics there. `installer/` is delivery code; harness
+  knowledge lives only there.
+- Generated artifacts (`.claude-plugin/` payload, `installer/claude-plugin/`, skills)
+  are rebuilt by `fraim build` — do not hand-edit them; change the source and rebuild.
+- Shell style: POSIX `sh` compatible; one library per concern in `installer/lib/`;
+  the `installer/bin/fraim` entrypoint stays a dispatcher, logic goes into `lib/`.
+- Tests: `installer/tests/run-tests.sh` is the single integration suite — run it after
+  any CLI change.
+- Version bumps are deliberate and rare (`installer/VERSION`); the plugin manifest
+  version is separate and generated.
+- `reports/` holds session traces as debugging evidence — append-only artifacts, not
+  code; never refactor or clean them casually.
 - Secrets: never commit `.env` or `data/` (see `.gitignore`).
-- Deploy: never hand-edit host/system; use `/docker-deploy`.
-- <project-specific rules>
 
 ## Known Pitfalls / Lessons
 > Gotchas this codebase has cost an execution at least once. `/make-task` reads these so
