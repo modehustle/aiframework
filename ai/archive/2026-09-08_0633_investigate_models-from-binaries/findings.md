@@ -36,7 +36,7 @@ forms, and fraim can read it at `fraim roles set` time:
 | pi | `pi --list-models` | live catalogue incl. provider-key providers (OpenRouter), thinking flags |
 | cursor-agent | `cursor-agent models` | account models, effort encoded in id |
 | devin | `devin models list` | 46 model families with ids, effort levels AND prices, `--model` flag + `DEVIN_MODEL` env; current model in `~/.config/devin/config.json` |
-| claude | (none) | typed value fallback — the existing behaviour, harmless |
+| claude | embedded catalogue in the binary (claude.exe, minified JS): entries of the form `{id:"claude-opus-5",family:"opus",display_name:"Opus 5",knowledge_cutoff:…,provider_ids:{first_party:…,bedrock:…,vertex:…},context:{window:…,supports_1m_suffix:…}}` — extractable with a targeted grep (14+ models: sonnet/opus/haiku/fable/mythos families). Partial caches also exist in `~/.claude.json` (`additionalModelOptionsCache`, `modelAccessCache`, `orgModelDefaultCache`) but hold only account-specific extras. Caveat: binary layout is minified and version-dependent — the extraction pattern must be tolerant, and a miss falls back to a typed value. |
 
 Design shape for `/make-task` (structural):
 - a per-agent **discovery table** in `roles.sh` (same pattern as `ade_table()` in ade.sh:
