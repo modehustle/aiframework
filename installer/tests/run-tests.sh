@@ -1951,5 +1951,72 @@ for _l in "$REPO"/installer/lib/*.sh; do
 done
 check "каждая библиотека подключена в диспетчере" "${UNWIRED:-clean}" "clean"
 
+# ------------------------------------------------- discovery моделей для ролей
+printf '\nroles: discovery моделей\n'
+
+# Парсеры проверяются на сохранённых фикстурах — реальном выводе источников, —
+# без установленных агентов (паттерн roles_parse_providers: парсер отделён от
+# вызова и принимает текст на stdin). Каждый вызов — свой sh -c, чтобы секции
+# не зависели от порядка и сбоя соседа.
+roles_parse_out() {
+    sh -c '
+        . "'"$REPO"'/installer/lib/roles.sh"
+        "$@" <<EOF2
+'"$2"'
+EOF2
+' sh "$1" 2>&1
+}
+
+check "парсер devin: только id, без заголовков и aliases" \
+      "$(roles_parse_out roles_parse_devin_models 'Claude Opus 5 (claude-opus-5)
+  aliases: opus
+  claude-opus-5-medium                   Claude Opus 5 Medium  [1M context, $5]
+  claude-opus-5-high                     Claude Opus 5 High  [1M context, $5]')" \
+      "claude-opus-5-high
+claude-opus-5-medium"
+
+check "парсер cursor-agent: id до дефиса, без заголовка" \
+      "$(roles_parse_out roles_parse_cursor_models 'Available models
+
+auto - Auto (current, default)
+gpt-5.3-codex-low - Codex 5.3 Low
+gpt-5.3-codex-high - Codex 5.3 High')" \
+      "auto
+gpt-5.3-codex-high
+gpt-5.3-codex-low"
+
+check "парсер pi: поле модели, без заголовка и тильды" \
+      "$(roles_parse_out roles_parse_pi_models 'provider    model                          context  thinking
+openrouter  ~anthropic/claude-haiku-latest 200K     yes
+openai      gpt-5                          1M       yes')" \
+      "anthropic/claude-haiku-latest
+gpt-5"
+
+check "парсер codex: slug из JSON-кэша (pretty и одной строкой)" \
+      "$(roles_parse_out roles_parse_codex_models '{
+  "models": [ { "slug": "gpt-5.6-sol" }, { "slug": "gpt-5.4-mini" } ]
+}
+{"models":[{"slug":"codex-auto-review"}]}')" \
+      "codex-auto-review
+gpt-5.4-mini
+gpt-5.6-sol"
+
+check "парсер claude: id из embedded-каталога бинарника" \
+      "$(roles_parse_out roles_parse_claude_models 'noise {id:"claude-opus-5",family:"opus",display_name:"Opus 5"} noise
+{ id: "claude-haiku-4-5", family: "haiku" } tail')" \
+      "claude-haiku-4-5
+claude-opus-5"
+
+# Пустой и битый вход — легальный пустой ответ с кодом 0: обновление агента,
+# сломавшее парсер, деградирует в «ввести своё», а не в ошибку.
+for _p in roles_parse_devin_models roles_parse_cursor_models roles_parse_pi_models roles_parse_codex_models roles_parse_claude_models; do
+    _out=$(roles_parse_out "$_p" '' 2>/dev/null; roles_parse_out "$_p" 'garbage !! ##' 2>/dev/null)
+    check "парсер $_p: пустой/битый вход — пусто, код 0" "$_out|" "|"
+done
+
+# roles_models_of: неизвестный агент — пусто, код 0 (источник не спрашивается).
+UNK=$(sh -c '. "'"$REPO"'/installer/lib/roles.sh"; roles_models_of no-such-agent; printf rc=%s "$?"' 2>&1)
+check "roles_models_of неизвестного агента пуст и без ошибки" "$UNK" "rc=0"
+
 printf '\n%s пройдено, %s провалено\n' "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ]

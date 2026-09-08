@@ -230,6 +230,168 @@ roles_models_seen() {
 # the picker always allows a typed value, which is what makes an incomplete list safe.
 roles_efforts() { printf 'low\nmedium\nhigh\nxhigh\nmax\n'; }
 
+# ---------------------------------------------------------------------------
+# Where the MODELS come from
+#
+# The same rule as the providers above, one level deeper: we do not keep a catalogue
+# of the world's models (the treadmill P0 warns about), and we do not query provider
+# APIs either — each agent already maintains its own catalogue, self-refreshing and
+# authenticated. So the picker asks the agent the user just chose, at the moment of
+# choosing, through that agent's own channel:
+#
+#   agent         source                       form
+#   devin         `devin models list`          text table, id + display name + price
+#   pi            `pi --list-models`           text table, provider + model + context
+#   cursor-agent  `cursor-agent models`        text table, id - display name
+#   codex         ~/.codex/models_cache.json   JSON, self-refreshed (etag, fetched_at)
+#   claude        catalogue embedded in the    minified JS entries
+#                 claude binary                  {id:"claude-...",family:"..."}
+#
+# Nothing is a valid answer: an agent that is absent, broken, or updated past our
+# parser yields an empty list, and the picker falls back to a typed value — the same
+# graceful miss the providers above are built on. A miss must never be an error.
+#
+# One parser per source, never one global parser: the formats differ per agent and
+# each agent changes its own format on its own schedule. Every parser takes text on
+# stdin and prints bare model ids — exactly the strings the agent accepts in its
+# --model — one per line, sorted, deduplicated. Parsers are split from the source
+# invocation so they can be tested against saved fixtures without the agent present
+# (the same split as roles_parse_providers above).
+# ---------------------------------------------------------------------------
+
+# agent  kind      locator                          parser
+# kind: command = run the locator; file = read $HOME/locator; binary = read the
+# resolved claude executable (a node install symlinks it into a versioned bin dir).
+roles_models_table() {
+    cat <<'TBL'
+devin	command	devin models list	roles_parse_devin_models
+pi	command	pi --list-models	roles_parse_pi_models
+cursor-agent	command	cursor-agent models	roles_parse_cursor_models
+codex	file	.codex/models_cache.json	roles_parse_codex_models
+claude	binary	claude	roles_parse_claude_models
+TBL
+}
+
+# devin: indented lines carry "id  Display Name  [context, $price]"; family headers
+# sit at the left margin and the alias line is "  aliases: opus". The colon in
+# "aliases:" is what the id pattern rejects.
+roles_parse_devin_models() {
+    sed -n 's/^[[:space:]]\{1,\}\([^[:space:]][^[:space:]]*\).*/\1/p' |
+        grep -E '^[a-z0-9][a-z0-9._-]*$' | sort -u || :
+}
+
+# cursor-agent: rows are "id - Display Name"; the header has no dash.
+roles_parse_cursor_models() {
+    sed -n 's/^\([^[:space:]][^[:space:]]*\) - .*/\1/p' |
+        grep -E '^[a-z0-9][a-z0-9._-]*$' | sort -u || :
+}
+
+# pi: a column table, model in field 2, header on line 1. A leading "~" marks a
+# pinned alias; pi accepts the id with or without it, so it is stripped.
+roles_parse_pi_models() {
+    awk 'NR > 1 && NF >= 2 { print $2 }' |
+        sed 's/^~//' |
+        grep -E '^[a-zA-Z0-9][a-zA-Z0-9/._-]*$' | sort -u || :
+}
+
+# codex: the JSON cache may arrive pretty-printed or on one line — not something we
+# control (the same lesson the provider parser above paid for) — so the text is
+# joined first and split on the "slug" key itself.
+roles_parse_codex_models() {
+    awk '
+        { blob = blob " " $0 }
+        END {
+            n = split(blob, part, /"slug"/)
+            for (i = 2; i <= n; i++)
+                if (match(part[i], /"[^"]+"/) > 0)
+                    print substr(part[i], RSTART + 1, RLENGTH - 2)
+        }
+    ' | sort -u || :
+}
+
+# claude: the model catalogue is baked into the minified bundle as objects of the
+# shape {id:"claude-opus-5",family:"opus",...}. The pattern is deliberately loose
+# about what follows — the bundle is re-minified between releases and anything more
+# specific would rot. A miss is empty output, which the picker treats as "type one".
+roles_parse_claude_models() {
+    grep -aoE '\{[ ]*id: *"claude-[a-z0-9-]+" *,[ ]*family:' |
+        sed -n 's/.*id: *"\([^"]*\)".*/\1/p' | sort -u || :
+}
+
+# The models one agent can serve, live. Prints bare ids, one per line; prints
+# nothing and exits 0 when the agent is unknown, absent, or its source failed —
+# callers treat "nothing" as "offer a typed value", never as an error.
+roles_models_of() {
+    _rmo_agent=$1
+    _rmo_row=$(roles_models_table | awk -F'\t' -v a="$_rmo_agent" '$1 == a { print; exit }')
+    [ -n "$_rmo_row" ] || return 0
+    _rmo_kind=$(printf '%s' "$_rmo_row" | cut -f2)
+    _rmo_src=$(printf '%s' "$_rmo_row" | cut -f3)
+    _rmo_parser=$(printf '%s' "$_rmo_row" | cut -f4)
+
+    case $_rmo_kind in
+        command)
+            # The timeout discipline is ade_query's: a runtime that stopped
+            # answering must never hang the picker. Streams are joined because
+            # agents disagree about which one carries the listing — pi prints
+            # its table to stderr — and the parsers filter by pattern anyway.
+            _rmo_to=$(ade_timeout_bin 2>/dev/null || :)
+            if [ -n "$_rmo_to" ]; then
+                "$_rmo_to" "${ADE_TIMEOUT_S:-5}" sh -c "$_rmo_src" 2>&1 | "$_rmo_parser"
+            else
+                sh -c "$_rmo_src" 2>&1 | "$_rmo_parser"
+            fi
+            ;;
+        file)
+            [ -f "${HOME:-}/$_rmo_src" ] || return 0
+            "$_rmo_parser" < "${HOME:-}/$_rmo_src"
+            ;;
+        binary)
+            _rmo_bin=$(command -v "$_rmo_src" 2>/dev/null) || return 0
+            _rmo_real=$(readlink -f "$_rmo_bin" 2>/dev/null) || return 0
+            [ -f "$_rmo_real" ] || return 0
+            "$_rmo_parser" < "$_rmo_real"
+            ;;
+    esac
+    return 0
+}
+
+# Effort levels for one agent's model, from the same source that named the model —
+# an agent that knows its models usually knows what each accepts. Where the source
+# does not answer (unknown agent, model not in the cache), fall back to the common
+# rungs: an incomplete list is safe exactly because a typed value is always allowed.
+roles_efforts_of() {
+    _reo_agent=$1; _reo_model=$2
+    _reo_out=
+    case $_reo_agent in
+        codex)
+            [ -f "${HOME:-}/.codex/models_cache.json" ] || { roles_efforts; return 0; }
+            _reo_out=$(awk -v m="$_reo_model" '
+                { blob = blob " " $0 }
+                END {
+                    n = split(blob, part, /"slug"/)
+                    for (i = 2; i <= n; i++) {
+                        if (match(part[i], /"[^"]+"/) == 0) continue
+                        if (substr(part[i], RSTART + 1, RLENGTH - 2) != m) continue
+                        seg = part[i]
+                        while (match(seg, /"effort"[ \t]*:[ \t]*"[^"]*"/)) {
+                            e = substr(seg, RSTART, RLENGTH)
+                            sub(/^"effort"[ \t]*:[ \t]*"/, "", e); sub(/"$/, "", e)
+                            print e
+                            seg = substr(seg, RSTART + RLENGTH)
+                        }
+                        exit
+                    }
+                }' "${HOME:-}/.codex/models_cache.json" 2>/dev/null)
+            ;;
+    esac
+    if [ -n "$_reo_out" ]; then
+        printf '%s\n' "$_reo_out" | sort -u
+        return 0
+    fi
+    roles_efforts
+}
+
 # Pick one value: a numbered list on stderr, the answer on stdout. The list arrives on
 # stdin and may be empty, in which case the only option is to type one.
 #

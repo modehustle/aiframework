@@ -18,7 +18,7 @@ convenience in `install.sh`). Distribution: shell installer + Claude Code plugin
 ## Components & responsibilities
 | component / dir | responsibility |
 |---|---|
-| `installer/bin/fraim`, `installer/lib/*.sh` | the CLI: state, lifecycle, watchman, deterministic verbs, fleet/ADE, scaffold, skills generation |
+| `installer/bin/fraim`, `installer/lib/*.sh` | the CLI: state, lifecycle, watchman, deterministic verbs, fleet/ADE, scaffold, skills generation; the roles picker discovers models live from each agent's own source (native command, cache file, embedded binary catalogue) |
 | `procedures/` (13 `.md` + `manifest.json`) | canonical, engine-agnostic methodology text; manifest holds versions, tiers, order |
 | `installer/install.sh` + `fraim init` | delivery: clone to `~/.fraim/src`, link binary, lay skills into detected harnesses |
 | `installer/templates/` | fixed templates: foundation, task, investigation, stack |
@@ -37,7 +37,9 @@ convenience in `install.sh`). Distribution: shell installer + Claude Code plugin
 generates skills per harness, writes context blocks and the project registry.
 In a project: `fraim scaffold`/`stack-passport` write from templates; watchman reads
 git history + foundation files; deterministic verbs (`fraim commit`, `fraim decide`)
-make the commits themselves.
+make the commits themselves. `fraim roles set` resolves agent → model → effort by
+asking the chosen agent itself (`roles_models_of`): native listing command first,
+cache file or embedded binary catalogue as fallback, typed value when nothing answers.
 
 ## External interfaces
 Harness adapters (Hermes, Claude Code, Codex, omp, pi, Devin CLI, Antigravity) via

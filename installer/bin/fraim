@@ -1139,22 +1139,22 @@ cmd_roles_set() {
         *)      _rs_ckey=role_$_rs_key ;;
     esac
 
-    # 2-4. The three fields. Models offered are the ones already configured here plus the
-    #      suggestion for this tier — so the first run has something to pick and later
-    #      runs mostly re-pick what this machine already uses.
+    # 2-4. The three fields. The agent list carries "(недоступен: …)" on entries the
+    #      environment cannot launch — strip it before the model lookup, which keys on
+    #      the bare agent name. Models offered are the live catalogue of THIS agent
+    #      (roles_models_of asks the agent's own channel — see roles.sh), plus the ones
+    #      already configured here and the tier suggestion, so the first run has
+    #      something to pick even where the agent cannot be asked.
     _rs_agent=$(roles_agents_available | roles_pick "Агент:" 1) || die "отменено"
+    _rs_agent=${_rs_agent%% (недоступен:*}
     case $_rs_key in
         tier_*) _rs_tier=${_rs_key#tier_} ;;
         *)      _rs_tier=$(roles_tier_of "${_rs_key#role_}" 2>/dev/null || :) ;;
     esac
-    _rs_model=$({ roles_models_seen "$_rs_root"; roles_models_suggested "$_rs_tier"; } |
+    _rs_model=$({ roles_models_of "$_rs_agent"; roles_models_seen "$_rs_root"; roles_models_suggested "$_rs_tier"; } |
                 grep '[^[:space:]]' | awk '!seen[$0]++' |
                 roles_pick "Модель:" 1) || die "отменено"
-    _rs_effort=$(roles_efforts | roles_pick "Усилие:" 2) || die "отменено"
-
-    # The agent list carries "(недоступен: …)" on entries the environment cannot launch.
-    # Strip it: the reason is there to inform the choice, not to end up in the config.
-    _rs_agent=${_rs_agent%% (недоступен:*}
+    _rs_effort=$(roles_efforts_of "$_rs_agent" "$_rs_model" | roles_pick "Усилие:" 2) || die "отменено"
 
     _rs_val="$_rs_agent:$_rs_model:$_rs_effort"
     roles_parse "$_rs_val" >/dev/null || die "получилось «$_rs_val» — это не агент:модель:усилие"
