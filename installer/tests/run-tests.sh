@@ -1988,6 +1988,11 @@ case "$1 $2" in
   "terminal wait")
        [ -n "${STUB_WAIT_FAIL:-}" ] && exit 1
        printf '{"ok":true,"state":"tui-idle"}\n' ;;
+  "terminal read")
+       printf '{"ok":true,"result":{"terminal":{"handle":"term_x","tail":["%s"]}}}\n' \
+           "${STUB_TAIL:-Devin CLI v3000.5.20 · Pro}" ;;
+  "terminal list")
+       printf '{"ok":true,"result":{"terminals":[{"handle":"%s"}]}}\n' "${STUB_LIST_TERM:-term_aabf0418-1234abcd}" ;;
   "orchestration worker-start")
        [ -n "${STUB_WS_FAIL:-}" ] && { printf '{"ok":false,"stage":"dispatch_input"}\n'; exit 1; }
        printf '{"ok":true,"dispatchId":"ctx_1234abcd5678"}\n' ;;

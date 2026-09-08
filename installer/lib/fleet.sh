@@ -50,9 +50,16 @@ fleet_ready() {
 # `input` contains no hex digit at all, so requiring hex separates data from vocabulary.
 fleet_id() {
     _fi_kind=$1
+    case $_fi_kind in
+        # term_all: EVERY terminal handle, for sweeps over a worktree's
+        # terminals; the plain kinds take the first match.
+        term_all) _fi_re="\"term_[0-9a-f][0-9a-f-]{7,}\"" ;;
+        *)        _fi_re=":[[:space:]]*\"${_fi_kind}_[0-9a-f][0-9a-f-]{7,}\"" ;;
+    esac
     tr -d '\n' 2>/dev/null |
-        grep -oE ":[[:space:]]*\"${_fi_kind}_[0-9a-f][0-9a-f-]{7,}\"" 2>/dev/null |
-        head -1 | sed 's/^:[[:space:]]*//; s/"//g'
+        grep -oE "$_fi_re" 2>/dev/null |
+        sed 's/^[[:space:]]*:[[:space:]]*//; s/"//g' |
+        { [ "$_fi_kind" = term_all ] && cat || head -1; }
 }
 
 # The prefix Orca uses for the identifier of one dispatched worker.
@@ -306,6 +313,63 @@ fleet_terminal_wait_idle() {
         --timeout-ms "$_ftw_ms" --json >/dev/null 2>&1
 }
 
+# What the terminal actually shows. Orca's tui-idle proved too optimistic for a
+# cold Devin start — it reported idle while the TUI was still initializing, and
+# the prompt injected into that gap stalled exactly as before. The banner check
+# closes that hole: readiness is not "Orca thinks it is idle" but "the agent's
+# own banner is on screen".
+fleet_terminal_tail() {
+    _ftt_term=$1
+    _ftw_cmd=$(fleet_cli) || return 1
+    "$_ftw_cmd" terminal read --terminal "$_ftw_term" --limit 40 --json 2>/dev/null
+}
+
+# Close every terminal in the worktree except ours. Only handles Orca itself
+# reported for this worktree are touched, and only after our agent terminal
+# exists — so what is closed is by construction not the terminal we were given.
+fleet_close_other_terminals() {
+    _fco_wt=$1; _fco_keep=$2
+    _fco_cmd=$(fleet_cli) || return 0
+    _fco_out=$("$_fco_cmd" terminal list --worktree "$_fco_wt" --json 2>/dev/null) || return 0
+    for _fco_h in $(printf '%s' "$_fco_out" | fleet_id term_all); do
+        [ "$_fco_h" = "$_fco_keep" ] && continue
+        "$_fco_cmd" terminal close --terminal "$_fco_h" --json >/dev/null 2>&1 || :
+    done
+    return 0
+}
+
+# The readiness pattern per agent: config `readypattern_<agent>` first, built-in
+# for agents we have read. No pattern → tui-idle alone decides.
+fleet_ready_pattern() {
+    _frp_agent=$1; _frp_root=$2
+    _frp=$(config_get "readypattern_$_frp_agent" "$_frp_root" 2>/dev/null || :)
+    [ -n "$_frp" ] && { printf '%s\n' "$_frp"; return 0; }
+    case $_frp_agent in
+        devin) printf 'Devin CLI' ;;
+        *)     return 1 ;;
+    esac
+}
+
+# The full readiness gate: tui-idle first (cheap, Orca-side), then the banner
+# pattern polled from the terminal itself until it appears or the readiness
+# budget runs out. The poll interval is a cadence, not a readiness guess —
+# every iteration reads the terminal's actual state.
+fleet_terminal_wait_ready() {
+    _fwr_term=$1; _fwr_root=$2; _fwr_agent=$3
+    fleet_terminal_wait_idle "$_fwr_term" "$_fwr_root" || return 1
+    _fwr_pat=$(fleet_ready_pattern "$_fwr_agent" "$_fwr_root") || return 0
+    _fwr_deadline=$(( $(date +%s) + $(fleet_ready_timeout_ms "$_fwr_root") / 1000 ))
+    while [ "$(date +%s)" -lt "$_fwr_deadline" ]; do
+        if fleet_terminal_tail "$_fwr_term" | grep -qF -- "$_fwr_pat"; then
+            return 0
+        fi
+        sleep 2
+    done
+    printf >&2 'агент %s запущен, но его баннер не появился в терминале за отведённое время\n' \
+        "$_fwr_agent"
+    return 1
+}
+
 # Clean up exactly what a failed launch created, best-effort and in the order
 # ownership was taken: the Dispatch first (worker-release closes only the
 # coordinator-owned agent terminal and is idempotent by their contract), then
@@ -430,7 +494,13 @@ fleet_worker_start_custom() {
     fi
     _fwsc_term=$_FLEET_TERM
 
-    if fleet_terminal_wait_idle "$_fwsc_term" "$_fwsc_root"; then :; else
+    # A worktree carries terminals that are not ours: a fresh one gets Orca's
+    # fallback shell, a reused one still holds the previous attempt's stale
+    # agent processes. Both are closed before our agent is waited on — they
+    # would compete for the task and make the terminal count lie.
+    fleet_close_other_terminals "$_fwsc_wt" "$_fwsc_term"
+
+    if fleet_terminal_wait_ready "$_fwsc_term" "$_fwsc_root" "$_fwsc_agent"; then :; else
         _fwsc_ms=$(fleet_ready_timeout_ms "$_fwsc_root")
         printf >&2 'агент %s не достиг готовности терминала (tui-idle) за %s мс — задание не отправлено\n' \
             "$_fwsc_agent" "$_fwsc_ms"
