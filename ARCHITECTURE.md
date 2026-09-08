@@ -18,7 +18,7 @@ convenience in `install.sh`). Distribution: shell installer + Claude Code plugin
 ## Components & responsibilities
 | component / dir | responsibility |
 |---|---|
-| `installer/bin/fraim`, `installer/lib/*.sh` | the CLI: state, lifecycle, watchman, deterministic verbs, fleet/ADE, scaffold, skills generation; the roles picker discovers agents from the harness table (`harness_detect`, independent of any execution environment) and models live from each agent's own source (native command, cache file, embedded binary catalogue) |
+| `installer/bin/fraim`, `installer/lib/*.sh` | the CLI: state, lifecycle, watchman, deterministic verbs, fleet/ADE, scaffold, skills generation; the roles picker discovers agents from the harness table (`harness_detect`, independent of any execution environment) and models live from each agent's own source (native command, cache file, embedded binary catalogue); the fleet launch is an explicit lifecycle — worktree create → agent launch command (model in argv via `launchcmd_<agent>` or the devin built-in) → confirmed `tui-idle` → `worker-start --terminal` Dispatch binding, with best-effort cleanup of partial resources |
 | `procedures/` (13 `.md` + `manifest.json`) | canonical, engine-agnostic methodology text; manifest holds versions, tiers, order |
 | `installer/install.sh` + `fraim init` | delivery: clone to `~/.fraim/src`, link binary, lay skills into detected harnesses |
 | `installer/templates/` | fixed templates: foundation, task, investigation, stack |

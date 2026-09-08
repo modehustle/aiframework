@@ -1957,6 +1957,149 @@ for _l in "$REPO"/installer/lib/*.sh; do
 done
 check "каждая библиотека подключена в диспетчере" "${UNWIRED:-clean}" "clean"
 
+# ------------------------------------------------- запуск воркера флота
+printf '\nфлот: жизненный цикл запуска с подтверждённой готовностью\n'
+
+# Стаб Orca с журналом вызовов: каждый тест читает ЖУРНАЛ вызовов, а не человеческий
+# вывод — проверяется форма контракта (какие подкоманды, с какими флагами), а не текст.
+# Поведение переключается переменными STUB_*: так одна секция покрывает и счастливый
+# путь, и таймаут готовности, и отказ на каждом этапе.
+FLHOME="$SANDBOX/fraim-home"; mkdir -p "$FLHOME"; export FLHOME
+FLPROJ="$SANDBOX/flproj"; mkdir -p "$FLPROJ"; export FLPROJ
+git -C "$FLPROJ" init -q; git -C "$FLPROJ" config user.email t@t; git -C "$FLPROJ" config user.name t
+printf '# arch\n' > "$FLPROJ/ARCHITECTURE.md"
+git -C "$FLPROJ" add -A >/dev/null 2>&1; git -C "$FLPROJ" commit -qm init >/dev/null 2>&1
+
+cat > "$ADEBIN/orca-ide" <<'STUB'
+#!/bin/sh
+printf '%s\n' "$*" >> "${STUB_LOG:?}"
+case "$1 $2" in
+  "worktree rm")
+       printf '{"ok":true}\n' ;;
+  "status --json")
+       printf '{"running":true}\n' ;;
+  "worktree"*)
+       [ -n "${STUB_WC_FAIL:-}" ] && { printf '{"ok":false}\n'; exit 1; }
+       printf '{"ok":true,"worktree":{"path":"%s"}}\n' "${STUB_WT:-/tmp/stub-wt}" ;;
+  "terminal create")
+       [ -n "${STUB_TC_FAIL:-}" ] && { printf '{"ok":false}\n'; exit 1; }
+       printf '{"ok":true,"terminal":{"handle":"term_aabf0418-1234abcd"}}\n' ;;
+  "terminal wait")
+       [ -n "${STUB_WAIT_FAIL:-}" ] && exit 1
+       printf '{"ok":true,"state":"tui-idle"}\n' ;;
+  "orchestration worker-start")
+       [ -n "${STUB_WS_FAIL:-}" ] && { printf '{"ok":false,"stage":"dispatch_input"}\n'; exit 1; }
+       printf '{"ok":true,"dispatchId":"ctx_1234abcd5678"}\n' ;;
+  "orchestration dispatch-show")
+       printf '{"ok":true,"dispatchId":"ctx_1234abcd5678"}\n' ;;
+  "orchestration worker-release"|"terminal stop"|"worktree rm")
+       printf '{"ok":true}\n' ;;
+  *) exit 1 ;;
+esac
+STUB
+chmod +x "$ADEBIN/orca-ide"
+
+FLLIB='. "'"$REPO"'/installer/lib/core.sh"; . "'"$REPO"'/installer/lib/config.sh"
+    . "'"$REPO"'/installer/lib/ade.sh"; . "'"$REPO"'/installer/lib/fleet.sh"'
+
+# 1. Команда запуска: встроенный шаблон devin подставляет модель; неизвестному агенту
+# команды нет — её не выдумываем; launchcmd_<agent> из конфига решает всё.
+DLC=$(FRAIM_HOME="$FLHOME" PATH="$ADEBIN:/usr:/bin" sh -c "$FLLIB"'; fleet_launch_command devin glm-5-2')
+check "devin: встроенная команда запуска с моделью" "$DLC" "devin --permission-mode bypass --model glm-5-2"
+DLC=$(FRAIM_HOME="$FLHOME" PATH="$ADEBIN:/usr:/bin" sh -c "$FLLIB"'; fleet_launch_command no-such glm-5-2; printf rc=%s "$?"' 2>/dev/null)
+check "неизвестному агенту команду не выдумываем" "$DLC" "rc=1"
+printf 'launchcmd_grok = grok --model %%s --yolo\n' > "$FLPROJ/ai/fraim.conf" 2>/dev/null || {
+    mkdir -p "$FLPROJ/ai"; printf 'launchcmd_grok = grok --model %%s --yolo\n' > "$FLPROJ/ai/fraim.conf"; }
+DLC=$(FRAIM_HOME="$FLHOME" PATH="$ADEBIN:/usr:/bin" sh -c "$FLLIB"'; fleet_launch_command grok glm-9 "$FLPROJ"')
+check "launchcmd_<agent> из конфига подставляет модель" "$DLC" "grok --model glm-9 --yolo"
+: > "$FLPROJ/ai/fraim.conf"
+
+# 2. Полный жизненный цикл devin с моделью: worktree → терминал с моделью в argv →
+# tui-idle → worker-start --terminal, и ни одного --model в orchestration.
+STUB_LOG="$SANDBOX/fleet-calls.log"; STUB_WT="$SANDBOX/stub-wt"; : > "$STUB_LOG"
+FLD=$(STUB_LOG="$STUB_LOG" STUB_WT="$STUB_WT" FRAIM_HOME="$FLHOME" PATH="$ADEBIN:/usr:/bin" \
+      sh -c "$FLLIB"'; fleet_worker_start task_1a05eb1321c1 devin glm-5-2 high b1-t1 "$FLPROJ" main' 2>/dev/null)
+check "devin: воркер поднят, возвращён ctx_… идентификатор" "$FLD" "ctx_1234abcd5678"
+grep -q 'worktree create' "$STUB_LOG" && grep -q 'terminal create' "$STUB_LOG" && \
+  grep -q 'terminal wait' "$STUB_LOG" && grep -q 'worker-start' "$STUB_LOG"
+check "devin: последовательность create → terminal → wait → worker-start" "$?" "0"
+grep -q -- '--model glm-5-2' "$STUB_LOG" && grep -q 'devin --permission-mode bypass --model glm-5-2' "$STUB_LOG"
+check "devin: модель поехала в команде запуска терминала" "$?" "0"
+grep 'worker-start' "$STUB_LOG" | grep -q -- '--model'
+check "devin: orchestration worker-start без --model" "$?" "1"
+grep 'worker-start' "$STUB_LOG" | grep -q -- '--terminal term_aabf0418'
+check "devin: dispatch привязан к готовому терминалу" "$?" "0"
+
+# 3. Агент, принимающий модель нативно, идёт старым путём — и без лишних шагов.
+: > "$STUB_LOG"
+FLD=$(STUB_LOG="$STUB_LOG" STUB_WT="$STUB_WT" FRAIM_HOME="$FLHOME" PATH="$ADEBIN:/usr:/bin" \
+      sh -c "$FLLIB"'; fleet_worker_start task_1a05eb1321c1 claude opus high b1-t2 "$PWD" main' 2>/dev/null)
+check "claude: воркер поднят нативно" "$FLD" "ctx_1234abcd5678"
+grep -q 'worktree create\|terminal create\|terminal wait' "$STUB_LOG"
+check "claude: без явного жизненного цикла — Orca сам создаёт чекаут" "$?" "1"
+grep 'worker-start' "$STUB_LOG" | grep -q -- '--model opus --effort high'
+check "claude: модель и усилие переданы Orca" "$?" "0"
+
+# 4. Таймаут готовности: задания нет, Dispatch нет, ресурсы убраны, вина названа.
+: > "$STUB_LOG"
+STUB_WAIT_FAIL=1 STUB_LOG="$STUB_LOG" STUB_WT="$STUB_WT" FRAIM_HOME="$FLHOME" PATH="$ADEBIN:/usr:/bin" \
+    sh -c "$FLLIB"'; fleet_worker_start task_1a05eb1321c1 devin glm-5-2 high b1-t3 "$PWD" main' >/dev/null 2>"$SANDBOX/wait-err"
+check "таймаут tui-idle валит запуск" "$?" "1"
+grep -q 'tui-idle' "$SANDBOX/wait-err"
+check "ошибка называет состояние готовности" "$?" "0"
+grep -c 'worker-start' "$STUB_LOG" | grep -q '^0$'
+check "после таймаута Dispatch не создавался" "$?" "0"
+grep -q 'terminal stop' "$STUB_LOG" && grep -q 'worktree rm' "$STUB_LOG"
+check "и частичные ресурсы убраны" "$?" "0"
+
+# 5. Отказ до создания Dispatch: worker-release звать нечего.
+: > "$STUB_LOG"
+STUB_TC_FAIL=1 STUB_LOG="$STUB_LOG" STUB_WT="$STUB_WT" FRAIM_HOME="$FLHOME" PATH="$ADEBIN:/usr:/bin" \
+    sh -c "$FLLIB"'; fleet_worker_start task_x devin glm-5-2 high b1-t4 "$PWD" main' >/dev/null 2>&1
+check "отказ terminal create валит запуск" "$?" "1"
+grep -q 'worker-release' "$STUB_LOG"
+check "без Dispatch worker-release не зовётся" "$?" "1"
+grep -q 'terminal stop' "$STUB_LOG" && grep -q 'worktree rm' "$STUB_LOG"
+check "терминал и worktree убраны" "$?" "0"
+
+# 6. Отказ после создания Dispatch: сначала release, потом терминал, потом worktree.
+: > "$STUB_LOG"
+STUB_WS_FAIL=1 STUB_LOG="$STUB_LOG" STUB_WT="$STUB_WT" FRAIM_HOME="$FLHOME" PATH="$ADEBIN:/usr:/bin" \
+    sh -c "$FLLIB"'; fleet_worker_start task_x devin glm-5-2 high b1-t5 "$PWD" main' >/dev/null 2>&1
+check "отказ привязки Dispatch валит запуск" "$?" "1"
+grep -q 'worker-release' "$STUB_LOG"
+check "созданный Dispatch освобождён" "$?" "0"
+grep -q 'terminal stop' "$STUB_LOG" && grep -q 'worktree rm' "$STUB_LOG"
+check "терминал и worktree убраны" "$?" "0"
+
+# 7. Повторная попытка: каждый заход создаёт свежий чекаут и не переиспользует
+# мёртвый терминал — дублей активных воркеров не появляется.
+: > "$STUB_LOG"
+FLD1=$(STUB_LOG="$STUB_LOG" STUB_WT="$STUB_WT" FRAIM_HOME="$FLHOME" PATH="$ADEBIN:/usr:/bin" \
+       sh -c "$FLLIB"'; fleet_worker_start task_r devin glm-5-2 high b1-t5 "$PWD" main' 2>/dev/null)
+FLD2=$(STUB_LOG="$STUB_LOG" STUB_WT="$STUB_WT" FRAIM_HOME="$FLHOME" PATH="$ADEBIN:/usr:/bin" \
+       sh -c "$FLLIB"'; fleet_worker_start task_r devin glm-5-2 high b1-t5 "$PWD" main' 2>/dev/null)
+check "повтор запуска снова возвращает воркера" "$(printf '%s' "$FLD2" | grep -c ctx_)" "1"
+check "и создаёт ровно один новый чекаут на попытку" \
+      "$(grep -c 'worktree create' "$STUB_LOG")" "2"
+
+# 8. Таймаут готовности читается из конфига, а не зашит.
+FLRT=$(FRAIM_HOME="$FLHOME" PATH="$ADEBIN:/usr:/bin" sh -c "$FLLIB"'; fleet_ready_timeout_ms')
+check "таймаут готовности по умолчанию 120000" "$FLRT" "120000"
+printf 'fleet_ready_timeout_ms = 5000\n' >> "$FLPROJ/ai/fraim.conf"
+FLRT=$(FRAIM_HOME="$FLHOME" PATH="$ADEBIN:/usr:/bin" sh -c "$FLLIB"'; fleet_ready_timeout_ms "$FLPROJ"')
+check "и переопределяется из проекта" "$FLRT" "5000"
+rm -f "$FLPROJ/ai/fraim.conf"
+
+# 9. Способностей-кэш и отчёт: no-launch-model больше не означает «модель потеряна».
+FRAIM_HOME="$FLHOME" PATH="$ADEBIN:/usr:/bin" sh -c "$FLLIB"'; fleet_caps_note devin no-launch-model' >/dev/null 2>&1
+: > "$STUB_LOG"
+STUB_LOG="$STUB_LOG" STUB_WT="$STUB_WT" FRAIM_HOME="$FLHOME" PATH="$ADEBIN:/usr:/bin" \
+    sh -c "$FLLIB"'; fleet_worker_start task_c devin glm-5-2 high b1-t6 "$PWD" main' >/dev/null 2>&1
+grep -q -- '--model glm-5-2' "$STUB_LOG"
+check "известный отказ не теряет модель: она в команде запуска" "$?" "0"
+rm -f "$ADEBIN/orca-ide"
+
 # ------------------------------------------------- discovery моделей для ролей
 printf '\nroles: discovery моделей\n'
 

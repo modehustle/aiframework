@@ -144,6 +144,157 @@ fleet_model_command() {
     esac
 }
 
+# ---------------------------------------------------------------------------
+# Launching an agent: command, readiness, cleanup
+#
+# The atomic `worker-start --agent` composes worktree, terminal, readiness and
+# dispatch in one call — and on Orca 1.4.196 with the Devin CLI it injects the
+# task preamble before the TUI is ready: the PTY records the bracketed-paste
+# marker and the prompt text BEFORE the agent banner, Orca times out at
+# `dispatch_input` with `agent_prompt_stalled`, and every worker of the build
+# dies the same death. Orca's `--model` also supports only Claude, Codex and
+# Cursor, so a role like devin:glm-5.2 silently runs on the agent's default.
+#
+# The general fix is Orca's own documented low-level recipe for custom agent
+# argv: worktree create → terminal create --command "<argv>" → terminal wait
+# --for tui-idle → worker-start --terminal. Readiness is the terminal's own
+# state, never a sleep; the Dispatch (and with it task/dispatch provenance,
+# worker_done authority, heartbeat, ask/reply) is created only after the TUI
+# confirmed it is ready. `worker-start --terminal` is the supervised path —
+# `dispatch --inject` would lose worker lifecycle state entirely.
+#
+# What an agent is launched WITH is split the same way the in-session model
+# command already is: a launch command is used only when it is KNOWN —
+#   1. `launchcmd_<agent>` in the config, template with `%s` for the model id;
+#   2. built in here for agents we have read (devin).
+# No guessing for unknown agents: a wrong argv is not a failed launch, it is a
+# task that never starts while looking like it did.
+fleet_launch_command() {
+    _flc_agent=$1; _flc_model=$2; _flc_root=$3
+    _flc_tpl=$(config_get "launchcmd_$_flc_agent" "$_flc_root" 2>/dev/null || :)
+    if [ -z "$_flc_tpl" ]; then
+        case $_flc_agent in
+            # The one built-in: the role table names devin models, Orca refuses
+            # to pass them, and the CLI takes --model itself. Verified against
+            # `devin models list` (glm-5-2 present).
+            devin) [ -n "$_flc_model" ] && _flc_tpl='devin --permission-mode bypass --model %s' ||
+                   _flc_tpl='devin' ;;
+            *) return 1 ;;
+        esac
+    fi
+    # Same substitution discipline as fleet_model_command: parameter expansion,
+    # never printf — the template comes from a config file and every % in it
+    # would otherwise be an instruction.
+    case $_flc_tpl in
+        *%s*)
+            # A template that names a model slot with no model to put there
+            # degrades to the bare agent — the same launch Orca's native path
+            # would make, and never a dangling "--model " argument.
+            if [ -z "$_flc_model" ]; then
+                printf '%s\n' "$_flc_agent"
+            else
+                _flc_pre=${_flc_tpl%%'%s'*}
+                _flc_post=${_flc_tpl#*'%s'}
+                printf '%s\n' "$_flc_pre$_flc_model$_flc_post"
+            fi
+            ;;
+        *)  printf '%s\n' "$_flc_tpl" ;;
+    esac
+}
+
+# How long a fresh agent TUI may take to reach tui-idle. Devin cold starts are
+# the slow case; the default is generous because a timeout here fails the
+# worker, and a too-small timeout would manufacture failures.
+fleet_ready_timeout_ms() {
+    _frt=$(config_get fleet_ready_timeout_ms "${1:-}" 2>/dev/null || :)
+    [ -n "$_frt" ] || _frt=120000
+    printf '%s\n' "$_frt"
+}
+
+# One Orca call, ok-gated, with the failure printed for the human. The shared
+# body of every helper below: their envelope is the one field we trust.
+fleet_call() {
+    _fc_cmd=$(fleet_cli) || return 1
+    _fc_out=$("$_fc_cmd" "$@" 2>&1) || {
+        printf >&2 '%s\n' "$_fc_out"; return 1
+    }
+    printf '%s' "$_fc_out" | fleet_ok || {
+        printf >&2 'orca отказал:\n%s\n' "$_fc_out"; return 1
+    }
+    printf '%s\n' "$_fc_out"
+}
+
+# An isolated checkout WITHOUT an agent — the first half of the low-level
+# recipe. The selector is built from the returned path (selectors accept
+# path:<path>), because worktree ids carry the repo id we do not know here.
+fleet_worktree_create() {
+    _fwc_name=$1; _fwc_root=$2; _fwc_base=$3
+    _fwc_out=$(fleet_call worktree create --name "$_fwc_name" \
+        --repo "path:$_fwc_root" --base-branch "$_fwc_base" --json) || return 1
+    # The receipt names the checkout's path under worktreePath on current
+    # runtimes and path on older ones; both are accepted selectors.
+    _fwc_path=$(printf '%s' "$_fwc_out" | fleet_json_str worktreePath)
+    [ -n "$_fwc_path" ] || _fwc_path=$(printf '%s' "$_fwc_out" | fleet_json_str path)
+    [ -n "$_fwc_path" ] || {
+        printf >&2 'worktree create: в ответе нет пути:\n%s\n' "$_fwc_out"; return 1
+    }
+    printf 'path:%s\n' "$_fwc_path"
+}
+
+# One string value out of an Orca JSON response: the FIRST occurrence of
+# "key": "value". Typed ids go through fleet_id (prefix + hex); this is for
+# the rest — paths, handles' neighbours — where the prefix discipline does
+# not apply.
+fleet_json_str() {
+    _fjs_key=$1
+    tr -d '\n' 2>/dev/null |
+        grep -oE "\"$_fjs_key\"[[:space:]]*:[[:space:]]*\"[^\"]+\"" 2>/dev/null |
+        head -1 | sed "s/^\"$_fjs_key\"[[:space:]]*:[[:space:]]*//; s/\"//g"
+}
+
+# A terminal in the worktree running exactly our argv — the model travels
+# inside the command, which is the only channel Orca leaves open for agents
+# outside its --model allow-list.
+fleet_terminal_create() {
+    _ftc_wt=$1; _ftc_cmdline=$2
+    _ftc_out=$(fleet_call terminal create --worktree "$_ftc_wt" \
+        --command "$_ftc_cmdline" --json) || return 1
+    _ftc_term=$(printf '%s' "$_ftc_out" | fleet_id term)
+    [ -n "$_ftc_term" ] || {
+        printf >&2 'terminal create: в ответе нет term_… идентификатора:\n%s\n' "$_ftc_out"
+        return 1
+    }
+    printf '%s\n' "$_ftc_term"
+}
+
+# The readiness gate. Exit code is the whole verdict: Orca's `terminal wait`
+# exits 0 only when the state was reached, nonzero on timeout — there is
+# nothing in the output to parse and no sleep to guess with.
+fleet_terminal_wait_idle() {
+    _ftw_term=$1; _ftc_root=$2
+    _ftc_ms=$(fleet_ready_timeout_ms "$_ftc_root")
+    _ftw_cmd=$(fleet_cli) || return 1
+    "$_ftw_cmd" terminal wait --terminal "$_ftc_term" --for tui-idle \
+        --timeout-ms "$_ftc_ms" --json >/dev/null 2>&1
+}
+
+# Clean up exactly what a failed launch created, best-effort and in the order
+# ownership was taken: the Dispatch first (worker-release closes only the
+# coordinator-owned agent terminal and is idempotent by their contract), then
+# the terminal, then the worktree this call created. Any step may fail — a
+# partial cleanup is reported by Orca, not hidden here — and no step may
+# prevent the next.
+fleet_launch_cleanup() {
+    _flc_disp=$1; _flc_wt=$2; _flc_term=$3
+    [ -n "$_flc_disp" ] && fleet_worker_release "$_flc_disp" >/dev/null 2>&1
+    [ -n "$_flc_wt" ] && {
+        _flc_cmd=$(fleet_cli) || return 0
+        "$_flc_cmd" terminal stop --worktree "$_flc_wt" --json >/dev/null 2>&1 || :
+        "$_flc_cmd" worktree rm --worktree "$_flc_wt" --json >/dev/null 2>&1 || :
+    }
+    return 0
+}
+
 # The terminal a worker runs in, so something can be typed into it.
 fleet_worker_terminal() {
     fleet_worker_show "$1" | fleet_id term
@@ -211,17 +362,92 @@ fleet_task_create() {
     printf '%s\n' "$_ftc_id"
 }
 
-# §9.1 + §9.2 in one call: an isolated checkout AND a named agent on a named model.
-# Orca creates the worktree as part of starting the worker ("new worktrees use agent-first
-# creation"), so there is no separate step to keep in sync.
+# The custom half of the lifecycle: create → launch → wait → dispatch. Every
+# resource is cleaned up on the way out if a later step fails, and the task
+# preamble is only ever sent to a terminal Orca itself has confirmed idle.
 #
-# --model and --effort are omitted together when no model is named: their help says
-# "--effort requires --model", and passing an empty --model is not the same as passing
-# none. The role table always yields all three, so this is the defensive branch, not the
-# usual path.
+# What was actually used is reported back through _FLEET_LAST_LAUNCH (the argv)
+# and _FLEET_LAST_LAUNCH_MODEL (the model that travelled inside it, empty when
+# none did) — the caller's reporting reads these rather than re-deriving the
+# path, because "which model actually ran" is the caller's contract.
+fleet_worker_start_custom() {
+    _fwsc_task=$1; _fwsc_agent=$2; _fwsc_model=$3
+    _fwsc_name=$4; _fwsc_root=$5; _fwsc_base=$6
+
+    _FLEET_LAST_LAUNCH=; _FLEET_LAST_LAUNCH_MODEL=
+
+    if _fwsc_wt=$(fleet_worktree_create "$_fwsc_name" "$_fwsc_root" "$_fwsc_base"); then :; else
+        return 1
+    fi
+
+    if _fwsc_launch=$(fleet_launch_command "$_fwsc_agent" "$_fwsc_model" "$_fwsc_root"); then :; else
+        # No launch command is known for this agent — the bare name is the same
+        # launch Orca's native path would make, never an invented flag.
+        _fwsc_launch=$_fwsc_agent
+    fi
+    _FLEET_LAST_LAUNCH=$_fwsc_launch
+    [ -n "$_fwsc_model" ] && _FLEET_LAST_LAUNCH_MODEL=$_fwsc_model
+
+    if _fwsc_term=$(fleet_terminal_create "$_fwsc_wt" "$_fwsc_launch"); then :; else
+        fleet_launch_cleanup "" "$_fwsc_wt" ""
+        return 1
+    fi
+
+    if fleet_terminal_wait_idle "$_fwsc_term" "$_fwsc_root"; then :; else
+        _fwsc_ms=$(fleet_ready_timeout_ms "$_fwsc_root")
+        printf >&2 'агент %s не достиг готовности терминала (tui-idle) за %s мс — задание не отправлено\n' \
+            "$_fwsc_agent" "$_fwsc_ms"
+        fleet_launch_cleanup "" "$_fwsc_wt" "$_fwsc_term"
+        return 1
+    fi
+
+    _fwsc_cmd=$(fleet_cli) || { fleet_launch_cleanup "" "$_fwsc_wt" "$_fwsc_term"; return 1; }
+    if _fwsc_out=$("$_fwsc_cmd" orchestration worker-start \
+        --task "$_fwsc_task" --terminal "$_fwsc_term" --worktree "$_fwsc_wt" \
+        --json 2>&1)
+    then _fwsc_rc=0; else _fwsc_rc=$?; fi
+
+    if [ "$_fwsc_rc" -ne 0 ]; then
+        printf >&2 'worker-start не привязал задание к терминалу %s:\n%s\n' \
+            "$_fwsc_name" "$_fwsc_out"
+        # The refusal may name the Dispatch it created (their receipts carry
+        # effects/residualResources); when it does not, ask Orca directly — a
+        # failed bind can still have left one behind, and release is idempotent.
+        _fwsc_disp=$(printf '%s' "$_fwsc_out" | fleet_id "$FLEET_DISPATCH_KIND")
+        [ -n "$_fwsc_disp" ] || _fwsc_disp=$(
+            fleet_call orchestration dispatch-show --task "$_fwsc_task" --json 2>/dev/null |
+                fleet_id "$FLEET_DISPATCH_KIND")
+        fleet_launch_cleanup "$_fwsc_disp" "$_fwsc_wt" "$_fwsc_term"
+        return 1
+    fi
+
+    _fwsc_id=$(printf '%s' "$_fwsc_out" | fleet_id "$FLEET_DISPATCH_KIND")
+    [ -n "$_fwsc_id" ] || {
+        printf >&2 'worker-start: в ответе нет %s_… идентификатора:\n%s\n' \
+            "$FLEET_DISPATCH_KIND" "$_fwsc_out"
+        fleet_launch_cleanup "" "$_fwsc_wt" "$_fwsc_term"
+        return 1
+    }
+    printf '%s\n' "$_fwsc_id"
+}
+
+# §9.1 + §9.2: an isolated checkout AND a named agent on a named model — but
+# no longer one blind atomic call. Two paths, one contract (print the ctx_…
+# dispatch id, exit 0 only for ready):
 #
-# Their exit code is meaningful here and we pass it through: "the call exits 0 only for
-# ready. Failed or outcome_unknown exits 1."
+#   native  — `worker-start --agent --model --effort`, exactly as before. The
+#             default, because Orca reports `launch.effective` for the agents
+#             it launches itself, and bypassing that would cost us the truth
+#             about which model ran.
+#   custom  — the explicit lifecycle above, taken when a launch command is
+#             known (config `launchcmd_<agent>` or the devin built-in), when
+#             the agent is already known to refuse `--model`, or when a native
+#             attempt has just refused it. The model travels inside the argv;
+#             readiness is the terminal's own tui-idle; the Dispatch is bound
+#             only after that.
+#
+# Their exit code is meaningful on both paths and we pass it through: "the call
+# exits 0 only for ready. Failed or outcome_unknown exits 1."
 fleet_worker_start() {
     _fws_task=$1; _fws_agent=$2; _fws_model=$3; _fws_effort=$4
     _fws_name=$5; _fws_root=$6; _fws_base=$7
@@ -231,9 +457,16 @@ fleet_worker_start() {
     # Known from a previous refusal: do not ask again. This is what turns "the fleet dies
     # every time" into "the fleet died once, and only until it was told why".
     if [ -n "$_fws_model" ] && fleet_caps_has "$_fws_agent" no-launch-model; then
-        printf >&2 'агент %s модель при запуске не принимает (известно с прошлого раза) — %s пойдёт без неё\n' \
+        printf >&2 'агент %s модель при запуске не принимает (известно с прошлого раза) — %s пойдёт через команду запуска\n' \
             "$_fws_agent" "$_fws_name"
-        _fws_model=
+    fi
+
+    # A launch command we can vouch for decides the path before anything is
+    # called: the model rides in the argv and readiness is confirmed.
+    if fleet_launch_command "$_fws_agent" "$_fws_model" "$_fws_root" >/dev/null 2>&1; then
+        fleet_worker_start_custom "$_fws_task" "$_fws_agent" "$_fws_model" \
+            "$_fws_name" "$_fws_root" "$_fws_base"
+        return $?
     fi
 
     # `_fws_out=$(cmd)` followed by `_fws_rc=$?` looks right and is not: under `set -e`
@@ -260,21 +493,19 @@ fleet_worker_start() {
     # cannot know an agent's capabilities), and all four workers failed with "Agent devin
     # does not support launch-time model selection."
     #
-    # Retried without the model rather than refused, because the alternative is a fleet
-    # that will not start over a flag the agent simply ignores. The human is told: which
-    # model was dropped for whom is exactly the kind of thing that is obvious now and
-    # invisible three hours later.
+    # Learned once, then routed into the explicit lifecycle — the same one every
+    # launch-command agent takes — instead of a silent retry without the model. The
+    # human is told: which model was dropped for whom is exactly the kind of thing
+    # that is obvious now and invisible three hours later.
     if [ "$_fws_rc" -ne 0 ] && [ -n "$_fws_model" ] &&
        printf '%s' "$_fws_out" | grep -qi 'launch-time model\|does not support.*model'; then
         fleet_caps_note "$_fws_agent" no-launch-model
-        printf >&2 'агент %s не принимает модель при запуске — поднимаю %s без неё (модель %s не применена)\n' \
+        printf >&2 'агент %s не принимает модель при запуске — поднимаю %s через команду запуска (модель %s не применена Orca)\n' \
             "$_fws_agent" "$_fws_name" "$_fws_model"
-        printf >&2 '  запомнено: следующие сборки не будут пытаться\n'
-        if _fws_out=$("$_fws_cmd" orchestration worker-start \
-            --task "$_fws_task" --agent "$_fws_agent" \
-            --worktree new-top-level --name "$_fws_name" \
-            --repo "path:$_fws_root" --base-branch "$_fws_base" --json 2>&1)
-        then _fws_rc=0; else _fws_rc=$?; fi
+        printf >&2 '  запомнено: следующие сборки пойдут через команду запуска сразу\n'
+        fleet_worker_start_custom "$_fws_task" "$_fws_agent" "" \
+            "$_fws_name" "$_fws_root" "$_fws_base"
+        return $?
     fi
 
     if [ "$_fws_rc" -ne 0 ]; then

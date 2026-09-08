@@ -159,7 +159,7 @@ dispatch_check() {
         _ag=$(printf '%s' "$_ex" | cut -f1)
         _mo=$(printf '%s' "$_ex" | cut -f2)
         if [ -n "$_mo" ] && fleet_caps_has "$_ag" no-launch-model 2>/dev/null; then
-            printf >&2 'подзадача %s: агент %s не принимает модель при запуске — %s не применится\n' \
+            printf >&2 'подзадача %s: агент %s не принимает модель через Orca — %s пойдёт в команде запуска\n' \
                 "$_id" "$_ag" "$_mo"
         fi
     done
@@ -391,10 +391,20 @@ dispatch_launch() {
         # not lose the ids of the two already running.
         printf '%s\t%s\t%s\t%s\n' "$_dl_id" "$_dl_task" "$_dl_disp" \
             "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" >> "$_dl_file"
-        # An agent that would not take the model as a flag may still take it as its first
-        # input. Try that before reporting the model as not applied — and report honestly
-        # either way, because a build's cost depends on which model actually ran.
-        if fleet_caps_has "$_dl_ag" no-launch-model 2>/dev/null; then
+        # Which model actually ran is the one thing a build's cost depends on and the
+        # launch is the only place that knows. Three truths, told apart: Orca applied
+        # the model itself (native path), the model rode in the launch command (custom
+        # path with a model), or nothing applied it. The in-session `modelcmd_<agent>`
+        # stays as the explicitly configured fallback AFTER a successful launch — it is
+        # never guessed.
+        if [ -n "$_FLEET_LAST_LAUNCH_MODEL" ]; then
+            printf '  %s → %s (%s %s, модель применена командой запуска «%s»)\n' \
+                "$_dl_id" "$_dl_disp" "$_dl_ag" "$_dl_mo" "$_FLEET_LAST_LAUNCH"
+        elif [ -n "$_FLEET_LAST_LAUNCH" ]; then
+            printf '  %s → %s (%s, модель не применяется)\n' "$_dl_id" "$_dl_disp" "$_dl_ag"
+            printf '     как %s меняет модель изнутри — неизвестно; научить:\n' "$_dl_ag"
+            printf '     fraim config set --machine modelcmd_%s "/model %%s"\n' "$_dl_ag"
+        elif fleet_caps_has "$_dl_ag" no-launch-model 2>/dev/null; then
             if _dl_sent=$(fleet_worker_set_model "$_dl_disp" "$_dl_ag" "$_dl_mo" "$_dl_root"); then
                 printf '  %s → %s (%s %s, задана командой «%s»)\n' \
                     "$_dl_id" "$_dl_disp" "$_dl_ag" "$_dl_mo" "$_dl_sent"
