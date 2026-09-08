@@ -30,7 +30,7 @@ printf 'check_shape = off\n' > "$FRAIM_HOME/config"
 printf '\nprocedures/\n'
 
 N=$(ls "$REPO"/procedures/*.md | grep -v manifest | wc -l | tr -d ' ')
-check "12 процедур на диске" "$N" "12"
+check "13 процедур на диске" "$N" "13"
 
 BADFM=""
 for f in "$REPO"/procedures/*.md; do
@@ -185,7 +185,7 @@ printf '\nfraim build\n'
 check "build завершился успешно" "$?" "0"
 
 PLUG="$REPO/installer/claude-plugin/skills"
-check "плагин: 13 скиллов" "$(find "$PLUG" -name SKILL.md | wc -l | tr -d ' ')" "13"
+check "плагин: 14 скиллов" "$(find "$PLUG" -name SKILL.md | wc -l | tr -d ' ')" "14"
 
 # The single-file rule is a compatibility constraint, not tidiness:
 # Hermes fetches only SKILL.md when installing from a URL, and omp discovers
@@ -1700,16 +1700,19 @@ mkdir -p "$HOME/.codex" "$HOME/.claude"     # pretend two harnesses are installe
 # Antigravity is detected by ~/.gemini/config, not by ~/.gemini: the bare directory
 # belongs to Gemini CLI, which is a different product sharing the same home.
 mkdir -p "$HOME/.gemini"
+# PATH урезан до системных: agy/orca-ide/pi/devin с машины разработчика не должны
+# влиять на то, какие харнесы детектируются в песочнице — детект здесь по каталогам.
+SANDBOX_PATH="/usr/bin:/bin"
 cd "$PROJ" || exit 1
-"$FRAIM" init >/dev/null 2>&1
+env PATH="$SANDBOX_PATH" "$FRAIM" init >/dev/null 2>&1
 check "голый ~/.gemini — это не Antigravity" \
     "$([ -d "$HOME/.gemini/config/skills" ] && echo yes || echo no)" "no"
 mkdir -p "$HOME/.gemini/config"
-"$FRAIM" init >/dev/null 2>&1
+env PATH="$SANDBOX_PATH" "$FRAIM" init >/dev/null 2>&1
 check "init завершился успешно" "$?" "0"
-check "Codex: 13 скиллов" "$(find "$HOME/.codex/skills" -name SKILL.md 2>/dev/null | wc -l | tr -d ' ')" "13"
-check "Claude Code: 13 скиллов" "$(find "$HOME/.claude/skills" -name SKILL.md 2>/dev/null | wc -l | tr -d ' ')" "13"
-check "Antigravity: 13 скиллов" "$(find "$HOME/.gemini/config/skills" -name SKILL.md 2>/dev/null | wc -l | tr -d ' ')" "13"
+check "Codex: 14 скиллов" "$(find "$HOME/.codex/skills" -name SKILL.md 2>/dev/null | wc -l | tr -d ' ')" "14"
+check "Claude Code: 14 скиллов" "$(find "$HOME/.claude/skills" -name SKILL.md 2>/dev/null | wc -l | tr -d ' ')" "14"
+check "Antigravity: 14 скиллов" "$(find "$HOME/.gemini/config/skills" -name SKILL.md 2>/dev/null | wc -l | tr -d ' ')" "14"
 check "контекстный блок в ~/.codex/AGENTS.md" "$(grep -c 'fraim:begin' "$HOME/.codex/AGENTS.md" 2>/dev/null)" "1"
 check "контекстный блок в ~/.gemini/AGENTS.md" "$(grep -c 'fraim:begin' "$HOME/.gemini/AGENTS.md" 2>/dev/null)" "1"
 check "GEMINI.md чужой — мы в него не пишем" \
@@ -1869,7 +1872,9 @@ printf '%s' "$FJ" | grep -q '"id": "worktree-unsealed", "severity": "attention"'
 check "и она attention, а не info" "$?" "0"
 
 # Реестр чекаутов ведёт git, а не среда: ответ тот же, когда среды на машине нет вовсе.
-FLJ=$("$FRAIM" fleet "$FLEET" --json 2>/dev/null || true)
+# PATH урезан до системных: на машине разработчика может стоять настоящий orca-ide,
+# и унаследованный PATH подсунет его проверке «среды нет».
+FLJ=$(env PATH="/usr/bin:/bin" "$FRAIM" fleet "$FLEET" --json 2>/dev/null || true)
 check "fleet перечисляет оба чекаута" "$(printf '%s' "$FLJ" | grep -c '"path"')" "2"
 printf '%s' "$FLJ" | grep -q '"path": ".*wt-rate-limit", "current": false, "runnable": 1, "blocked": 0, "unsealed": 1'
 check "и считает состояние каждого" "$?" "0"
@@ -1923,7 +1928,8 @@ check "голый orca на Linux не запускается" "$([ -f "$SANDBOX
 
 # И проверка живости выбирает безопасное имя, а не первое попавшееся.
 rm -f "$ADEBIN/orca-ide"
-env PATH="$ADEBIN:$PATH" "$FRAIM" fleet "$FLEET" --json 2>/dev/null | grep -q '"key": "orca"'
+# PATH урезан так же, как выше: настоящий orca-ide с машины разработчика не считается.
+env PATH="$ADEBIN:/usr/bin:/bin" "$FRAIM" fleet "$FLEET" --json 2>/dev/null | grep -q '"key": "orca"'
 check "без orca-ide среда на Linux не считается найденной" "$?" "1"
 check "и подсадной orca всё ещё молчит" "$([ -f "$SANDBOX/screen-reader-ran" ] && echo ran || echo silent)" "silent"
 rm -f "$ADEBIN/orca"
