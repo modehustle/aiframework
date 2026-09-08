@@ -391,22 +391,40 @@ dispatch_launch() {
         # input. Try that before reporting the model as not applied — and report honestly
         # either way, because a build's cost depends on which model actually ran.
         #
-        # What we do NOT do: read the worker's terminal to confirm the switch landed.
-        # That would be trusting prose from the party being judged — the exact thing G7
-        # forbids for code (dispatch_verify_tree checks the tree, not a report). There is
-        # no tree for "which model answered", so the honest move is to record what we KNOW
-        # (launched with the flag / typed a command and hoped / could not even do that),
-        # not to fabricate a confirmation we have no way to observe.
+        # What this code does NOT do: grep the worker's terminal for a per-agent
+        # confirmation string and turn that into a verdict. Thirteen agents print thirteen
+        # different banners, and a script guessing which substring means "confirmed" would
+        # report false confidence the moment one agent's wording changes — the treadmill
+        # P0 warns about, aimed at a new target.
+        #
+        # What it DOES do: read the pane with `fleet_worker_read_terminal` (Orca's
+        # `terminal read`, missing from MODES.md §9's six operations because the first
+        # survey never asked for it) and print it whole, so the conductor — the one
+        # reading THIS OUTPUT right now, in its own tool result — judges it. That is not
+        # the G7 violation it looks like: G7 forbids trusting a VERDICT from the party
+        # being judged (a worker's result.md claiming success). A raw transcript is not a
+        # verdict; nobody composed it to convince anyone of anything. Judging whether it
+        # confirms a model switch is exactly the kind of thing that cannot be computed
+        # (B7) — so it is not computed, it is shown.
         if fleet_caps_has "$_dl_ag" no-launch-model 2>/dev/null; then
             if _dl_sent=$(fleet_worker_set_model "$_dl_disp" "$_dl_ag" "$_dl_mo" "$_dl_root"); then
                 _dl_ms="session:$_dl_mo"
-                printf '  %s → %s (%s %s, задана командой «%s», не подтверждена)\n' \
+                printf '  %s → %s (%s %s, задана командой «%s»)\n' \
                     "$_dl_id" "$_dl_disp" "$_dl_ag" "$_dl_mo" "$_dl_sent"
+                _dl_ask="суди сам, подтверждает ли это переключение на $_dl_mo"
             else
                 _dl_ms="dropped:$_dl_mo"
                 printf '  %s → %s (%s, модель не применяется)\n' "$_dl_id" "$_dl_disp" "$_dl_ag"
                 printf '     как %s меняет модель изнутри — неизвестно; научить:\n' "$_dl_ag"
                 printf '     fraim config set --machine modelcmd_%s "/model %%s"\n' "$_dl_ag"
+                _dl_ask="мы не смогли попросить $_dl_mo — глянь, не назван ли тут баннером тот, что запустился по умолчанию"
+            fi
+            _dl_pane=$(fleet_worker_read_terminal "$_dl_disp" 2>/dev/null || :)
+            if [ -n "$_dl_pane" ]; then
+                printf '     терминал воркера сейчас (%s):\n' "$_dl_ask"
+                printf '%s\n' "$_dl_pane" | sed 's/^/       /'
+            else
+                printf '     терминал прочитать не удалось — среда не ответила на terminal read\n'
             fi
         else
             _dl_ms="launched:$_dl_mo"

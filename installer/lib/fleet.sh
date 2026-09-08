@@ -169,6 +169,34 @@ fleet_worker_set_model() {
     printf '%s\n' "$_fwsm_line"
 }
 
+# ---------------------------------------------------------------------------
+# Reading the pane, for a human or a conductor to judge — not for THIS code to judge
+#
+# `terminal read`/`terminal show` exist in Orca's own CLI (skill-guides/orca-cli.md:
+# "ORCA terminal read --terminal <handle> --cursor <cursor> --limit <n> --json") and were
+# missing from MODES.md §9's six operations entirely — the first survey never asked for
+# them, so nothing here used them. That is the gap the owner pointed at: we recorded THAT
+# an agent refused a launch-time model (fleet_caps_note above), never WHAT it is actually
+# running instead, because nothing ever looked.
+#
+# What this function does NOT do: decide whether the text it returns means the switch
+# worked. Parsing "did this confirm the model" per agent is exactly the treadmill P0 warns
+# against — thirteen agents, thirteen banners, thirteen ways to get the grep wrong and
+# report false confidence. G7 (verify against the tree, not a report) does not forbid
+# READING evidence, it forbids TRUSTING A VERDICT written by the party being judged. A
+# transcript is not a verdict — nobody composed it to convince us of anything. So the raw
+# text is handed back whole, the same way fleet_worker_show hands back JSON whole, and the
+# party equipped to read it — the conductor, who is the one that just ran `fraim dispatch
+# run` and receives this text in its own tool output — makes the call, not this shell
+# function pretending to.
+fleet_worker_read_terminal() {
+    _fwrt_disp=$1; _fwrt_limit=${2:-40}
+    _fwrt_cmd=$(fleet_cli) || return 1
+    _fwrt_term=$(fleet_worker_terminal "$_fwrt_disp")
+    [ -n "$_fwrt_term" ] || return 1
+    "$_fwrt_cmd" terminal read --terminal "$_fwrt_term" --limit "$_fwrt_limit" --json 2>&1
+}
+
 # Every Orca response carries `"ok": true|false`. This is the one field name we do rely
 # on, because it is the envelope rather than the payload, and because the alternative —
 # trusting the exit code alone — loses the distinction their own help draws between a

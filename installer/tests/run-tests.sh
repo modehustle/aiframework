@@ -1994,6 +1994,8 @@ case "$1 $2" in
     "orchestration worker-show")
         printf '{"ok": true, "id": "term_deadbeef04", "state": "running", "stage": "coding"}\n' ;;
     "terminal send") exit 0 ;;
+    "terminal read")
+        printf '{"ok": true, "lines": ["some banner", "Model set to glm-5.2 (fake, printed by devin itself)"]}\n' ;;
     *) exit 1 ;;
 esac
 STUB
@@ -2009,19 +2011,28 @@ printf '%s\n' "$RUNOUT" | grep -q 'не принимает модель при �
 check "отказ агента от launch-time модели замечен и назван" "$?" "0"
 printf '%s\n' "$RUNOUT" | grep -q 'задана командой'
 check "команда переключения отправлена в сессию воркера" "$?" "0"
-printf '%s\n' "$RUNOUT" | grep -q 'не подтверждена'
-check "но не выдаётся за подтверждённую — мы не читаем терминал как улику" "$?" "0"
+printf '%s\n' "$RUNOUT" | grep -q 'терминал воркера сейчас'
+check "терминал прочитан и показан дирижёру — не сграблен и не проглочен" "$?" "0"
+printf '%s\n' "$RUNOUT" | grep -q 'Model set to glm-5.2'
+check "видна РЕАЛЬНАЯ строка воркера — не выдумка скрипта" "$?" "0"
 check "fleet.tsv помнит честный статус модели" \
     "$(grep -c 'session:glm-5.2' "$FLEET/ai/builds/$BID/fleet.tsv")" "1"
 
 WATCHOUT=$(cd "$FLEET" && env PATH="$ADEBIN:$PATH" "$FRAIM" dispatch watch "$BID" 2>&1)
 printf '%s\n' "$WATCHOUT" | grep -q 'модель не подтверждена'
 check "dispatch watch показывает неподтверждённую модель рядом со статусом" "$?" "0"
+printf '%s\n' "$WATCHOUT" | grep -q 'dispatch peek'
+check "и называет команду посмотреть терминал ещё раз" "$?" "0"
+
+PEEKOUT=$(cd "$FLEET" && env PATH="$ADEBIN:$PATH" "$FRAIM" dispatch peek "$BID" only 2>&1)
+check "peek читает терминал подзадачи по требованию, не только при запуске" "$?" "0"
+printf '%s\n' "$PEEKOUT" | grep -q 'Model set to glm-5.2'
+check "и это тот же сырой текст, что дирижёр уже видел" "$?" "0"
 
 ACCEPTOUT=$(cd "$FLEET" && env PATH="$ADEBIN:$PATH" "$FRAIM" dispatch accept "$BID" 2>&1)
 check "приёмка проходит — решает человек, не гейт" "$?" "0"
-printf '%s\n' "$ACCEPTOUT" | grep -q 'команда переключения отправлена, но не подтверждена'
-check "но приёмка называет находку вслух, а не молчит о ней" "$?" "0"
+printf '%s\n' "$ACCEPTOUT" | grep -q 'fraim dispatch peek'
+check "но приёмка называет находку вслух и как её перепроверить" "$?" "0"
 
 rm -f "$ADEBIN/orca-ide"
 

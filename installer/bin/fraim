@@ -1010,6 +1010,18 @@ cmd_dispatch() {
             fi
             dispatch_verify_tree "$_tree" "$_base" "$_paths"
             ;;
+        peek)
+            # Same evidence dispatch_launch prints at launch, callable again any time
+            # after — a model status seen once at launch can be stale by the time the
+            # conductor comes back to check on it. This does not judge the text either;
+            # it hands the pane back to whoever asked, same as at launch.
+            [ $# -ge 3 ] || die "нужно: fraim dispatch peek СБОРКА ПОДЗАДАЧА"
+            _pk_d=$(build_fleet_rows "$_root" "$2" | awk -F'\t' -v s="$3" '$1 == s { print $3 }')
+            [ -n "$_pk_d" ] && [ "$_pk_d" != "—" ] || die "подзадача $3 не поднялась — смотреть нечего"
+            _pk_pane=$(fleet_worker_read_terminal "$_pk_d" "${4:-40}") ||
+                die "среда не ответила на terminal read"
+            printf '%s\n' "$_pk_pane"
+            ;;
         run)
             [ $# -ge 2 ] || die "нужно: fraim dispatch run СБОРКА"
             say "Поднимаю флот для сборки $2..."
@@ -1029,7 +1041,7 @@ cmd_dispatch() {
                     printf '%-12s не поднялась\n' "$_s"; continue
                 fi
                 case $_ms in
-                    session:*) _mn=" · модель не подтверждена" ;;
+                    session:*) _mn=" · модель не подтверждена — fraim dispatch peek $2 $_s" ;;
                     dropped:*) _mn=" · модель не применена" ;;
                     *)         _mn= ;;
                 esac
@@ -1065,7 +1077,7 @@ cmd_dispatch() {
                 warn "модель не подтверждена для части подзадач — цена сборки могла разойтись с планом:"
                 printf '%s\n' "$_dl_caveats" | while IFS='	' read -r _s _ms; do
                     case $_ms in
-                        session:*) printf '  %s: команда переключения отправлена, но не подтверждена (%s)\n' "$_s" "${_ms#session:}" ;;
+                        session:*) printf '  %s: команда переключения отправлена (%s) — терминал показан при запуске, ещё раз: fraim dispatch peek %s %s\n' "$_s" "${_ms#session:}" "$2" "$_s" ;;
                         dropped:*) printf '  %s: модель не применялась вовсе — агент не знает, как её сменить изнутри (%s)\n' "$_s" "${_ms#dropped:}" ;;
                     esac
                 done
@@ -1075,7 +1087,7 @@ cmd_dispatch() {
             build_list "$_root"
             ;;
         "")
-            die "нужно: fraim dispatch ПЛАН (или check / verify / accept / list)"
+            die "нужно: fraim dispatch ПЛАН (или check / run / watch / verify / peek / accept / list)"
             ;;
         *)
             _plan=$_sub
