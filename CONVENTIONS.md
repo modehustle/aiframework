@@ -40,4 +40,5 @@
 > on your approval: `/run-task` from its `(pitfall)` observations, `/prune` when it finds a
 > lesson in the save points that never got written down, and any ordinary session the moment
 > something bites — that last one is where most of them come from. `/prune` also curates.
-- None yet.
+- pi --list-models prints its model table to stderr, not stdout — a blind 2>/dev/null around a command source silently empties it; join streams and let pattern-based parsers filter
+- roles.sh sourced standalone has no ade_timeout_bin (it lives in ade.sh); call sites must silence and tolerate its absence
