@@ -878,7 +878,15 @@ cmd_config() {
             if [ "${1:-}" = --machine ]; then _scope=machine; shift; fi
             [ $# -ge 2 ] || die "нужно: fraim config set КЛЮЧ ЗНАЧЕНИЕ"
             _k=$1; _v=$2
-            config_known "$_k" || die "неизвестный ключ: $_k (список — fraim config)"
+            # modelcmd_<агент> открытый по тому же основанию, что role_/tier_ у `fraim
+            # roles set`: список агентов не наш каталог, а имя агента задаёт человек,
+            # который его только что поставил (fleet.sh). config_known знает только
+            # фиксированную таблицу и без этого исключения отказывал бы ровно на той
+            # команде, которую сам же и печатает как подсказку при отказе модели.
+            case $_k in
+                modelcmd_*) ;;
+                *) config_known "$_k" || die "неизвестный ключ: $_k (список — fraim config)" ;;
+            esac
             if [ "$_scope" = machine ]; then
                 config_set_file "$(config_machine_file)" "$_k" "$_v" || die "не удалось записать"
                 ok "$_k = $_v → ~/.fraim/config"
@@ -1016,10 +1024,15 @@ cmd_dispatch() {
             ;;
         watch)
             [ $# -ge 2 ] || die "нужно: fraim dispatch watch СБОРКА"
-            build_fleet_rows "$_root" "$2" | while IFS='	' read -r _s _t _d _at; do
+            build_fleet_rows "$_root" "$2" | while IFS='	' read -r _s _t _d _at _ms; do
                 if [ -z "$_d" ] || [ "$_d" = "—" ]; then
                     printf '%-12s не поднялась\n' "$_s"; continue
                 fi
+                case $_ms in
+                    session:*) _mn=" · модель не подтверждена" ;;
+                    dropped:*) _mn=" · модель не применена" ;;
+                    *)         _mn= ;;
+                esac
                 _w=$(fleet_worker_show "$_d")
                 # Their two words for how a worker is doing. Pulled out rather than
                 # printing raw JSON — the first live build showed the operator a wall of
@@ -1032,7 +1045,7 @@ cmd_dispatch() {
                       grep -oE '"stage"[[:space:]]*:[[:space:]]*"[a-z_]*"' | head -1 |
                       sed 's/.*"\([a-z_]*\)"$/\1/')
                 if printf '%s' "$_w" | fleet_ok && [ -n "$_st$_sg" ]; then
-                    printf '%-12s %-18s %s %s\n' "$_s" "$_d" "${_st:-—}" "${_sg:+· $_sg}"
+                    printf '%-12s %-18s %s %s%s\n' "$_s" "$_d" "${_st:-—}" "${_sg:+· $_sg}" "$_mn"
                 else
                     printf '%-12s %-18s среда ответила не так, как ожидалось:\n' "$_s" "$_d"
                     printf '%s\n' "$_w" | head -4 | sed 's/^/    /'
@@ -1044,8 +1057,19 @@ cmd_dispatch() {
             ;;
         accept)
             [ $# -ge 2 ] || die "нужно: fraim dispatch accept СБОРКА"
+            _dl_caveats=$(build_fleet_model_caveats "$_root" "$2")
             build_accept "$_root" "$2" >/dev/null || die "приёмка не прошла"
             ok "сборка $2 принята"
+            if [ -n "$_dl_caveats" ]; then
+                say ""
+                warn "модель не подтверждена для части подзадач — цена сборки могла разойтись с планом:"
+                printf '%s\n' "$_dl_caveats" | while IFS='	' read -r _s _ms; do
+                    case $_ms in
+                        session:*) printf '  %s: команда переключения отправлена, но не подтверждена (%s)\n' "$_s" "${_ms#session:}" ;;
+                        dropped:*) printf '  %s: модель не применялась вовсе — агент не знает, как её сменить изнутри (%s)\n' "$_s" "${_ms#dropped:}" ;;
+                    esac
+                done
+            fi
             ;;
         list)
             build_list "$_root"

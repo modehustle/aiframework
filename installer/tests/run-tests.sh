@@ -1951,5 +1951,79 @@ for _l in "$REPO"/installer/lib/*.sh; do
 done
 check "каждая библиотека подключена в диспетчере" "${UNWIRED:-clean}" "clean"
 
+# ---------------------------------------------------------------- дирижёр: статус модели
+printf '\nдирижёр: раздача и честный статус модели воркера\n'
+
+# The bug this whole block exists to catch: the exact remedy fleet.sh and conductor.md
+# print at the operator ("fraim config set --machine modelcmd_devin ...") used to die with
+# "неизвестный ключ", because modelcmd_* was never in config_table. Fixed by letting
+# cmd_config's `set` treat modelcmd_* as open-ended, the same way roles.sh already treats
+# role_/tier_ as open-ended — an agent name is not our catalogue to enumerate.
+"$FRAIM" config set --machine modelcmd_devin "/model %s" >/dev/null 2>&1
+check "modelcmd_<агент> — открытый ключ, не из config_table" "$?" "0"
+
+DPLAN="$FLEET/build-plan.md"
+cat > "$DPLAN" <<'PLAN'
+## Subtask: only
+**Role**: run-task
+**Summary**: тестовая подзадача
+
+### `ARCHITECTURE.md`
+- проверка статуса модели
+PLAN
+printf 'role_run-task = devin:glm-5.2:medium\n' >> "$FLEET/ai/fraim.conf"
+
+# Stub for the write side (run-create/task-create/worker-start/terminal send), which
+# nothing exercised before this block — conductor.md says as much under "Проверки
+# адаптера на живом флоте". devin refuses --model at launch, same shape as the first
+# live build's failure, so worker-start must be asked twice: once with the flag, once
+# without.
+cat > "$ADEBIN/orca-ide" <<'STUB'
+#!/bin/sh
+case "$1 $2" in
+    "status --json") printf '{"running":true}\n' ;;
+    "orchestration run-create")  printf '{"ok": true, "id": "run_deadbeef01"}\n' ;;
+    "orchestration task-create") printf '{"ok": true, "id": "task_deadbeef02"}\n' ;;
+    "orchestration worker-start")
+        case " $* " in
+            *" --model "*)
+                printf 'Agent devin does not support launch-time model selection\n' >&2
+                exit 1 ;;
+            *) printf '{"ok": true, "id": "ctx_deadbeef03"}\n' ;;
+        esac ;;
+    "orchestration worker-show")
+        printf '{"ok": true, "id": "term_deadbeef04", "state": "running", "stage": "coding"}\n' ;;
+    "terminal send") exit 0 ;;
+    *) exit 1 ;;
+esac
+STUB
+chmod +x "$ADEBIN/orca-ide"
+
+(cd "$FLEET" && env PATH="$ADEBIN:$PATH" "$FRAIM" dispatch "$DPLAN" >/dev/null 2>&1)
+check "план принят, сборка заведена" "$?" "0"
+BID=$(ls "$FLEET/ai/builds" | sort -r | head -1)
+
+RUNOUT=$(cd "$FLEET" && env PATH="$ADEBIN:$PATH" "$FRAIM" dispatch run "$BID" 2>&1)
+check "флот поднят несмотря на отказ devin от --model" "$?" "0"
+printf '%s\n' "$RUNOUT" | grep -q 'не принимает модель при запуске'
+check "отказ агента от launch-time модели замечен и назван" "$?" "0"
+printf '%s\n' "$RUNOUT" | grep -q 'задана командой'
+check "команда переключения отправлена в сессию воркера" "$?" "0"
+printf '%s\n' "$RUNOUT" | grep -q 'не подтверждена'
+check "но не выдаётся за подтверждённую — мы не читаем терминал как улику" "$?" "0"
+check "fleet.tsv помнит честный статус модели" \
+    "$(grep -c 'session:glm-5.2' "$FLEET/ai/builds/$BID/fleet.tsv")" "1"
+
+WATCHOUT=$(cd "$FLEET" && env PATH="$ADEBIN:$PATH" "$FRAIM" dispatch watch "$BID" 2>&1)
+printf '%s\n' "$WATCHOUT" | grep -q 'модель не подтверждена'
+check "dispatch watch показывает неподтверждённую модель рядом со статусом" "$?" "0"
+
+ACCEPTOUT=$(cd "$FLEET" && env PATH="$ADEBIN:$PATH" "$FRAIM" dispatch accept "$BID" 2>&1)
+check "приёмка проходит — решает человек, не гейт" "$?" "0"
+printf '%s\n' "$ACCEPTOUT" | grep -q 'команда переключения отправлена, но не подтверждена'
+check "но приёмка называет находку вслух, а не молчит о ней" "$?" "0"
+
+rm -f "$ADEBIN/orca-ide"
+
 printf '\n%s пройдено, %s провалено\n' "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ]

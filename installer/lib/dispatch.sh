@@ -382,30 +382,41 @@ dispatch_launch() {
         _dl_task=$(fleet_task_create "$_dl_run" "$_dl_id" "$_dl_spec") || { _dl_bad=1; continue; }
         _dl_disp=$(fleet_worker_start "$_dl_task" "$_dl_ag" "$_dl_mo" "$_dl_ef" \
                        "$_dl_build-$_dl_id" "$_dl_root" "$_dl_base") || {
-            printf '%s\t%s\t—\t%s\n' "$_dl_id" "$_dl_task" \
+            printf '%s\t%s\t—\t%s\t—\n' "$_dl_id" "$_dl_task" \
                 "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" >> "$_dl_file"
             _dl_bad=1; continue
         }
 
-        # Written per worker rather than at the end: a failure on the third subtask must
-        # not lose the ids of the two already running.
-        printf '%s\t%s\t%s\t%s\n' "$_dl_id" "$_dl_task" "$_dl_disp" \
-            "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" >> "$_dl_file"
         # An agent that would not take the model as a flag may still take it as its first
         # input. Try that before reporting the model as not applied — and report honestly
         # either way, because a build's cost depends on which model actually ran.
+        #
+        # What we do NOT do: read the worker's terminal to confirm the switch landed.
+        # That would be trusting prose from the party being judged — the exact thing G7
+        # forbids for code (dispatch_verify_tree checks the tree, not a report). There is
+        # no tree for "which model answered", so the honest move is to record what we KNOW
+        # (launched with the flag / typed a command and hoped / could not even do that),
+        # not to fabricate a confirmation we have no way to observe.
         if fleet_caps_has "$_dl_ag" no-launch-model 2>/dev/null; then
             if _dl_sent=$(fleet_worker_set_model "$_dl_disp" "$_dl_ag" "$_dl_mo" "$_dl_root"); then
-                printf '  %s → %s (%s %s, задана командой «%s»)\n' \
+                _dl_ms="session:$_dl_mo"
+                printf '  %s → %s (%s %s, задана командой «%s», не подтверждена)\n' \
                     "$_dl_id" "$_dl_disp" "$_dl_ag" "$_dl_mo" "$_dl_sent"
             else
+                _dl_ms="dropped:$_dl_mo"
                 printf '  %s → %s (%s, модель не применяется)\n' "$_dl_id" "$_dl_disp" "$_dl_ag"
                 printf '     как %s меняет модель изнутри — неизвестно; научить:\n' "$_dl_ag"
                 printf '     fraim config set --machine modelcmd_%s "/model %%s"\n' "$_dl_ag"
             fi
         else
+            _dl_ms="launched:$_dl_mo"
             printf '  %s → %s (%s %s %s)\n' "$_dl_id" "$_dl_disp" "$_dl_ag" "$_dl_mo" "$_dl_ef"
         fi
+
+        # Written per worker rather than at the end: a failure on the third subtask must
+        # not lose the ids of the two already running.
+        printf '%s\t%s\t%s\t%s\t%s\n' "$_dl_id" "$_dl_task" "$_dl_disp" \
+            "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" "$_dl_ms" >> "$_dl_file"
     done
 
     [ "$_dl_bad" -eq 0 ]
@@ -416,6 +427,22 @@ build_fleet_rows() {
     _bf=$(build_fleet_file "$1" "$2")
     [ -f "$_bf" ] || return 1
     grep -v '^#' "$_bf" 2>/dev/null | grep '[^[:space:]]' || :
+}
+
+# Subtasks that are NOT known to have run on the model the plan asked for: sent as an
+# in-session command with no way to confirm it landed, or dropped entirely because we do
+# not know how to tell this agent to switch. One line per such subtask.
+#
+# Rows from before this field existed (4-column fleet.tsv) have nothing in $5 and are
+# skipped rather than flagged — a build sealed under the old format is not evidence of a
+# problem, it is evidence of a version gap, and manufacturing a caveat from it would be
+# exactly the D1 mistake this field exists to avoid on the other side.
+build_fleet_model_caveats() {
+    build_fleet_rows "$1" "$2" 2>/dev/null | while IFS='	' read -r _s _t _d _ts _ms; do
+        case $_ms in
+            session:*|dropped:*) printf '%s\t%s\n' "$_s" "$_ms" ;;
+        esac
+    done
 }
 
 # The build journal — MODES.md §11.4, answer D. Deliberately created empty of
