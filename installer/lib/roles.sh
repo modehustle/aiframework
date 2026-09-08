@@ -152,64 +152,13 @@ roles_source() {
 # the list is complete.
 # ---------------------------------------------------------------------------
 
-# Providers the execution environment knows about, and whether each is usable right now.
-# Prints `name<TAB>ok` or `name<TAB>reason`; nothing at all when there is no environment
-# or it declines to answer.
-#
-# Two decisions worth stating, both learned from the real output rather than guessed:
-#
-# 1. Availability is read from "error", not "status". Inside one provider's block the
-#    word "status" also appears on unrelated objects — a codex account carries three
-#    rate-limit credits each with "status": "available" — so a scan for it lands on the
-#    wrong one depending on key order, which JSON does not promise. "error" appears once
-#    per provider and is null exactly when the provider works.
-#
-# 2. The parse survives reformatting. ade.sh warns that whether the JSON arrives
-#    pretty-printed or on one line is not something we control, so the text is joined
-#    first and split on the "provider" key itself rather than read line by line.
-#
-# This is still a field name, and ade.sh is right that a field name can be renamed out
-# from under us. The mitigation is that a miss is silent and harmless: no names means the
-# picker asks for a typed value, which is what it did before this function existed.
-roles_providers() {
-    _rap_cmd=$(ade_cli orca 2>/dev/null) || return 0
-    _rap_out=$(ade_query "$_rap_cmd" account list --json)
-    [ -n "$_rap_out" ] || return 0
-    printf '%s' "$_rap_out" | roles_parse_providers
-}
-
-# Split out so it can be tested against a saved response without an environment present.
-roles_parse_providers() {
-    awk '
-        { blob = blob " " $0 }
-        END {
-            gsub(/"provider"/, "\n@", blob)
-            n = split(blob, part, "\n")
-            for (i = 2; i <= n; i++) {
-                if (match(part[i], /"[^"]+"/) == 0) continue
-                name = substr(part[i], RSTART + 1, RLENGTH - 2)
-                if (match(part[i], /"error"[ \t]*:[ \t]*null/) > 0) {
-                    print name "\tok"
-                } else if (match(part[i], /"error"[ \t]*:[ \t]*"[^"]*"/) > 0) {
-                    why = substr(part[i], RSTART, RLENGTH)
-                    sub(/^"error"[ \t]*:[ \t]*"/, "", why); sub(/"$/, "", why)
-                    print name "\t" why
-                } else {
-                    print name "\tнеизвестно"
-                }
-            }
-        }
-    '
-}
-
-# Agent names for the picker: the ones that can actually run, most useful first, with the
-# blocked ones after them so a stale login is visible at the moment of choosing rather
-# than at the moment a fleet fails to start.
+# Agent names for the picker: the harnesses fraim knows about and that are present on
+# this machine. This is independent of any execution environment (Orca or otherwise) —
+# fraim installs skills into these harnesses, and the role table binds to what fraim can
+# actually serve. harness_detect (harness.sh) probes each harness by its binary on PATH
+# or its home directory, so an agent that is installed but not yet on PATH still appears.
 roles_agents_available() {
-    _raa=$(roles_providers) || return 0
-    [ -n "$_raa" ] || return 0
-    printf '%s\n' "$_raa" | awk -F'\t' '$2 == "ok" { print $1 }'
-    printf '%s\n' "$_raa" | awk -F'\t' '$2 != "ok" { printf "%s (недоступен: %s)\n", $1, $2 }'
+    harness_detect 2>/dev/null | cut -f1
 }
 
 # Models already in use on this machine — the honest list that costs no network and no
@@ -256,7 +205,7 @@ roles_efforts() { printf 'low\nmedium\nhigh\nxhigh\nmax\n'; }
 # stdin and prints bare model ids — exactly the strings the agent accepts in its
 # --model — one per line, sorted, deduplicated. Parsers are split from the source
 # invocation so they can be tested against saved fixtures without the agent present
-# (the same split as roles_parse_providers above).
+# (the same split as the parsers above).
 # ---------------------------------------------------------------------------
 
 # agent  kind      locator                          parser

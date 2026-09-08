@@ -1139,14 +1139,14 @@ cmd_roles_set() {
         *)      _rs_ckey=role_$_rs_key ;;
     esac
 
-    # 2-4. The three fields. The agent list carries "(недоступен: …)" on entries the
-    #      environment cannot launch — strip it before the model lookup, which keys on
-    #      the bare agent name. Models offered are the live catalogue of THIS agent
-    #      (roles_models_of asks the agent's own channel — see roles.sh), plus the ones
-    #      already configured here and the tier suggestion, so the first run has
-    #      something to pick even where the agent cannot be asked.
+    # 2-4. The three fields. The agent list comes from harness_detect (harness.sh) —
+    #      the harnesses fraim knows about and that are present on this machine,
+    #      independent of any execution environment. Models offered are the live
+    #      catalogue of THIS agent (roles_models_of asks the agent's own channel —
+    #      see roles.sh), plus the ones already configured here and the tier
+    #      suggestion, so the first run has something to pick even where the agent
+    #      cannot be asked.
     _rs_agent=$(roles_agents_available | roles_pick "Агент:" 1) || die "отменено"
-    _rs_agent=${_rs_agent%% (недоступен:*}
     case $_rs_key in
         tier_*) _rs_tier=${_rs_key#tier_} ;;
         *)      _rs_tier=$(roles_tier_of "${_rs_key#role_}" 2>/dev/null || :) ;;

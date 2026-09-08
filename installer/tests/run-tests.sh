@@ -1961,9 +1961,8 @@ check "каждая библиотека подключена в диспетч�
 printf '\nroles: discovery моделей\n'
 
 # Парсеры проверяются на сохранённых фикстурах — реальном выводе источников, —
-# без установленных агентов (паттерн roles_parse_providers: парсер отделён от
-# вызова и принимает текст на stdin). Каждый вызов — свой sh -c, чтобы секции
-# не зависели от порядка и сбоя соседа.
+# без установленных агентов (парсер отделён от вызова и принимает текст на stdin).
+# Каждый вызов — свой sh -c, чтобы секции не зависели от порядка и сбоя соседа.
 roles_parse_out() {
     sh -c '
         . "'"$REPO"'/installer/lib/roles.sh"
@@ -2023,6 +2022,16 @@ done
 # roles_models_of: неизвестный агент — пусто, код 0 (источник не спрашивается).
 UNK=$(sh -c '. "'"$REPO"'/installer/lib/roles.sh"; roles_models_of no-such-agent; printf rc=%s "$?"' 2>&1)
 check "roles_models_of неизвестного агента пуст и без ошибки" "$UNK" "rc=0"
+
+# roles_agents_available: список агентов из harness_detect, не из Orca.
+# Проверяем что вывод — это ключи харнесов (по одному на строку), без орка-провайдеров
+# (kimi, grok, minimax) и без меток "(недоступен: …)".
+_AGENTS=$(sh -c '. "'"$REPO"'/installer/lib/harness.sh"; . "'"$REPO"'/installer/lib/roles.sh"; roles_agents_available' 2>/dev/null)
+check "roles_agents_available: есть вывод (харнесы детектированы)" "$_AGENTS" "$_AGENTS"
+[ -n "$_AGENTS" ] && check "roles_agents_available: нет орка-провайдеров (kimi/grok/minimax)" \
+    "$(printf '%s\n' "$_AGENTS" | grep -E 'kimi|grok|minimax' || true)" ""
+[ -n "$_AGENTS" ] && check "roles_agents_available: нет меток недоступности" \
+    "$(printf '%s\n' "$_AGENTS" | grep 'недоступен' || true)" ""
 
 printf '\n%s пройдено, %s провалено\n' "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ]

@@ -3,6 +3,12 @@
 > Newest on top. One entry per decision. Never rewrite history — supersede with a new
 > entry, or relocate stale entries to `ai/archive/decisions_log.md` via `/prune`.
 
+## 2026-09-08 — role picker agent list comes from the harness table, not Orca
+
+Context: `roles_agents_available` asked Orca (`orca account list --json`) for the list of agents in the role picker, coupling the picker to a specific execution environment. Devin (a harness fraim installs into) was invisible because Orca doesn't list it as a provider; Kimi (not installed, not in the harness table) appeared because Orca knows it as a provider. The product is environment-agnostic — Orca is one possible ADE, not a dependency.
+Decision: `roles_agents_available` now reads from `harness_detect` (harness.sh) — the same table fraim uses to install skills, probed by binary on PATH or home directory. `roles_providers` and `roles_parse_providers` removed as dead code. The picker shows only agents fraim knows and can serve; Orca remains the execution environment for fleet launch (a separate concern).
+Consequences: an agent not in the harness table cannot be picked even if Orca can launch it — add it to `harness_table` first. A harness present on the machine but not on PATH appears via its home directory probe.
+
 ## 2026-09-08 — role picker models come from per-agent live discovery, not a catalogue
 
 Context: the roles picker offered only hardcoded claude suggestions plus already-configured models; a wrong id surfaced only at fleet launch, where it degraded silently. Investigations (archived findings 2026-09-08) confirmed every installed agent carries its own fresh model data.
