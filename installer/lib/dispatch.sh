@@ -257,8 +257,13 @@ dispatch_waves() {
 }
 
 # The subtasks of one wave, in plan order.
+#
+# Taken first, filtered second — for the same reason as dispatch_wave_count: a pipeline
+# reports its LAST command's status, so piping straight into awk would answer "no such
+# wave" for a plan that was in fact refused for a cycle.
 dispatch_wave_ids() {
-    dispatch_waves "$1" | awk -F'\t' -v w="$2" '$2 == w { print $1 }'
+    _wi_all=$(dispatch_waves "$1") || return 1
+    printf '%s\n' "$_wi_all" | awk -F'\t' -v w="$2" '$2 == w { print $1 }'
 }
 
 # How many waves the plan has. 1 for a plan that declares no order at all.
