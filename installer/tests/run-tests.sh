@@ -2416,5 +2416,94 @@ check "строка состава на плоском плане" \
       "$(sh -c "$DLIB"'; dispatch_cost_line "$PLANS/flat.md"')" \
       "состав: 2 подзадачи, 1 волна, до 2 воркера одновременно"
 
+# ---------------------------------------------------- сбор волны в ветку сборки
+# Настоящие worktree и настоящие коммиты, без стаба среды: реестр чекаутов ведёт git, и
+# сбор обязан работать одинаково, кто бы чекаут ни создал — Orca или руки.
+printf '\nдиспетчер: сбор волны\n'
+
+CB="$SANDBOX/collect"; mkdir -p "$CB"; export CB
+git -C "$CB" init -q; git -C "$CB" config user.email t@t; git -C "$CB" config user.name t
+mkdir -p "$CB/ai/builds"
+printf 'base\n' > "$CB/one.py"; printf 'base\n' > "$CB/two.py"; printf 'base\n' > "$CB/three.py"
+git -C "$CB" add -A >/dev/null; git -C "$CB" commit -qm init >/dev/null
+
+cat > "$CB/plan.md" <<'PLAN'
+## Subtask: one
+**Role**: run-task
+**Summary**: первая
+
+### `one.py`
+- почему
+
+## Subtask: two
+**Role**: run-task
+**Summary**: вторая
+
+### `two.py`
+- почему
+PLAN
+
+BID=build-test; export BID
+BDIR="$CB/ai/builds/$BID"
+sh -c "$DLIB"'; build_seal "$CB" "$BID" "$CB/plan.md"' >/dev/null 2>&1
+check "сборка завела ветку fraim/build-test" \
+      "$(git -C "$CB" rev-parse --verify --quiet refs/heads/fraim/build-test >/dev/null 2>&1 && echo yes || echo no)" "yes"
+
+# Два воркера: свои чекауты от ветки сборки, свои коммиты в своих путях. Имя чекаута —
+# «сборка-подзадача», как его строит dispatch_launch: по нему dispatch_worker_tree и ищет.
+git -C "$CB" worktree add -q -b w-one "$SANDBOX/$BID-one" fraim/build-test
+git -C "$CB" worktree add -q -b w-two "$SANDBOX/$BID-two" fraim/build-test
+printf 'one\n' >> "$SANDBOX/$BID-one/one.py"
+git -C "$SANDBOX/$BID-one" commit -qam "one" >/dev/null
+printf 'two\n' >> "$SANDBOX/$BID-two/two.py"
+git -C "$SANDBOX/$BID-two" commit -qam "two" >/dev/null
+
+OUT=$(sh -c "$DLIB"'; dispatch_collect "$CB" "'"$BID"'"' 2>&1)
+check "сбор прошёл" "$?" "0"
+check "обе подзадачи слиты" "$(printf '%s' "$OUT" | grep -c 'слита')" "2"
+check "печатается объединённый дифф волны" "$(printf '%s' "$OUT" | grep -c 'изменила целиком')" "1"
+check "ветка сборки несёт обе правки" \
+      "$(git -C "$CB" show fraim/build-test:one.py | tail -1)$(git -C "$CB" show fraim/build-test:two.py | tail -1)" \
+      "onetwo"
+check "рабочее дерево дирижёра не тронуто" \
+      "$(git -C "$CB" rev-parse --abbrev-ref HEAD)" "master"
+check "временных чекаутов не осталось" \
+      "$(git -C "$CB" worktree list --porcelain | grep -c 'fraim-collect')" "0"
+check "журнал получил запись о сборе" "$(grep -c 'Сбор волны 1' "$BDIR/journal.md")" "1"
+check "collected.tsv помнит, что вернулось" "$(grep -c "	one	" "$BDIR/collected.tsv")" "1"
+
+# Повтор: собранное не собирается дважды.
+OUT=$(sh -c "$DLIB"'; dispatch_collect "$CB" "'"$BID"'" 1' 2>&1)
+check "повторный сбор ничего не сливает" "$(printf '%s' "$OUT" | grep -c 'уже собрана')" "2"
+
+# Отказ 1: незакоммиченная работа. Слить можно только коммит.
+cat > "$CB/plan2.md" <<'PLAN'
+## Subtask: three
+**Role**: run-task
+**Summary**: третья
+
+### `three.py`
+- почему
+PLAN
+BID2=build-dirty; export BID2
+sh -c "$DLIB"'; build_seal "$CB" "'"$BID2"'" "$CB/plan2.md"' >/dev/null 2>&1
+git -C "$CB" worktree add -q -b w-three "$SANDBOX/$BID2-three" fraim/build-dirty 2>/dev/null
+printf 'three\n' >> "$SANDBOX/$BID2-three/three.py"
+OUT=$(sh -c "$DLIB"'; dispatch_collect "$CB" "'"$BID2"'"' 2>&1)
+check "незакоммиченная работа — отказ" "$?" "1"
+check "отказ называет незакоммиченное" "$(printf '%s' "$OUT" | grep -c 'незакоммиченное')" "1"
+check "ветка сборки при отказе не двинулась" \
+      "$(git -C "$CB" show fraim/build-dirty:three.py | tail -1)" "base"
+
+# Отказ 2: правка вне объявленных путей. Ровно ради этой строки существует сверка с деревом.
+git -C "$SANDBOX/$BID2-three" commit -qam "three" >/dev/null
+printf 'stray\n' >> "$SANDBOX/$BID2-three/one.py"
+git -C "$SANDBOX/$BID2-three" commit -qam "stray" >/dev/null
+OUT=$(sh -c "$DLIB"'; dispatch_collect "$CB" "'"$BID2"'"' 2>&1)
+check "правка вне своих путей — отказ" "$?" "1"
+check "отказ называет чужой файл" "$(printf '%s' "$OUT" | grep -c 'one.py')" "1"
+check "ветка сборки не приняла чужую правку" \
+      "$(git -C "$CB" show fraim/build-dirty:three.py | tail -1)" "base"
+
 printf '\n%s пройдено, %s провалено\n' "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ]

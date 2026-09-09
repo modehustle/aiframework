@@ -501,6 +501,42 @@ dispatch_verify_tree() {
 
 build_dir() { printf '%s/ai/builds/%s\n' "$1" "$2"; }
 
+# The branch a build is assembled on. Named after the build, so a project may carry several
+# and none of them is the trunk.
+build_branch() { printf 'fraim/%s\n' "$1"; }
+
+# wave<TAB>subtask<TAB>merged sha<TAB>time. The record of what actually came back, in git —
+# «что кому роздано и что вернулось» is our truth (A3), unlike fleet.tsv which is a cache
+# of the environment's ids.
+build_collected_file() { printf '%s/collected.tsv\n' "$(build_dir "$1" "$2")"; }
+
+build_is_collected() {
+    _bic=$(build_collected_file "$1" "$2")
+    [ -f "$_bic" ] || return 1
+    awk -F'\t' -v s="$3" '$2 == s { found = 1 } END { exit !found }' "$_bic"
+}
+
+# The first wave that is not fully collected — what `dispatch run` launches when nobody
+# names a wave. A wave counts as collected only when every one of its subtasks is in
+# collected.tsv, so a wave where one worker was refused stays open and re-collecting it
+# picks up exactly what is missing.
+build_next_wave() {
+    _bnw_root=$1; _bnw_build=$2
+    _bnw_plan="$(build_dir "$_bnw_root" "$_bnw_build")/plan.md"
+    [ -f "$_bnw_plan" ] || return 1
+    _bnw_max=$(dispatch_wave_count "$_bnw_plan") || return 1
+    _bnw_w=1
+    while [ "$_bnw_w" -le "$_bnw_max" ]; do
+        for _bnw_id in $(dispatch_wave_ids "$_bnw_plan" "$_bnw_w"); do
+            build_is_collected "$_bnw_root" "$_bnw_build" "$_bnw_id" || {
+                printf '%s\n' "$_bnw_w"; return 0
+            }
+        done
+        _bnw_w=$(( _bnw_w + 1 ))
+    done
+    return 1
+}
+
 # ---------------------------------------------------------------------------
 # Launching the fleet
 #
@@ -542,7 +578,13 @@ dispatch_launch() {
     fleet_present || { printf >&2 'среда исполнения не найдена на этой машине\n'; return 1; }
     fleet_ready   || { printf >&2 'среда исполнения не отвечает — запусти её (orca open)\n'; return 1; }
 
-    _dl_base=$(cd "$_dl_root" && git rev-parse --abbrev-ref HEAD 2>/dev/null) || _dl_base=main
+    # Workers branch from the BUILD branch, not from whatever the conductor has checked
+    # out: that is what lets a later wave start on top of what an earlier one left, and it
+    # keeps the trunk out of the fleet's way entirely. Builds created before the build
+    # branch existed fall back to the current branch, so an old build still launches.
+    _dl_base=$(build_branch "$_dl_build")
+    git -C "$_dl_root" rev-parse --verify --quiet "refs/heads/$_dl_base" >/dev/null 2>&1 ||
+        _dl_base=$(cd "$_dl_root" && git rev-parse --abbrev-ref HEAD 2>/dev/null) || _dl_base=main
 
     _dl_run=$(fleet_run_create "fraim: сборка $_dl_build") || return 1
     printf 'Run: %s\n' "$_dl_run"
@@ -646,6 +688,17 @@ build_seal() {
     mkdir -p "$_bs_dir" || return 1
     cp "$_bs_plan" "$_bs_dir/plan.md" 2>/dev/null || return 1
 
+    # The build branch, created here and never checked out in the project root. Workers
+    # branch FROM it and their results are merged back INTO it, so the trunk stays
+    # untouched until a human moves it there after acceptance — the gate stands before
+    # the write to the trunk (MODES.md §4, вариант A), and a merge verb must not quietly
+    # step over it.
+    _bs_br=$(build_branch "$_bs_id")
+    if ! git -C "$_bs_root" rev-parse --verify --quiet "refs/heads/$_bs_br" >/dev/null 2>&1; then
+        git -C "$_bs_root" branch "$_bs_br" >/dev/null 2>&1 ||
+            printf >&2 'не удалось завести ветку сборки %s — сбор работать не будет\n' "$_bs_br"
+    fi
+
     {
         printf '# Журнал сборки %s\n\n' "$_bs_id"
         printf '## Состав\n\n'
@@ -663,6 +716,164 @@ build_seal() {
     } > "$_bs_dir/journal.md" || return 1
 
     printf '%s\n' "$_bs_dir/journal.md"
+}
+
+# ---------------------------------------------------------------------------
+# Collect: the stage that was missing entirely
+#
+# Until this existed, nothing brought the workers' results together: `build_accept` recorded
+# a time and a HEAD, and the merging was done by hand. Both mature answers to the same
+# problem outside our world make integration a first-class stage — Zuul's gate queue, which
+# tests each change on a tree that already carries the ones ahead of it, and Google's Rosie,
+# which submits each shard on its own — and neither leaves it to the end of the process.
+# Waves need it twice over: wave N+1 branches from what wave N left behind.
+#
+# Four refusals, and each is a lesson rather than a preference:
+#   1. no checkout for a subtask        — there is nothing to collect, and guessing is worse
+#   2. uncommitted work in the checkout — a merge takes commits; the first live build had a
+#                                         worker finish and leave it unstaged
+#   3. a file outside the declared paths — this is the one line the tree verification exists
+#                                         to produce (MODES.md §3); merging it with a warning
+#                                         would make the check decorative
+#   4. a merge conflict                 — inside a wave paths cannot collide and nothing else
+#                                         writes to the build branch, so a conflict means an
+#                                         assumption broke. Never auto-resolved.
+#
+# The merge happens in a throwaway checkout of the build branch: the conductor's own working
+# tree is never switched, and a failed merge leaves no half-merged state anywhere.
+# ---------------------------------------------------------------------------
+
+# One subtask into the build branch. Prints the merged sha on success.
+dispatch_merge_one() {
+    _mo_root=$1; _mo_branch=$2; _mo_sha=$3; _mo_msg=$4
+
+    _mo_tmp=$(mktemp -d) || return 1
+    rmdir "$_mo_tmp" 2>/dev/null || :
+    if ! git -C "$_mo_root" worktree add --quiet "$_mo_tmp" "$_mo_branch" >/dev/null 2>&1; then
+        printf >&2 'не удалось открыть чекаут ветки сборки %s\n' "$_mo_branch"
+        return 1
+    fi
+
+    _mo_rc=0
+    if ! git -C "$_mo_tmp" merge --no-ff -m "$_mo_msg" "$_mo_sha" >/dev/null 2>&1; then
+        printf >&2 'конфликт слияния:\n'
+        git -C "$_mo_tmp" diff --name-only --diff-filter=U 2>/dev/null | sed 's/^/    /' >&2
+        git -C "$_mo_tmp" merge --abort >/dev/null 2>&1 || :
+        _mo_rc=1
+    fi
+
+    git -C "$_mo_root" worktree remove --force "$_mo_tmp" >/dev/null 2>&1 || rm -rf "$_mo_tmp"
+    [ "$_mo_rc" -eq 0 ] || return 1
+    git -C "$_mo_root" rev-parse --short "$_mo_branch" 2>/dev/null
+}
+
+# Collect one wave. Returns 1 if any subtask was refused — after trying them all, because
+# the ones that pass are independent by construction and holding them back helps nobody.
+dispatch_collect() {
+    _co_root=$1; _co_build=$2; _co_wave=${3:-}
+
+    _co_dir=$(build_dir "$_co_root" "$_co_build")
+    _co_plan="$_co_dir/plan.md"
+    [ -f "$_co_plan" ] || { printf >&2 'нет плана сборки %s\n' "$_co_build"; return 1; }
+    [ -f "$_co_dir/journal.md" ] ||
+        { printf >&2 'сборка %s не заводилась: нет журнала\n' "$_co_build"; return 1; }
+
+    _co_branch=$(build_branch "$_co_build")
+    git -C "$_co_root" rev-parse --verify --quiet "refs/heads/$_co_branch" >/dev/null 2>&1 || {
+        printf >&2 'нет ветки сборки %s — эта сборка заведена до появления сбора\n' "$_co_branch"
+        return 1
+    }
+
+    if [ -z "$_co_wave" ]; then
+        _co_wave=$(build_next_wave "$_co_root" "$_co_build") || {
+            printf >&2 'все волны сборки %s уже собраны\n' "$_co_build"; return 1
+        }
+    fi
+
+    _co_ids=$(dispatch_wave_ids "$_co_plan" "$_co_wave") || return 1
+    [ -n "$_co_ids" ] || { printf >&2 'в сборке %s нет волны %s\n' "$_co_build" "$_co_wave"; return 1; }
+
+    # Where the build branch stood before this wave: the base for the combined diff the
+    # conductor reads at the end, and the point every worker of this wave branched from.
+    _co_before=$(git -C "$_co_root" rev-parse "$_co_branch" 2>/dev/null)
+    _co_file=$(build_collected_file "$_co_root" "$_co_build")
+    _co_bad=0
+
+    printf 'Волна %s сборки %s\n' "$_co_wave" "$_co_build"
+    for _co_id in $_co_ids; do
+        if build_is_collected "$_co_root" "$_co_build" "$_co_id"; then
+            printf '  %-12s уже собрана\n' "$_co_id"
+            continue
+        fi
+
+        _co_tree=$(dispatch_worker_tree "$_co_root" "$_co_build-$_co_id")
+        if [ -z "$_co_tree" ]; then
+            printf '  %-12s чекаута нет — собирать нечего\n' "$_co_id"
+            _co_bad=1; continue
+        fi
+
+        _co_dirty=$(cd "$_co_tree" 2>/dev/null && {
+                git status --porcelain 2>/dev/null | head -20
+            })
+        if [ -n "$_co_dirty" ]; then
+            printf '  %-12s есть незакоммиченное — слить можно только коммит:\n' "$_co_id"
+            printf '%s\n' "$_co_dirty" | sed 's/^/      /'
+            _co_bad=1; continue
+        fi
+
+        _co_base=$(git -C "$_co_tree" merge-base HEAD "$_co_branch" 2>/dev/null)
+        [ -n "$_co_base" ] || _co_base=$_co_before
+        _co_paths=$(dispatch_field "$_co_plan" "$_co_id" 4)
+
+        # The tree, not the report (MODES.md §3). This runs BEFORE the merge on purpose:
+        # after it, a stray file is already in the build branch and the check is archaeology.
+        _co_out=$(dispatch_verify_tree "$_co_tree" "$_co_base" "$_co_paths" 2>/dev/null |
+                  sed -n 's/^outside://p')
+        if [ -n "$_co_out" ]; then
+            printf '  %-12s вышла за свои пути — не сливаю:\n' "$_co_id"
+            printf '%s\n' "$_co_out" | sed 's/^/      /'
+            _co_bad=1; continue
+        fi
+
+        _co_sha=$(git -C "$_co_tree" rev-parse HEAD 2>/dev/null)
+        if [ "$_co_sha" = "$_co_base" ]; then
+            printf '  %-12s ничего не изменила\n' "$_co_id"
+            printf '%s\t%s\t—\t%s\n' "$_co_wave" "$_co_id" \
+                "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" >> "$_co_file"
+            continue
+        fi
+
+        if _co_merged=$(dispatch_merge_one "$_co_root" "$_co_branch" "$_co_sha" \
+                            "сборка $_co_build: подзадача $_co_id"); then
+            printf '  %-12s слита → %s\n' "$_co_id" "$_co_merged"
+            printf '%s\t%s\t%s\t%s\n' "$_co_wave" "$_co_id" "$_co_merged" \
+                "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" >> "$_co_file"
+        else
+            printf '  %-12s слияние не прошло\n' "$_co_id"
+            _co_bad=1
+        fi
+    done
+
+    _co_after=$(git -C "$_co_root" rev-parse "$_co_branch" 2>/dev/null)
+
+    # The combined diff of the whole wave, not one subtask at a time. This is the only place
+    # where a divergence the path check cannot see — two workers naming the same thing
+    # differently, two different error formats — becomes visible at all. It is a look, not
+    # a verdict: nothing here decides anything, the conductor reads it.
+    if [ -n "$_co_before" ] && [ "$_co_before" != "$_co_after" ]; then
+        printf '\nЧто волна изменила целиком:\n'
+        git -C "$_co_root" diff --stat "$_co_before" "$_co_after" 2>/dev/null | sed 's/^/  /'
+    fi
+
+    {
+        printf '\n## Сбор волны %s — %s\n\n' "$_co_wave" "$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+        if [ -f "$_co_file" ]; then
+            awk -F'\t' -v w="$_co_wave" '$1 == w { printf "- %s → %s\n", $2, $3 }' "$_co_file"
+        fi
+        [ "$_co_bad" -eq 0 ] || printf -- '- собрана не полностью: часть подзадач отклонена\n'
+    } >> "$_co_dir/journal.md"
+
+    [ "$_co_bad" -eq 0 ]
 }
 
 # Acceptance: one per build, and it refuses rather than reports success on a build

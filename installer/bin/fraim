@@ -59,7 +59,8 @@ fraim — эксплуатационный слой для проектов на
   fraim clean [--yes]       прибрать всё, что чинится без суждения
   fraim publish [--check]   копия проекта вне этой машины: создать, отправить, сверить
                             (--brief — задание агенту вычистить найденное)
-  fraim dispatch ПЛАН       параллельный режим: проверить план и завести сборку
+  fraim dispatch ПЛАН       режим флота: проверить план и завести сборку
+  fraim dispatch collect СБОРКА  свести волну в ветку сборки
                             run СБОРКА — поднять флот в среде исполнения
                             watch СБОРКА — что среда говорит о воркерах
                             verify СБОРКА ПОДЗАДАЧА — сверить дерево с путями
@@ -1047,6 +1048,23 @@ cmd_dispatch() {
             dim "    состояние терминала — не статус задачи: завершённая задача может"
             dim "    держать живой терминал. Что сделано — покажет dispatch verify."
             ;;
+        collect)
+            [ $# -ge 2 ] || die "нужно: fraim dispatch collect СБОРКА [ВОЛНА]"
+            if dispatch_collect "$_root" "$2" "${3:-}"; then
+                say ""
+                ok "волна собрана в ветку $(build_branch "$2")"
+                if _next=$(build_next_wave "$_root" "$2"); then
+                    dim "    следующая волна:  fraim dispatch run $2"
+                    dim "    (волна $_next — воркеры пойдут от собранной ветки)"
+                else
+                    dim "    все волны собраны — сверить и принять:"
+                    dim "    fraim dispatch verify $2 ПОДЗАДАЧА · fraim dispatch accept $2"
+                fi
+            else
+                say ""
+                die "волна собрана не полностью — разберись с отклонёнными и повтори"
+            fi
+            ;;
         accept)
             [ $# -ge 2 ] || die "нужно: fraim dispatch accept СБОРКА"
             build_accept "$_root" "$2" >/dev/null || die "приёмка не прошла"
@@ -1056,7 +1074,7 @@ cmd_dispatch() {
             build_list "$_root"
             ;;
         "")
-            die "нужно: fraim dispatch ПЛАН (или check / verify / accept / list)"
+            die "нужно: fraim dispatch ПЛАН (или check / run / watch / collect / verify / accept / list)"
             ;;
         *)
             _plan=$_sub

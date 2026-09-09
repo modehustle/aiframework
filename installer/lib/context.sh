@@ -148,7 +148,11 @@ The short version, so you do not start in the wrong place:
 - **You never accept the build.** One acceptance per build, and it belongs to the human.
 
 Mechanics: `fraim dispatch check ПЛАН` before anything is handed out, then
-`fraim dispatch ПЛАН`, `fraim dispatch run СБОРКА`, `fraim dispatch watch СБОРКА`,
+`fraim dispatch ПЛАН`, `fraim dispatch run СБОРКА` (one wave — the first uncollected one),
+`fraim dispatch watch СБОРКА`, `fraim dispatch collect СБОРКА` (merges the wave into the
+build branch, refuses on uncommitted work, on a file outside the declared paths, and on a
+conflict; then prints the wave's combined diff — read it whole, that is where a divergence
+the path check cannot see shows up), then the next `run`, and
 `fraim dispatch verify СБОРКА ПОДЗАДАЧА`. The human runs `fraim dispatch accept`.
 BLKEOF
 }
