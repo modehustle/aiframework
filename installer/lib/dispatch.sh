@@ -21,6 +21,7 @@
 #
 #     ## Subtask: A
 #     **Role**: run-task
+#     **After**: B          (optional — order, see waves below)
 #     **Summary**: one line, for the worker's task.md
 #
 #     ### `path/to/file`
@@ -31,7 +32,7 @@
 # effort; it is the plan's only statement about the executor, on purpose.
 # ---------------------------------------------------------------------------
 
-# One record per subtask: id|role|summary|comma-separated paths
+# One record per subtask: id|role|summary|comma-separated paths|comma-separated After ids
 # Fields are emitted even when empty so the validator can name what is missing
 # rather than silently skipping the block.
 #
@@ -43,8 +44,8 @@ dispatch_parse_plan() {
     [ -f "$1" ] || return 0
     awk '
         function flush() {
-            if (id != "") print id "|" role "|" summary "|" paths
-            id = ""; role = ""; summary = ""; paths = ""
+            if (id != "") print id "|" role "|" summary "|" paths "|" after
+            id = ""; role = ""; summary = ""; paths = ""; after = ""
         }
         /^## Subtask:/ { flush(); id = $3; next }
         id == "" { next }
@@ -53,6 +54,9 @@ dispatch_parse_plan() {
         }
         /^\*\*Summary\*\*:/ {
             summary = $0; sub(/^\*\*Summary\*\*:[[:space:]]*/, "", summary); next
+        }
+        /^\*\*After\*\*:/ {
+            after = $0; sub(/^\*\*After\*\*:[[:space:]]*/, "", after); next
         }
         /^### `/ {
             p = $0; sub(/^### `/, "", p); sub(/`.*$/, "", p)
@@ -166,6 +170,198 @@ dispatch_check() {
 
     [ "$_dc_bad" -eq 0 ] || return 1
     return 0
+}
+
+# ---------------------------------------------------------------------------
+# Waves: the order inside a plan
+#
+# A subtask may declare `**After**: id[, id]` — it runs after the named ones. Waves are
+# DERIVED from that, never written by hand: wave(x) = 1 + max(wave(its After)), a subtask
+# with no After is wave 1. The reason is that a dependency is a LOCAL fact the author of
+# the block knows, while a wave number is a global fact about the whole plan that has to be
+# recomputed by hand on every edit — and a stale renumbering is exactly the error no check
+# could see.
+#
+# This is the Bulk Synchronous Parallel model (Pregel, MapReduce): a wave is a superstep,
+# and the barrier between waves is what makes every merge conflict-free by construction —
+# inside a wave paths cannot collide, and nothing else writes to the build branch while the
+# wave runs. The cost is the idle worker: a wave waits for its slowest piece. That cost is
+# paid on purpose; the alternative (start each subtask the moment ITS dependencies land) is
+# a scheduler of our own, which MODES.md §10 forbids, and it would also make merges depend
+# on the completion signal — the one thing this design refuses to trust.
+#
+# Prints `id<TAB>wave`, in plan order. Refuses (exit 1) on an After that names nothing and
+# on a dependency cycle, because both cost N launches to discover otherwise.
+# ---------------------------------------------------------------------------
+dispatch_waves() {
+    dispatch_parse_plan "$1" | awk -F'|' '
+        { n = NR; id[n] = $1; after[n] = $5; known[$1] = 1 }
+        END {
+            for (i = 1; i <= n; i++) {
+                if (after[i] == "") continue
+                m = split(after[i], a, ",")
+                for (j = 1; j <= m; j++) {
+                    gsub(/^[ \t]+|[ \t]+$/, "", a[j])
+                    if (a[j] == "") continue
+                    if (!(a[j] in known)) {
+                        printf "подзадача %s: «After: %s» — такой подзадачи в плане нет\n", \
+                            id[i], a[j] > "/dev/stderr"
+                        bad = 1
+                    }
+                }
+            }
+            if (bad) exit 1
+
+            for (i = 1; i <= n; i++) w[i] = 1
+            # One relaxation pass can only raise a level by one, so n passes suffice for an
+            # acyclic plan. Still changing after that means a cycle — and a cycle must be
+            # named rather than silently levelled, or the plan runs in an order nobody meant.
+            for (pass = 0; pass <= n; pass++) {
+                changed = 0
+                for (i = 1; i <= n; i++) {
+                    if (after[i] == "") continue
+                    m = split(after[i], a, ",")
+                    for (j = 1; j <= m; j++) {
+                        gsub(/^[ \t]+|[ \t]+$/, "", a[j])
+                        if (a[j] == "") continue
+                        for (k = 1; k <= n; k++)
+                            if (id[k] == a[j] && w[k] + 1 > w[i]) { w[i] = w[k] + 1; changed = 1 }
+                    }
+                }
+                if (!changed) break
+            }
+            if (changed) {
+                print "цикл зависимостей: волны не выводятся, план надо переписать" > "/dev/stderr"
+                exit 1
+            }
+            for (i = 1; i <= n; i++) printf "%s\t%s\n", id[i], w[i]
+        }'
+}
+
+# The subtasks of one wave, in plan order.
+dispatch_wave_ids() {
+    dispatch_waves "$1" | awk -F'\t' -v w="$2" '$2 == w { print $1 }'
+}
+
+# How many waves the plan has. 1 for a plan that declares no order at all.
+#
+# The wave list is taken first and cut afterwards: a pipeline's status is its LAST command's,
+# so `dispatch_waves … | cut` would report the exit code of `cut` and turn a refused plan
+# (ghost After, cycle) into a confident "1 wave".
+dispatch_wave_count() {
+    _wc_all=$(dispatch_waves "$1") || return 1
+    _wc=$(printf '%s\n' "$_wc_all" | cut -f2 | sort -n | tail -1)
+    printf '%s\n' "${_wc:-1}"
+}
+
+# ---------------------------------------------------------------------------
+# The arithmetic of a build: what it costs, and whether one acceptance stays honest
+#
+# Every number here comes from ONE scarce resource, and it is not the machine and not the
+# subscription: it is the single acceptance (MODES.md §5). A build of twelve subtasks is
+# not accepted by one decision but by twelve, and then the mode's whole promise is a lie.
+#
+# They are WARNINGS, never refusals, and the line between the two is the point:
+#   - refuse only on what the machine knows exactly — a path in two subtasks of one wave,
+#     a cycle, an unresolvable role. Those are facts.
+#   - warn on all arithmetic of size. A file count does not measure work, and refusing on
+#     such a metric would be lying with precision.
+# The conductor reads the warning and decides; that is the same division as the watchman's
+# («сторож замечает, человек решает»).
+#
+# The time threshold that used to live here («кусок дольше получаса») is deliberately
+# absent: nobody can measure it — not the conductor before dispatch, not the human, not
+# the machine after — and it read as a rule while working as the cheapest excuse to refuse.
+# What replaces it is a comparison the conductor states out loud in the plan: dispatching
+# is worth it when executing the piece costs more than dispatching it.
+# ---------------------------------------------------------------------------
+DISPATCH_MAX_SUBTASKS=6
+DISPATCH_WAVE_MIN=3
+DISPATCH_WAVE_MAX=5
+DISPATCH_MAX_WAVES=3
+DISPATCH_PATHS_MIN=2
+DISPATCH_PATHS_MAX=10
+
+# Warnings about size. Prints to stderr and always returns 0 — a caller must never be able
+# to turn these into a refusal by accident.
+dispatch_size_notes() {
+    _sn_plan=$1
+    _sn_recs=$(dispatch_parse_plan "$_sn_plan")
+    [ -n "$_sn_recs" ] || return 0
+
+    _sn_n=$(printf '%s\n' "$_sn_recs" | grep -c '[^[:space:]]')
+    [ "$_sn_n" -le "$DISPATCH_MAX_SUBTASKS" ] ||
+        printf >&2 'подзадач %s: приёмка одним решением на такой сборке сомнительна (потолок %s)\n' \
+            "$_sn_n" "$DISPATCH_MAX_SUBTASKS"
+
+    # Width and depth. Until a plan declares order, the whole build is one wave, and the
+    # width IS the count — so this reads correctly both before and after waves exist.
+    _sn_waves=$(dispatch_waves "$_sn_plan" 2>/dev/null) || _sn_waves=
+    if [ -n "$_sn_waves" ]; then
+        _sn_depth=$(printf '%s\n' "$_sn_waves" | cut -f2 | sort -n | tail -1)
+        [ "${_sn_depth:-1}" -le "$DISPATCH_MAX_WAVES" ] ||
+            printf >&2 'волн %s: это уже последовательный проект, а не сборка (потолок %s)\n' \
+                "$_sn_depth" "$DISPATCH_MAX_WAVES"
+        _sn_w=1
+        while [ "$_sn_w" -le "${_sn_depth:-1}" ]; do
+            _sn_wn=$(printf '%s\n' "$_sn_waves" | awk -F'\t' -v w="$_sn_w" '$2 == w' | grep -c '[^[:space:]]')
+            if [ "$_sn_wn" -gt "$DISPATCH_WAVE_MAX" ]; then
+                printf >&2 'волна %s: %s подзадач одновременно — координация и приёмка растут быстрее выигрыша (потолок %s)\n' \
+                    "$_sn_w" "$_sn_wn" "$DISPATCH_WAVE_MAX"
+            elif [ "$_sn_wn" -lt "$DISPATCH_WAVE_MIN" ] && [ "${_sn_depth:-1}" -eq 1 ]; then
+                # Only for a single-wave build: a narrow wave inside a chain is the point
+                # of waves, not a mistake.
+                printf >&2 'подзадач %s: раздача редко окупается ниже %s — но считаешь ты, а не эта строка\n' \
+                    "$_sn_wn" "$DISPATCH_WAVE_MIN"
+            fi
+            _sn_w=$(( _sn_w + 1 ))
+        done
+    fi
+
+    printf '%s\n' "$_sn_recs" | while IFS='|' read -r _sn_id _sn_role _sn_sum _sn_paths _sn_after; do
+        [ -n "$_sn_id" ] || continue
+        _sn_pn=$(printf '%s\n' "$_sn_paths" | tr ',' '\n' | grep -c '[^[:space:]]')
+        if [ "$_sn_pn" -lt "$DISPATCH_PATHS_MIN" ]; then
+            printf >&2 'подзадача %s: %s путь — вероятно, мельче цены раздачи\n' "$_sn_id" "$_sn_pn"
+        elif [ "$_sn_pn" -gt "$DISPATCH_PATHS_MAX" ]; then
+            printf >&2 'подзадача %s: %s путей — вероятно, это два куска, а не один\n' "$_sn_id" "$_sn_pn"
+        fi
+    done
+    return 0
+}
+
+# The one line that answers "what does this build cost and what does it buy", printed
+# before a single worker starts. Google's Rosie grew a formal review process for exactly
+# this reason: an expensive mechanism aimed at cheap work eats more than it gives, and the
+# cheapest guard against that is making the arithmetic visible at the moment of the choice.
+dispatch_cost_line() {
+    _cl_plan=$1
+    _cl_n=$(dispatch_subtask_ids "$_cl_plan" | grep -c '[^[:space:]]')
+    _cl_waves=$(dispatch_waves "$_cl_plan" 2>/dev/null) || _cl_waves=
+    _cl_depth=1
+    [ -n "$_cl_waves" ] && _cl_depth=$(printf '%s\n' "$_cl_waves" | cut -f2 | sort -n | tail -1)
+    _cl_wide=$_cl_n
+    if [ -n "$_cl_waves" ]; then
+        _cl_wide=$(printf '%s\n' "$_cl_waves" | cut -f2 | sort | uniq -c | awk '{ if ($1 > m) m = $1 } END { print m + 0 }')
+    fi
+    printf 'состав: %s %s, %s %s, до %s %s одновременно\n' \
+        "$_cl_n" "$(dispatch_plural "$_cl_n" подзадача подзадачи подзадач)" \
+        "${_cl_depth:-1}" "$(dispatch_plural "${_cl_depth:-1}" волна волны волн)" \
+        "$_cl_wide" "$(dispatch_plural "$_cl_wide" воркер воркера воркеров)"
+}
+
+# Russian plural for the counts above. Borrowed shape from wm_plural, kept local because
+# dispatch.sh must stay usable without the watchman.
+dispatch_plural() {
+    _dp_n=$1
+    case $(( _dp_n % 100 )) in
+        1[1-9]) printf '%s\n' "$4" ;;
+        *) case $(( _dp_n % 10 )) in
+               1) printf '%s\n' "$2" ;;
+               2|3|4) printf '%s\n' "$3" ;;
+               *) printf '%s\n' "$4" ;;
+           esac ;;
+    esac
 }
 
 # What dispatch is about to do, before it does it: who runs what, on which model,

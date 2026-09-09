@@ -2233,5 +2233,188 @@ check "roles_agents_available: есть вывод (харнесы детект�
 [ -n "$_AGENTS" ] && check "roles_agents_available: нет меток недоступности" \
     "$(printf '%s\n' "$_AGENTS" | grep 'недоступен' || true)" ""
 
+# ---------------------------------------------------- план сборки: волны и арифметика
+printf '\nдиспетчер: волны и арифметика сборки\n'
+
+DLIB='. "'"$REPO"'/installer/lib/core.sh"; . "'"$REPO"'/installer/lib/config.sh"
+    . "'"$REPO"'/installer/lib/harness.sh"; . "'"$REPO"'/installer/lib/ade.sh"
+    . "'"$REPO"'/installer/lib/fleet.sh"; . "'"$REPO"'/installer/lib/roles.sh"
+    . "'"$REPO"'/installer/lib/dispatch.sh"'
+PLANS="$SANDBOX/plans"; mkdir -p "$PLANS"; export PLANS
+
+# План без порядка — одна волна, поведение старых планов не меняется ни на байт.
+cat > "$PLANS/flat.md" <<'PLAN'
+## Subtask: a
+**Role**: run-task
+**Summary**: раз
+
+### `a1.py`
+- почему
+
+### `a2.py`
+- почему
+
+## Subtask: b
+**Role**: run-task
+**Summary**: два
+
+### `b1.py`
+- почему
+
+### `b2.py`
+- почему
+PLAN
+check "план без After — одна волна" \
+      "$(sh -c "$DLIB"'; dispatch_wave_count "$PLANS/flat.md"')" "1"
+
+# План с порядком: contract → backend + frontend, и волна 2 делит файл с волной 1.
+cat > "$PLANS/waves.md" <<'PLAN'
+## Subtask: contract
+**Role**: run-task
+**Summary**: контракт
+
+### `docs/events.md`
+- формат
+
+### `docs/schema.json`
+- схема
+
+## Subtask: backend
+**Role**: run-task
+**After**: contract
+**Summary**: бэкенд
+
+### `src/api.py`
+- отправка
+
+### `docs/events.md`
+- пример
+
+## Subtask: frontend
+**Role**: run-task
+**After**: contract
+**Summary**: фронт
+
+### `web/app.js`
+- приём
+
+### `web/style.css`
+- вид
+PLAN
+check "волны выводятся из After" \
+      "$(sh -c "$DLIB"'; dispatch_waves "$PLANS/waves.md"' | tr '\t' ':' | tr '\n' ' ')" \
+      "contract:1 backend:2 frontend:2 "
+check "подзадачи волны 2" \
+      "$(sh -c "$DLIB"'; dispatch_wave_ids "$PLANS/waves.md" 2' | tr '\n' ' ')" "backend frontend "
+
+# After в никуда и цикл — отказ, а не молчаливое выравнивание: и то и другое стоит
+# N запусков, если обнаружится после раздачи.
+cat > "$PLANS/ghost.md" <<'PLAN'
+## Subtask: a
+**Role**: run-task
+**After**: nosuch
+**Summary**: раз
+
+### `a1.py`
+- почему
+PLAN
+sh -c "$DLIB"'; dispatch_waves "$PLANS/ghost.md"' >/dev/null 2>&1
+check "After в несуществующую подзадачу — отказ" "$?" "1"
+check "отказ называет подзадачу" \
+      "$(sh -c "$DLIB"'; dispatch_waves "$PLANS/ghost.md"' 2>&1 >/dev/null | grep -c 'nosuch')" "1"
+
+cat > "$PLANS/cycle.md" <<'PLAN'
+## Subtask: a
+**Role**: run-task
+**After**: b
+**Summary**: раз
+
+### `a1.py`
+- почему
+
+## Subtask: b
+**Role**: run-task
+**After**: a
+**Summary**: два
+
+### `b1.py`
+- почему
+PLAN
+sh -c "$DLIB"'; dispatch_waves "$PLANS/cycle.md"' >/dev/null 2>&1
+check "цикл зависимостей — отказ" "$?" "1"
+check "отказ называет цикл" \
+      "$(sh -c "$DLIB"'; dispatch_waves "$PLANS/cycle.md"' 2>&1 >/dev/null | grep -c 'цикл')" "1"
+
+# Арифметика: предупреждения печатаются, но НИКОГДА не меняют код возврата — иначе
+# метрика, которая не измеряет работу, начнёт ронять планы.
+cat > "$PLANS/big.md" <<'PLAN'
+## Subtask: a
+**Role**: run-task
+**Summary**: раз
+
+### `a1.py`
+- x
+
+## Subtask: b
+**Role**: run-task
+**Summary**: два
+
+### `b1.py`
+- x
+
+## Subtask: c
+**Role**: run-task
+**Summary**: три
+
+### `c1.py`
+- x
+
+## Subtask: d
+**Role**: run-task
+**Summary**: четыре
+
+### `d1.py`
+- x
+
+## Subtask: e
+**Role**: run-task
+**Summary**: пять
+
+### `e1.py`
+- x
+
+## Subtask: f
+**Role**: run-task
+**Summary**: шесть
+
+### `f1.py`
+- x
+
+## Subtask: g
+**Role**: run-task
+**Summary**: семь
+
+### `g1.py`
+- x
+PLAN
+check "7 подзадач — предупреждение о потолке приёмки" \
+      "$(sh -c "$DLIB"'; dispatch_size_notes "$PLANS/big.md"' 2>&1 >/dev/null | grep -c 'потолок 6')" "1"
+check "широкая волна — предупреждение" \
+      "$(sh -c "$DLIB"'; dispatch_size_notes "$PLANS/big.md"' 2>&1 >/dev/null | grep -c 'одновременно')" "1"
+check "подзадача с одним путём — предупреждение" \
+      "$(sh -c "$DLIB"'; dispatch_size_notes "$PLANS/big.md"' 2>&1 >/dev/null | grep -c 'мельче цены раздачи')" "7"
+sh -c "$DLIB"'; dispatch_size_notes "$PLANS/big.md"' >/dev/null 2>&1
+check "предупреждения не меняют код возврата" "$?" "0"
+check "чистый план не предупреждает ни о чём" \
+      "$(sh -c "$DLIB"'; dispatch_size_notes "$PLANS/waves.md"' 2>&1 >/dev/null)" ""
+
+# Строка состава: что эта сборка стоит, до единого запуска.
+check "строка состава считает подзадачи, волны и ширину" \
+      "$(sh -c "$DLIB"'; dispatch_cost_line "$PLANS/waves.md"')" \
+      "состав: 3 подзадачи, 2 волны, до 2 воркера одновременно"
+check "строка состава на плоском плане" \
+      "$(sh -c "$DLIB"'; dispatch_cost_line "$PLANS/flat.md"')" \
+      "состав: 2 подзадачи, 1 волна, до 2 воркера одновременно"
+
 printf '\n%s пройдено, %s провалено\n' "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ]

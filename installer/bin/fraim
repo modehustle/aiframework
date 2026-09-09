@@ -975,6 +975,11 @@ cmd_dispatch() {
         dispatch_check "$2" "$_root" || die "план не годится для параллельной раздачи"
         ok "план проходит dispatch-check"
         say ""
+        # What this build costs, before a single worker starts. Warnings first, because a
+        # plan that passes the checks can still be a build nobody can accept in one sitting.
+        dispatch_size_notes "$2"
+        say "$(dispatch_cost_line "$2")"
+        say ""
         dispatch_report "$2" "$_root"
         return 0
     fi
@@ -1057,6 +1062,7 @@ cmd_dispatch() {
             _plan=$_sub
             [ -f "$_plan" ] || die "плана нет: $_plan"
             dispatch_check "$_plan" "$_root" || die "план не годится для параллельной раздачи"
+            dispatch_size_notes "$_plan"
 
             _bid=build-$(date -u '+%Y%m%d-%H%M%S')
             build_seal "$_root" "$_bid" "$_plan" >/dev/null || die "не удалось завести журнал сборки"
