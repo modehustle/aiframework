@@ -733,10 +733,10 @@ build_seal() {
     cp "$_bs_plan" "$_bs_dir/plan.md" 2>/dev/null || return 1
 
     # The build branch, created here and never checked out in the project root. Workers
-    # branch FROM it and their results are merged back INTO it, so the trunk stays
-    # untouched until a human moves it there after acceptance — the gate stands before
-    # the write to the trunk (MODES.md §4, вариант A), and a merge verb must not quietly
-    # step over it.
+    # branch FROM it and their results are merged back INTO it, so the trunk stays untouched
+    # for the whole life of the build: `collect` writes only here, and the single merge into
+    # the trunk happens once, in `accept`, after everything has been checked (MODES.md §4,
+    # вариант B). No other verb touches the trunk.
     _bs_br=$(build_branch "$_bs_id")
     if ! git -C "$_bs_root" rev-parse --verify --quiet "refs/heads/$_bs_br" >/dev/null 2>&1; then
         git -C "$_bs_root" branch "$_bs_br" >/dev/null 2>&1 ||
@@ -921,34 +921,33 @@ dispatch_collect() {
 }
 
 # ---------------------------------------------------------------------------
-# Acceptance: the conductor's work, and the report a human ratifies over
+# Acceptance: the whole of it is the conductor's, trunk write included
 #
-# One word carried two different things, and the CLI stamped only the second. `build_accept`
-# wrote a time and a HEAD; everything that should have come before it — verify each subtask
-# against the tree, look at what the build changed as a whole, run the project's own check on
-# the assembled branch, tidy up what the fleet created — was a list of commands somebody had
-# to remember, one at a time, in a chat. What reached the human was N diffs and the word
-# «принято», which is the opposite of what the mode promises (MODES.md §5).
+# The word «приёмка» used to carry two things and the CLI stamped only the second:
+# `build_accept` wrote a time and a HEAD, while everything that should have come before it
+# — verify each subtask against the tree, look at the build as a whole, run the project's
+# own check, tidy up after the fleet — was a list of commands somebody had to remember, one
+# at a time, in a chat. What reached the human was N diffs and the word «принято».
 #
-# Split the word and each half gets an owner:
+# So the checking became the conductor's. Then the same logic finished the sentence: the
+# human does not type commands at all here, and the trunk write is not a decision, it is
+# the last step of checking — a build nobody merged has not been checked against the tree
+# it has to live in. `accept` therefore does everything and prints a report to the terminal;
+# the human reads that report and says whether it is right.
 #
-#   приёмка      — CHECKING. The conductor verifies, looks, runs the check, cleans up and
-#                  writes a report. It is work, and work is what a conductor is for.
-#   ратификация  — JUDGEMENT. «Годится?» — the human's, over that report, and nothing
-#                  reaches the trunk without it.
+# This is MODES.md §4 вариант B, and it is affordable now for a reason that did not exist
+# when §4 was written: `collect` assembles the whole build into ONE branch, so the trunk
+# write is ONE `--no-ff` merge commit and undoing it is `fraim undo <sha>` — not the unwind
+# of N interleaved results §4 refused. The commit carries the `fraim:` trailer precisely so
+# that verb can recognise it as ours.
 #
-# B5 is untouched by this, and the distinction is the reason: the stop for judgement still
-# exists and still belongs to the human — it now stands in front of one report instead of in
-# front of N diffs. What moved is the labour, not the authority.
-#
-# What this deliberately does NOT do is write the trunk. The gate stands before that write
-# (MODES.md §4, вариант A) and no verb steps over it: the report ends with the command for
-# the human to type, and typing it is the ratification.
+# What still refuses to happen silently: the trunk write is skipped, loudly, whenever the
+# machine knows something is wrong — a red project check, a dirty working tree, a conflict,
+# an empty build. Judgement did not move to the machine; only the labour did, and a red
+# check is not judgement.
 # ---------------------------------------------------------------------------
 
-build_report_file()   { printf '%s/report.md\n' "$(build_dir "$1" "$2")"; }
-build_accepted_file() { printf '%s/accepted\n'  "$(build_dir "$1" "$2")"; }
-build_returned_file() { printf '%s/returned\n'  "$(build_dir "$1" "$2")"; }
+build_accepted_file() { printf '%s/accepted\n' "$(build_dir "$1" "$2")"; }
 
 # Where the build branch started. The journal wrote it down when the build was sealed —
 # that is our record (A3), and it stays true after the trunk moves on. Only when the line
@@ -1069,13 +1068,50 @@ build_cleanup() {
     fi
 }
 
-# The conductor's acceptance. Refuses rather than reports success on a build whose evidence
-# is missing — an earlier version printed «принято» after failing to read the result, which
-# is the single worst thing an acceptance can do.
+# The trunk write: one --no-ff merge of the build branch into whatever branch the project
+# root has checked out. Refuses instead of guessing in the four cases where merging would
+# be destructive or meaningless, and every refusal names the thing to fix.
 #
-# Returns 0 when the report has nothing for anyone to deal with, 1 when it has. The report
-# is written either way: «проектная проверка красная» is a valid report, and withholding it
-# would leave the human with nothing to ratify over at all.
+# Prints the merge sha on success; a reason on stderr and returns 1 otherwise.
+build_land() {
+    _bl_root=$1; _bl_build=$2
+    _bl_branch=$(build_branch "$_bl_build")
+
+    _bl_trunk=$(git -C "$_bl_root" rev-parse --abbrev-ref HEAD 2>/dev/null)
+    [ -n "$_bl_trunk" ] && [ "$_bl_trunk" != HEAD ] ||
+        { printf >&2 'рабочее дерево не на ветке (detached HEAD)\n'; return 1; }
+    [ "$_bl_trunk" != "$_bl_branch" ] ||
+        { printf >&2 'ты стоишь на самой ветке сборки — перейди на ствол\n'; return 1; }
+
+    # A merge takes the working tree with it. Someone else's unsaved work is not ours to
+    # carry into a merge commit (B6), so this is a refusal and not a stash.
+    _bl_dirty=$(git -C "$_bl_root" status --porcelain --untracked-files=no 2>/dev/null | head -5)
+    [ -z "$_bl_dirty" ] || {
+        printf >&2 'в рабочем дереве есть несохранённое — сначала сохрани его:\n'
+        printf '%s\n' "$_bl_dirty" | sed 's/^/    /' >&2
+        return 1
+    }
+
+    # The `fraim:` trailer is what lets `fraim undo <sha>` recognise this commit as ours.
+    # Without it the undo of a trunk write would have to be hand-rolled git, which is the
+    # one thing the human must never be handed.
+    if ! git -C "$_bl_root" merge --no-ff \
+             -m "build: сборка $_bl_build" -m "fraim: $(fraim_version)" \
+             "$_bl_branch" >/dev/null 2>&1; then
+        git -C "$_bl_root" merge --abort >/dev/null 2>&1 || :
+        printf >&2 'слияние в ствол не прошло — ствол ушёл вперёд, разрешай руками\n'
+        return 1
+    fi
+    git -C "$_bl_root" rev-parse --short HEAD 2>/dev/null
+}
+
+# The conductor's acceptance, whole: check behind the workers, run the project's check on
+# the assembled branch, tidy up, write the trunk, and print the report to the terminal.
+# There is no report file: the human reads this output and answers in words.
+#
+#   0 — checked, cleaned, in the trunk
+#   1 — checked, NOT in the trunk (the report says why)
+#   2 — refused, nothing done
 build_accept() {
     _ba_root=$1; _ba_id=$2
 
@@ -1085,12 +1121,8 @@ build_accept() {
         { printf >&2 'сборка %s: нет журнала — она не заводилась через dispatch\n' "$_ba_id"; return 2; }
     [ -f "$_ba_dir/plan.md" ] ||
         { printf >&2 'сборка %s: нет плана — принимать нечего\n' "$_ba_id"; return 2; }
-    if [ -f "$(build_accepted_file "$_ba_root" "$_ba_id")" ]; then
-        printf >&2 'сборка %s уже принята дирижёром — отчёт в ai/builds/%s/report.md\n' \
-            "$_ba_id" "$_ba_id"
-        printf >&2 '  если человек вернул её словами, запиши это: fraim dispatch return %s "что не так"\n' "$_ba_id"
-        return 2
-    fi
+    [ -f "$(build_accepted_file "$_ba_root" "$_ba_id")" ] &&
+        { printf >&2 'сборка %s уже принята и уведена в ствол\n' "$_ba_id"; return 2; }
 
     _ba_branch=$(build_branch "$_ba_id")
     git -C "$_ba_root" rev-parse --verify --quiet "refs/heads/$_ba_branch" >/dev/null 2>&1 || {
@@ -1101,8 +1133,8 @@ build_accept() {
     _ba_ids=$(dispatch_subtask_ids "$_ba_dir/plan.md")
     [ -n "$_ba_ids" ] || { printf >&2 'в плане сборки %s нет подзадач\n' "$_ba_id"; return 2; }
 
-    # Nothing is accepted while a subtask is still out. A report over a half-collected build
-    # would describe work that is not there and call it the build.
+    # Nothing is accepted while a subtask is still out: a report over a half-collected build
+    # describes work that is not there and calls it the build.
     _ba_open=$(build_open_subtasks "$_ba_root" "$_ba_id")
     if [ -n "$_ba_open" ]; then
         printf >&2 'сборка %s собрана не вся — не принимаю:\n' "$_ba_id"
@@ -1111,217 +1143,137 @@ build_accept() {
         return 2
     fi
 
-    printf 'Приёмка сборки %s — проверяю за воркерами\n' "$_ba_id"
-
-    _ba_head=$(git -C "$_ba_root" rev-parse --short "$_ba_branch" 2>/dev/null)
     _ba_base=$(git -C "$_ba_root" rev-parse --short "$(build_base_sha "$_ba_root" "$_ba_id")" 2>/dev/null)
     _ba_coll=$(build_collected_file "$_ba_root" "$_ba_id")
-    _ba_n=$(printf '%s\n' "$_ba_ids" | grep -c '[^[:space:]]')
-    _ba_waves=$(dispatch_wave_count "$_ba_dir/plan.md" 2>/dev/null || echo 1)
-
     _ba_tmp=$(mktemp -d) || { printf >&2 'нет временного каталога\n'; return 2; }
-    _ba_find=          # what somebody has to deal with, one line each
+    _ba_stop=      # what keeps this out of the trunk
+    _ba_say=       # what the human should know anyway
 
-    # --- что вернулось: the tree, not the reports (MODES.md §3) ---------------
+    printf 'Приёмка сборки %s\n\n' "$_ba_id"
+
+    # --- что вернулось: дерево, а не отчёты воркеров (MODES.md §3) -----------
+    printf '  что вернулось\n'
+    for _ba_s in $_ba_ids; do
+        _ba_w=$(awk -F'\t' -v s="$_ba_s" '$2 == s { print $1; exit }' "$_ba_coll" 2>/dev/null)
+        _ba_sha=$(awk -F'\t' -v s="$_ba_s" '$2 == s { print $3; exit }' "$_ba_coll" 2>/dev/null)
+        if [ -z "$_ba_sha" ] || [ "$_ba_sha" = "—" ]; then
+            printf '    %-14s волна %-3s ничего не изменила\n' "$_ba_s" "${_ba_w:-—}"
+            _ba_say="$_ba_say    подзадача $_ba_s не изменила ничего — это тоже исход, и обычно плохой
+"
+            continue
+        fi
+        _ba_f=$(git -C "$_ba_root" diff --name-only "$_ba_sha^1" "$_ba_sha" 2>/dev/null |
+                grep -c '[^[:space:]]')
+        printf '    %-14s волна %-3s %s  файлов: %s\n' "$_ba_s" "${_ba_w:-—}" "$_ba_sha" "$_ba_f"
+    done
+
     _ba_changed=$(git -C "$_ba_root" diff --name-only "$_ba_base" "$_ba_branch" 2>/dev/null |
                   grep '[^[:space:]]' | sort -u)
     _ba_nfiles=$(printf '%s' "$_ba_changed" | grep -c '[^[:space:]]')
+    _ba_stat=$(git -C "$_ba_root" diff --shortstat "$_ba_base" "$_ba_branch" 2>/dev/null |
+               sed 's/^[[:space:]]*//')
+    printf '\n  изменено целиком: %s\n' "${_ba_stat:-ничего}"
+    [ "$_ba_nfiles" -eq 0 ] &&
+        _ba_stop="$_ba_stop    сборка не изменила ни одного файла — уводить в ствол нечего
+"
+
     build_declared_paths "$_ba_dir/plan.md" > "$_ba_tmp/declared"
     _ba_undecl=$(printf '%s\n' "$_ba_changed" | grep '[^[:space:]]' |
                  grep -vxF -f "$_ba_tmp/declared" 2>/dev/null || :)
+    if [ -n "$_ba_undecl" ]; then
+        printf '  не объявлял никто: %s\n' "$(printf '%s' "$_ba_undecl" | tr '\n' ' ')"
+        printf '    (фундамент, который под флотом пишет сама сборка, — или утечка)\n'
+    fi
 
-    _ba_empty=$(awk -F'\t' '$3 == "—" { print $2 }' "$_ba_coll" 2>/dev/null | sort -u)
-    [ -n "$_ba_empty" ] &&
-        _ba_find="$_ba_find- ничего не изменили: $(printf '%s' "$_ba_empty" | tr '\n' ' ')— пустой результат это тоже исход, и обычно плохой
-"
-    [ "$_ba_nfiles" -eq 0 ] &&
-        _ba_find="$_ba_find- сборка не изменила ни одного файла: принимать нечего
-"
-
-    # Под флотом фундамент пишет сборка, один раз (инвариант 0.4) — и это единственная
-    # часть сборки, которую не объявляла ни одна подзадача, потому что писать её должен был
-    # дирижёр.
+    # Под флотом фундамент пишет сборка, один раз (инвариант 0.4).
     _ba_found=$(printf '%s\n' "$_ba_changed" |
                 grep -xE 'ARCHITECTURE\.md|CONVENTIONS\.md|DECISIONS\.md' |
                 tr '\n' ' ' | sed 's/[[:space:]]*$//')
     [ "$_ba_nfiles" -gt 0 ] && [ -z "$_ba_found" ] &&
-        _ba_find="$_ba_find- фундамент не тронут: под флотом его пишет сборка, один раз (инвариант 0.4)
+        _ba_say="$_ba_say    фундамент не тронут — под флотом его пишет сборка, один раз (инвариант 0.4)
 "
 
     # --- мастер-проверка -----------------------------------------------------
     _ba_cmd=$(config_get build_check "$_ba_root")
     _ba_mc=$(build_master_check "$_ba_root" "$_ba_id" "$_ba_tmp/check.out")
     case $_ba_mc in
-        нет)    printf '  проектной проверки нет (config build_check)\n' ;;
-        нельзя) printf '  проектную проверку запустить не удалось\n'
-                _ba_find="$_ba_find- проектная проверка не запустилась: чекаут ветки сборки не открылся
+        нет)
+            printf '  мастер-проверка: не настроена (fraim config set build_check "…")\n'
+            _ba_say="$_ba_say    проектной проверки нет — собранное никто не прогонял
 " ;;
-        0)      printf '  проектная проверка: код 0\n' ;;
-        *)      printf '  проектная проверка: код %s\n' "$_ba_mc"
-                _ba_find="$_ba_find- проектная проверка «$_ba_cmd» вернула код $_ba_mc
+        нельзя)
+            printf '  мастер-проверка: не запустилась\n'
+            _ba_stop="$_ba_stop    чекаут ветки сборки не открылся — проверить собранное не удалось
+" ;;
+        0)
+            printf '  мастер-проверка: %s → зелёная\n' "$_ba_cmd" ;;
+        *)
+            printf '  мастер-проверка: %s → код %s\n' "$_ba_cmd" "$_ba_mc"
+            [ -s "$_ba_tmp/check.out" ] && tail -8 "$_ba_tmp/check.out" | sed 's/^/      /'
+            _ba_stop="$_ba_stop    проектная проверка вернула код $_ba_mc — в ствол не пущу
 " ;;
     esac
 
     # --- чистка --------------------------------------------------------------
     _ba_clean=$(build_cleanup "$_ba_root" "$_ba_id")
-    _ba_gone=$(printf '%s\n' "$_ba_clean" | grep -c '	снят$')
-    _ba_left=$(printf '%s\n' "$_ba_clean" | grep -c '	оставлен')
-    printf '  чистка: чекаутов снято %s, оставлено %s\n' "$_ba_gone" "$_ba_left"
+    printf '  чистка: чекаутов снято %s, оставлено %s, воркеров освобождено %s\n' \
+        "$(printf '%s\n' "$_ba_clean" | grep -c '	снят$')" \
+        "$(printf '%s\n' "$_ba_clean" | grep -c '	оставлен')" \
+        "$(printf '%s\n' "$_ba_clean" | grep -c '	освобождён$')"
+    printf '%s\n' "$_ba_clean" | awk -F'\t' '$3 ~ /^оставлен/ { printf "      %s %s — %s\n", $1, $2, $3 }'
     printf '%s\n' "$_ba_clean" | grep -q '	оставлен: есть незакоммиченное' &&
-        _ba_find="$_ba_find- воркер продолжил работу после сбора: в его чекауте есть незакоммиченное
+        _ba_say="$_ba_say    воркер продолжил работу после сбора — в его чекауте есть незакоммиченное
 "
 
-    # --- отчёт ---------------------------------------------------------------
-    _ba_report=$(build_report_file "$_ba_root" "$_ba_id")
-    {
-        printf '# Отчёт дирижёра — сборка %s\n\n' "$_ba_id"
-        printf 'По этому отчёту сборку ратифицирует человек. Проверял дирижёр и отвечает\n'
-        printf 'дирижёр; решает человек, и до его решения в ствол не уходит ничего.\n\n'
-        printf -- '- Ветка сборки: `%s` (`%s`)\n' "$_ba_branch" "$_ba_head"
-        printf -- '- База: `%s`\n' "$_ba_base"
-        printf -- '- Подзадач: %s, волн: %s — собраны все\n' "$_ba_n" "$_ba_waves"
-        printf -- '- Проверено: %s\n\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+    # --- ствол ---------------------------------------------------------------
+    _ba_merge=
+    if [ -n "$_ba_stop" ]; then
+        printf '\n  в ствол НЕ уводил:\n%s' "$_ba_stop"
+        [ -n "$_ba_say" ] && printf '  ещё:\n%s' "$_ba_say"
+        printf '  ветка сборки цела: %s\n' "$_ba_branch"
+        rm -rf "$_ba_tmp"
+        return 1
+    fi
 
-        printf '## Чем заняться\n\n'
-        if [ -n "$_ba_find" ]; then
-            printf '%s' "$_ba_find"
-        else
-            printf -- '- нечем: всё, что машина умеет проверить, чистое\n'
-        fi
-        printf '\n'
-
-        printf '## Что вернулось\n\n'
-        printf '| подзадача | волна | слито | файлов |\n|---|---|---|---|\n'
-        for _ba_s in $_ba_ids; do
-            _ba_w=$(awk -F'\t' -v s="$_ba_s" '$2 == s { print $1; exit }' "$_ba_coll" 2>/dev/null)
-            _ba_sha=$(awk -F'\t' -v s="$_ba_s" '$2 == s { print $3; exit }' "$_ba_coll" 2>/dev/null)
-            if [ -z "$_ba_sha" ] || [ "$_ba_sha" = "—" ]; then
-                printf '| %s | %s | — | 0 |\n' "$_ba_s" "${_ba_w:-—}"
-            else
-                _ba_f=$(git -C "$_ba_root" diff --name-only "$_ba_sha^1" "$_ba_sha" 2>/dev/null |
-                        grep -c '[^[:space:]]')
-                printf '| %s | %s | `%s` | %s |\n' "$_ba_s" "${_ba_w:-—}" "$_ba_sha" "$_ba_f"
-            fi
-        done
-        printf '\nПути сверены с деревом на сборе: подзадача, вышедшая за свои файлы, не\n'
-        printf 'сливается вовсе, поэтому в таблице выше её бы не было.\n\n'
-
-        printf '## Что сборка изменила целиком\n\n'
-        printf '```\n'
-        git -C "$_ba_root" diff --stat "$_ba_base" "$_ba_branch" 2>/dev/null | sed 's/^/ /'
-        printf '```\n\n'
-        if [ -n "$_ba_undecl" ]; then
-            printf 'Не объявляла ни одна подзадача — это либо фундамент, который под флотом\n'
-            printf 'пишет сама сборка, либо утечка. Скажи словами, что именно:\n\n'
-            printf '%s\n' "$_ba_undecl" | sed 's/^/- `/; s/$/`/'
-            printf '\n'
-        fi
-
-        printf '## Мастер-проверка\n\n'
-        case $_ba_mc in
-            нет)    printf -- '- проектной проверки нет. Задать: `fraim config set build_check "…"`\n' ;;
-            нельзя) printf -- '- проектная проверка не запустилась: чекаут ветки сборки не открылся\n' ;;
-            *)      printf -- '- `%s` → код %s\n' "$_ba_cmd" "$_ba_mc" ;;
-        esac
-        if [ -n "$_ba_found" ]; then
-            printf -- '- фундамент сборки: %s\n' "$_ba_found"
-        else
-            printf -- '- фундамент: не тронут\n'
-        fi
-        printf -- '- файлов в сборке: %s\n' "$_ba_nfiles"
-        if [ -s "$_ba_tmp/check.out" ]; then
-            printf '\nПоследнее, что сказала проверка:\n\n```\n'
-            tail -20 "$_ba_tmp/check.out" | sed 's/^/ /'
-            printf '```\n'
-        fi
-        printf '\n'
-
-        printf '## Чистка\n\n'
-        if [ -n "$_ba_clean" ]; then
-            printf '%s\n' "$_ba_clean" | awk -F'\t' 'NF { printf "- %s %s — %s\n", $1, $2, $3 }'
-        else
-            printf -- '- убирать было нечего\n'
-        fi
-        printf '\nВетки воркеров не трогались: их коммиты уже в ветке сборки, а ветку, которую\n'
-        printf 'мы не заводили, чистка не удаляет ([B6](../../../PRINCIPLES.md#b6-глагол-трогает-только-то-что-сам-изменил)).\n\n'
-
-        printf '## Словами дирижёра\n\n'
-        printf '<!-- Заполняется дирижёром ДО того, как это прочтёт человек. Три вопроса,\n'
-        printf '     на которые машина выше не ответила:\n'
-        printf '     1. что ты проверил такого, чего в цифрах не видно;\n'
-        printf '     2. в чём ты не уверен;\n'
-        printf '     3. что рекомендуешь — принять, переделать волну, переписать план. -->\n\n'
-
-        printf '## Если годится\n\n'
-        printf 'Запись в ствол делает человек — гейт стоит до неё\n'
-        printf '([MODES.md §4](../../../MODES.md#4-гейт-относительно-ствола-развилка-ab)):\n\n'
-        printf '    git merge --no-ff %s\n\n' "$_ba_branch"
-        printf 'Если не годится — скажи дирижёру, и пусть он запишет это:\n\n'
-        printf '    fraim dispatch return %s "что не так"\n' "$_ba_id"
-    } > "$_ba_report" || { rm -rf "$_ba_tmp"; printf >&2 'не удалось записать отчёт\n'; return 2; }
+    if ! _ba_merge=$(build_land "$_ba_root" "$_ba_id"); then
+        printf '  в ствол НЕ уведено — причина выше\n'
+        [ -n "$_ba_say" ] && printf '  ещё:\n%s' "$_ba_say"
+        rm -rf "$_ba_tmp"
+        return 1
+    fi
+    _ba_trunk=$(git -C "$_ba_root" rev-parse --abbrev-ref HEAD 2>/dev/null)
+    printf '  в ствол: %s ← %s (слияние %s)\n' "$_ba_trunk" "$_ba_branch" "$_ba_merge"
 
     {
         printf 'Принял: дирижёр\n'
         printf 'Когда: %s\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
         printf 'Ветка сборки: %s\n' "$_ba_branch"
-        printf 'Собрано на: %s\n' "$_ba_head"
-        printf 'База: %s\n' "$_ba_base"
-        printf 'Отчёт: ai/builds/%s/report.md\n' "$_ba_id"
-        printf 'Ратификация: за человеком, по отчёту — в ствол ничего не ушло\n'
-    } > "$(build_accepted_file "$_ba_root" "$_ba_id")" || {
-        rm -rf "$_ba_tmp"; printf >&2 'не удалось записать приёмку\n'; return 2
-    }
-    rm -f "$(build_returned_file "$_ba_root" "$_ba_id")"
+        printf 'В ствол: %s, слияние %s\n' "$_ba_trunk" "$_ba_merge"
+        printf 'Отменить: fraim undo %s\n' "$_ba_merge"
+    } > "$(build_accepted_file "$_ba_root" "$_ba_id")" || :
 
     {
-        printf '\n## Приёмка дирижёра — %s\n\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
-        printf -- '- Ветка сборки %s на %s, база %s\n' "$_ba_branch" "$_ba_head" "$_ba_base"
-        printf -- '- Отчёт: ai/builds/%s/report.md\n' "$_ba_id"
-        if [ -n "$_ba_find" ]; then printf '%s' "$_ba_find"; else printf -- '- машинные проверки чистые\n'; fi
+        printf '\n## Приёмка — %s\n\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+        printf -- '- Проверил и увёл в ствол дирижёр: %s ← %s, слияние %s\n' \
+            "$_ba_trunk" "$_ba_branch" "$_ba_merge"
+        printf -- '- Мастер-проверка: %s\n' "$_ba_mc"
+        [ -n "$_ba_say" ] && printf '%s' "$_ba_say" | sed 's/^  */- /'
+        printf -- '- Отменить одной командой: fraim undo %s\n' "$_ba_merge"
     } >> "$_ba_dir/journal.md"
 
+    [ -n "$_ba_say" ] && printf '\n  на что посмотреть:\n%s' "$_ba_say"
+    printf '  отменить одной командой: fraim undo %s\n' "$_ba_merge"
+
     rm -rf "$_ba_tmp"
-    printf '  отчёт: %s\n' "$_ba_report"
-    [ -z "$_ba_find" ]
+    return 0
 }
 
-# The human's other answer. Acceptance has two outcomes and only one of them existed in the
-# system: «не годится» lived in the chat, where the next session cannot read it. Returning
-# also clears the acceptance, so the conductor has to check and report again rather than
-# hand back the same report with a sentence added.
-build_return() {
-    _br_root=$1; _br_id=$2; _br_why=$3
-
-    _br_dir=$(build_dir "$_br_root" "$_br_id")
-    [ -d "$_br_dir" ] || { printf >&2 'нет такой сборки: %s\n' "$_br_id"; return 1; }
-    [ -n "$_br_why" ] ||
-        { printf >&2 'скажи, что не так: fraim dispatch return %s "причина"\n' "$_br_id"; return 1; }
-    [ -f "$(build_accepted_file "$_br_root" "$_br_id")" ] ||
-        { printf >&2 'сборка %s ещё не принята дирижёром — возвращать нечего\n' "$_br_id"; return 1; }
-
-    {
-        printf 'Вернул: человек\n'
-        printf 'Когда: %s\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
-        printf 'Почему: %s\n' "$_br_why"
-    } > "$(build_returned_file "$_br_root" "$_br_id")" || return 1
-    rm -f "$(build_accepted_file "$_br_root" "$_br_id")"
-
-    {
-        printf '\n## Возврат человеком — %s\n\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
-        printf -- '- %s\n' "$_br_why"
-    } >> "$_br_dir/journal.md"
-
-    printf '%s\n' "$(build_returned_file "$_br_root" "$_br_id")"
-}
 
 # Pending builds, newest first: id and where each one stands.
 # A directory under ai/builds is a BUILD only if it has a journal. Anything else is a
 # folder someone put a plan in — that is what ai/builds/v2-core was in the first live
 # build, and listing it as a build is what let `dispatch run` be aimed at it.
 #
-# Three states, because acceptance has two owners: the conductor checks and reports, the
-# human ratifies over that report or hands it back. «Принята дирижёром» is therefore not
-# «готово» — it is «отчёт лежит и ждёт человека».
 build_list() {
     _bl_root=$1
     [ -d "$_bl_root/ai/builds" ] || return 0
@@ -1330,9 +1282,7 @@ build_list() {
         if [ ! -f "$_b/journal.md" ]; then
             printf '%s\tне сборка (нет журнала)\n' "$(basename -- "$_b")"
         elif [ -f "$_b/accepted" ]; then
-            printf '%s\tпринята дирижёром — отчёт ждёт человека\n' "$(basename -- "$_b")"
-        elif [ -f "$_b/returned" ]; then
-            printf '%s\tвозвращена человеком\n' "$(basename -- "$_b")"
+            printf '%s\tпринята, в стволе\n' "$(basename -- "$_b")"
         else
             printf '%s\tне принята\n' "$(basename -- "$_b")"
         fi

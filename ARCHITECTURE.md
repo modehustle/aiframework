@@ -18,7 +18,7 @@ convenience in `install.sh`). Distribution: shell installer + Claude Code plugin
 ## Components & responsibilities
 | component / dir | responsibility |
 |---|---|
-| `installer/bin/fraim`, `installer/lib/*.sh` | the CLI: state, lifecycle, watchman, deterministic verbs, fleet/ADE (plan → waves → per-wave launch → collect → the conductor's acceptance → the human's ratification), scaffold, skills generation; the roles picker discovers agents from the harness table (`harness_detect`, independent of any execution environment) and models live from each agent's own source (native command, cache file, embedded binary catalogue); the fleet launch is an explicit lifecycle — worktree create → agent launch command (model in argv via `launchcmd_<agent>` or the devin built-in) → confirmed `tui-idle` → `worker-start --terminal` Dispatch binding, with best-effort cleanup of partial resources |
+| `installer/bin/fraim`, `installer/lib/*.sh` | the CLI: state, lifecycle, watchman, deterministic verbs, fleet/ADE (plan → waves → per-wave launch → collect → the conductor's acceptance, trunk write included), scaffold, skills generation; the roles picker discovers agents from the harness table (`harness_detect`, independent of any execution environment) and models live from each agent's own source (native command, cache file, embedded binary catalogue); the fleet launch is an explicit lifecycle — worktree create → agent launch command (model in argv via `launchcmd_<agent>` or the devin built-in) → confirmed `tui-idle` → `worker-start --terminal` Dispatch binding, with best-effort cleanup of partial resources |
 | `procedures/` (13 `.md` + `manifest.json`) | canonical, engine-agnostic methodology text; manifest holds versions, tiers, order |
 | `installer/install.sh` + `fraim init` | delivery: clone to `~/.fraim/src`, link binary, lay skills into detected harnesses |
 | `installer/templates/` | fixed templates: foundation, task, investigation, stack |
@@ -36,18 +36,20 @@ convenience in `install.sh`). Distribution: shell installer + Claude Code plugin
   block to `AGENTS.md` and the `fraim mode --hook` SessionStart hook.
 - **build** (`ai/builds/<id>/`): plan copy, journal, `fleet.tsv` (a cache of the
   environment's ids, one block per wave), `collected.tsv` (our truth: wave, subtask,
-  merged sha, time), and — after `dispatch accept` — `report.md` plus the state marker
-  `accepted` or `returned`. Each build owns a branch `fraim/<id>` — workers branch from it
-  and `dispatch collect` merges them back into it; the trunk is written by a human after
-  ratification.
-- **acceptance vs ratification**: `dispatch accept` is the CONDUCTOR's stage — it refuses
-  while any subtask is uncollected, then verifies the assembled branch against the union of
-  the plan's declared paths, runs the project's own check (`build_check`) in a throwaway
-  checkout of the build branch, cleans up the checkouts and workers the build itself created
-  (only those provably redundant), and writes `report.md`. The human's ratification is not a
-  subcommand: it is the trunk write, and its negative form is
-  `dispatch return <build> "why"`, which clears the acceptance and records the reason in the
-  build journal.
+  merged sha, time), and — after `dispatch accept` — the marker `accepted` (who, when, which
+  merge, how to undo it). Each build owns a branch `fraim/<id>` — workers branch from it and
+  `dispatch collect` merges them back into it; `dispatch accept` merges that branch into the
+  trunk.
+- **acceptance** (`dispatch accept`) is the CONDUCTOR's whole stage and produces no file for
+  the human: it refuses while any subtask is uncollected, verifies the assembled branch
+  against the union of the plan's declared paths, runs the project's own check (`build_check`)
+  in a throwaway checkout of the build branch, cleans up the checkouts and workers the build
+  itself created (only those provably redundant), merges the build branch into the current
+  branch of the project root with one `--no-ff` commit carrying the `fraim:` trailer, and
+  prints the report to stdout. The trunk write is skipped — loudly, exit 1 — on a red check,
+  an empty build, a dirty working tree, a conflict or a detached HEAD. The human types
+  nothing: they read the output and answer in words, and the lever behind "не так" is
+  `fraim undo <merge>` (which now passes `-m 1` for merge commits), run by the conductor.
 - **wave**: a subtask may declare `**After**: id[, id]`; waves are derived from that
   (`dispatch_waves`), never written by hand. Paths may not collide inside a wave and may
   collide across waves. A wave is launched only when the previous one is fully collected —
