@@ -362,7 +362,7 @@ dispatch_cost_line() {
     if [ -n "$_cl_waves" ]; then
         _cl_wide=$(printf '%s\n' "$_cl_waves" | cut -f2 | sort | uniq -c | awk '{ if ($1 > m) m = $1 } END { print m + 0 }')
     fi
-    printf 'состав: %s %s, %s %s, до %s %s одновременно\n' \
+    printf 'состав: %s %s, %s %s, %s %s одновременно\n' \
         "$_cl_n" "$(dispatch_plural "$_cl_n" подзадача подзадачи подзадач)" \
         "${_cl_depth:-1}" "$(dispatch_plural "${_cl_depth:-1}" волна волны волн)" \
         "$_cl_wide" "$(dispatch_plural "$_cl_wide" воркер воркера воркеров)"
