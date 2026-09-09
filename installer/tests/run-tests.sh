@@ -472,6 +472,40 @@ git -C "$PROJ2" add -A >/dev/null; git -C "$PROJ2" commit -qm "bootstrap: founda
 "$FRAIM" status "$PROJ2" >/dev/null 2>&1
 check "заполненный фундамент → exit 0" "$?" "0"
 
+# ---------------------------------------------------------------- режим
+# Два режима, не три: reactive (агент делает сам) и fleet (дирижёр и флот). Старые имена
+# `task` и `parallel` лежат в ai/fraim.conf у всех проектов, заведённых до переименования,
+# и должны читаться, а не ронять режим в дефолт молча.
+printf '\nfraim mode\n'
+
+cd "$PROJ2" || exit 1
+check "режим по умолчанию — реактивный" "$("$FRAIM" mode | sed -n 's/.*режим: \([a-z]*\).*/\1/p' | head -1)" "reactive"
+check "реактивный режим не пишет дирижёрский блок в AGENTS.md" \
+      "$(grep -c 'Fleet mode is on' "$PROJ2/AGENTS.md")" "0"
+
+"$FRAIM" mode fleet >/dev/null 2>&1
+check "режим fleet записан в проект" \
+      "$(sed -n 's/^mode = //p' "$PROJ2/ai/fraim.conf" | head -1)" "fleet"
+check "AGENTS.md получил дирижёрский блок" "$(grep -c 'Fleet mode is on' "$PROJ2/AGENTS.md")" "1"
+
+# Легаси-значение читается как флот — иначе у установленного проекта режим отвалится молча.
+printf 'mode = parallel\n' > "$PROJ2/ai/fraim.conf"
+check "старое имя parallel читается как fleet" "$("$FRAIM" mode | sed -n 's/.*режим: \([a-z]*\).*/\1/p' | head -1)" "fleet"
+printf 'mode = task\n' > "$PROJ2/ai/fraim.conf"
+check "старое имя task читается как reactive" "$("$FRAIM" mode | sed -n 's/.*режим: \([a-z]*\).*/\1/p' | head -1)" "reactive"
+
+# Принять старое имя команда обязана, но записать — новое.
+"$FRAIM" mode parallel >/dev/null 2>&1
+check "старое имя на входе пишется новым" \
+      "$(sed -n 's/^mode = //p' "$PROJ2/ai/fraim.conf" | head -1)" "fleet"
+
+"$FRAIM" mode reactive >/dev/null 2>&1
+check "возврат в реактивный убирает дирижёрский блок" \
+      "$(grep -c 'Fleet mode is on' "$PROJ2/AGENTS.md")" "0"
+"$FRAIM" mode nonsense >/dev/null 2>&1
+check "неизвестный режим отвергнут" "$?" "2"
+cd "$SANDBOX" || exit 1
+
 # --- фундамент: считаем изменения, а не время ------------------------------
 # Раньше мерилось время между последним коммитом кода и последним коммитом карты.
 # В цикле задач это работало, а в реактивном режиме — самом частом — инвертировалось:
@@ -2198,6 +2232,348 @@ check "roles_agents_available: есть вывод (харнесы детект�
     "$(printf '%s\n' "$_AGENTS" | grep -E 'kimi|grok|minimax' || true)" ""
 [ -n "$_AGENTS" ] && check "roles_agents_available: нет меток недоступности" \
     "$(printf '%s\n' "$_AGENTS" | grep 'недоступен' || true)" ""
+
+# ---------------------------------------------------- план сборки: волны и арифметика
+printf '\nдиспетчер: волны и арифметика сборки\n'
+
+DLIB='. "'"$REPO"'/installer/lib/core.sh"; . "'"$REPO"'/installer/lib/config.sh"
+    . "'"$REPO"'/installer/lib/harness.sh"; . "'"$REPO"'/installer/lib/ade.sh"
+    . "'"$REPO"'/installer/lib/fleet.sh"; . "'"$REPO"'/installer/lib/roles.sh"
+    . "'"$REPO"'/installer/lib/dispatch.sh"'
+PLANS="$SANDBOX/plans"; mkdir -p "$PLANS"; export PLANS
+
+# План без порядка — одна волна, поведение старых планов не меняется ни на байт.
+cat > "$PLANS/flat.md" <<'PLAN'
+## Subtask: a
+**Role**: run-task
+**Summary**: раз
+
+### `a1.py`
+- почему
+
+### `a2.py`
+- почему
+
+## Subtask: b
+**Role**: run-task
+**Summary**: два
+
+### `b1.py`
+- почему
+
+### `b2.py`
+- почему
+PLAN
+check "план без After — одна волна" \
+      "$(sh -c "$DLIB"'; dispatch_wave_count "$PLANS/flat.md"')" "1"
+
+# План с порядком: contract → backend + frontend, и волна 2 делит файл с волной 1.
+cat > "$PLANS/waves.md" <<'PLAN'
+## Subtask: contract
+**Role**: run-task
+**Summary**: контракт
+
+### `docs/events.md`
+- формат
+
+### `docs/schema.json`
+- схема
+
+## Subtask: backend
+**Role**: run-task
+**After**: contract
+**Summary**: бэкенд
+
+### `src/api.py`
+- отправка
+
+### `docs/events.md`
+- пример
+
+## Subtask: frontend
+**Role**: run-task
+**After**: contract
+**Summary**: фронт
+
+### `web/app.js`
+- приём
+
+### `web/style.css`
+- вид
+PLAN
+check "волны выводятся из After" \
+      "$(sh -c "$DLIB"'; dispatch_waves "$PLANS/waves.md"' | tr '\t' ':' | tr '\n' ' ')" \
+      "contract:1 backend:2 frontend:2 "
+check "подзадачи волны 2" \
+      "$(sh -c "$DLIB"'; dispatch_wave_ids "$PLANS/waves.md" 2' | tr '\n' ' ')" "backend frontend "
+
+# After в никуда и цикл — отказ, а не молчаливое выравнивание: и то и другое стоит
+# N запусков, если обнаружится после раздачи.
+cat > "$PLANS/ghost.md" <<'PLAN'
+## Subtask: a
+**Role**: run-task
+**After**: nosuch
+**Summary**: раз
+
+### `a1.py`
+- почему
+PLAN
+sh -c "$DLIB"'; dispatch_waves "$PLANS/ghost.md"' >/dev/null 2>&1
+check "After в несуществующую подзадачу — отказ" "$?" "1"
+check "отказ называет подзадачу" \
+      "$(sh -c "$DLIB"'; dispatch_waves "$PLANS/ghost.md"' 2>&1 >/dev/null | grep -c 'nosuch')" "1"
+
+cat > "$PLANS/cycle.md" <<'PLAN'
+## Subtask: a
+**Role**: run-task
+**After**: b
+**Summary**: раз
+
+### `a1.py`
+- почему
+
+## Subtask: b
+**Role**: run-task
+**After**: a
+**Summary**: два
+
+### `b1.py`
+- почему
+PLAN
+sh -c "$DLIB"'; dispatch_waves "$PLANS/cycle.md"' >/dev/null 2>&1
+check "цикл зависимостей — отказ" "$?" "1"
+check "отказ называет цикл" \
+      "$(sh -c "$DLIB"'; dispatch_waves "$PLANS/cycle.md"' 2>&1 >/dev/null | grep -c 'цикл')" "1"
+
+# Арифметика: предупреждения печатаются, но НИКОГДА не меняют код возврата — иначе
+# метрика, которая не измеряет работу, начнёт ронять планы.
+cat > "$PLANS/big.md" <<'PLAN'
+## Subtask: a
+**Role**: run-task
+**Summary**: раз
+
+### `a1.py`
+- x
+
+## Subtask: b
+**Role**: run-task
+**Summary**: два
+
+### `b1.py`
+- x
+
+## Subtask: c
+**Role**: run-task
+**Summary**: три
+
+### `c1.py`
+- x
+
+## Subtask: d
+**Role**: run-task
+**Summary**: четыре
+
+### `d1.py`
+- x
+
+## Subtask: e
+**Role**: run-task
+**Summary**: пять
+
+### `e1.py`
+- x
+
+## Subtask: f
+**Role**: run-task
+**Summary**: шесть
+
+### `f1.py`
+- x
+
+## Subtask: g
+**Role**: run-task
+**Summary**: семь
+
+### `g1.py`
+- x
+PLAN
+check "7 подзадач — предупреждение о потолке приёмки" \
+      "$(sh -c "$DLIB"'; dispatch_size_notes "$PLANS/big.md"' 2>&1 >/dev/null | grep -c 'потолок 6')" "1"
+check "широкая волна — предупреждение" \
+      "$(sh -c "$DLIB"'; dispatch_size_notes "$PLANS/big.md"' 2>&1 >/dev/null | grep -c 'одновременно')" "1"
+check "подзадача с одним путём — предупреждение" \
+      "$(sh -c "$DLIB"'; dispatch_size_notes "$PLANS/big.md"' 2>&1 >/dev/null | grep -c 'мельче цены раздачи')" "7"
+sh -c "$DLIB"'; dispatch_size_notes "$PLANS/big.md"' >/dev/null 2>&1
+check "предупреждения не меняют код возврата" "$?" "0"
+check "чистый план не предупреждает ни о чём" \
+      "$(sh -c "$DLIB"'; dispatch_size_notes "$PLANS/waves.md"' 2>&1 >/dev/null)" ""
+
+# Строка состава: что эта сборка стоит, до единого запуска.
+check "строка состава считает подзадачи, волны и ширину" \
+      "$(sh -c "$DLIB"'; dispatch_cost_line "$PLANS/waves.md"')" \
+      "состав: 3 подзадачи, 2 волны, 2 воркера одновременно"
+check "строка состава на плоском плане" \
+      "$(sh -c "$DLIB"'; dispatch_cost_line "$PLANS/flat.md"')" \
+      "состав: 2 подзадачи, 1 волна, 2 воркера одновременно"
+
+# ---------------------------------------------------- поволновая проверка плана
+printf '\nдиспетчер: проверка плана по волнам\n'
+
+# Один файл у двух подзадач ОДНОЙ волны — отказ, как и был.
+cat > "$PLANS/clash.md" <<'PLAN'
+## Subtask: a
+**Role**: run-task
+**Summary**: раз
+
+### `shared.py`
+- почему
+
+### `a1.py`
+- почему
+
+## Subtask: b
+**Role**: run-task
+**Summary**: два
+
+### `shared.py`
+- почему
+
+### `b1.py`
+- почему
+PLAN
+sh -c "$DLIB"'; dispatch_check "$PLANS/clash.md"' >/dev/null 2>&1
+check "пересечение внутри волны — отказ" "$?" "1"
+CLASH=$(sh -c "$DLIB"'; dispatch_check "$PLANS/clash.md"' 2>&1 >/dev/null)
+check "отказ называет волну" "$(printf '%s' "$CLASH" | grep -c 'волна 1')" "1"
+check "отказ показывает лестницу выходов" "$(printf '%s' "$CLASH" | grep -c 'After')" "1"
+
+# Тот же файл, но подзадачи разведены по волнам — проходит. Это и есть выход №3.
+sh -c "$DLIB"'; dispatch_check "$PLANS/waves.md"' >/dev/null 2>&1
+check "пересечение между волнами — проходит" "$?" "0"
+
+# Порядок, который не разбирается, роняет проверку целиком.
+sh -c "$DLIB"'; dispatch_check "$PLANS/cycle.md"' >/dev/null 2>&1
+check "цикл роняет dispatch-check" "$?" "1"
+sh -c "$DLIB"'; dispatch_check "$PLANS/ghost.md"' >/dev/null 2>&1
+check "After в никуда роняет dispatch-check" "$?" "1"
+
+# Отчёт показывает волну каждой подзадачи — до раздачи, а не после.
+check "отчёт называет волну подзадачи" \
+      "$(sh -c "$DLIB"'; dispatch_report "$PLANS/waves.md"' | awk 'NR>1 { printf "%s%s", $1, $2 }' | tr -d ' ')" \
+      "1contract2backend2frontend"
+
+# ---------------------------------------------------- сбор волны в ветку сборки
+# Настоящие worktree и настоящие коммиты, без стаба среды: реестр чекаутов ведёт git, и
+# сбор обязан работать одинаково, кто бы чекаут ни создал — Orca или руки.
+printf '\nдиспетчер: сбор волны\n'
+
+CB="$SANDBOX/collect"; mkdir -p "$CB"; export CB
+git -C "$CB" init -q; git -C "$CB" config user.email t@t; git -C "$CB" config user.name t
+mkdir -p "$CB/ai/builds"
+printf 'base\n' > "$CB/one.py"; printf 'base\n' > "$CB/two.py"; printf 'base\n' > "$CB/three.py"
+git -C "$CB" add -A >/dev/null; git -C "$CB" commit -qm init >/dev/null
+
+cat > "$CB/plan.md" <<'PLAN'
+## Subtask: one
+**Role**: run-task
+**Summary**: первая
+
+### `one.py`
+- почему
+
+## Subtask: two
+**Role**: run-task
+**Summary**: вторая
+
+### `two.py`
+- почему
+PLAN
+
+BID=build-test; export BID
+BDIR="$CB/ai/builds/$BID"
+sh -c "$DLIB"'; build_seal "$CB" "$BID" "$CB/plan.md"' >/dev/null 2>&1
+check "сборка завела ветку fraim/build-test" \
+      "$(git -C "$CB" rev-parse --verify --quiet refs/heads/fraim/build-test >/dev/null 2>&1 && echo yes || echo no)" "yes"
+
+# Два воркера: свои чекауты от ветки сборки, свои коммиты в своих путях. Имя чекаута —
+# «сборка-подзадача», как его строит dispatch_launch: по нему dispatch_worker_tree и ищет.
+git -C "$CB" worktree add -q -b w-one "$SANDBOX/$BID-one" fraim/build-test
+git -C "$CB" worktree add -q -b w-two "$SANDBOX/$BID-two" fraim/build-test
+printf 'one\n' >> "$SANDBOX/$BID-one/one.py"
+git -C "$SANDBOX/$BID-one" commit -qam "one" >/dev/null
+printf 'two\n' >> "$SANDBOX/$BID-two/two.py"
+git -C "$SANDBOX/$BID-two" commit -qam "two" >/dev/null
+
+OUT=$(sh -c "$DLIB"'; dispatch_collect "$CB" "'"$BID"'"' 2>&1)
+check "сбор прошёл" "$?" "0"
+check "обе подзадачи слиты" "$(printf '%s' "$OUT" | grep -c 'слита')" "2"
+check "печатается объединённый дифф волны" "$(printf '%s' "$OUT" | grep -c 'изменила целиком')" "1"
+check "ветка сборки несёт обе правки" \
+      "$(git -C "$CB" show fraim/build-test:one.py | tail -1)$(git -C "$CB" show fraim/build-test:two.py | tail -1)" \
+      "onetwo"
+check "рабочее дерево дирижёра не тронуто" \
+      "$(git -C "$CB" rev-parse --abbrev-ref HEAD)" "master"
+check "временных чекаутов не осталось" \
+      "$(git -C "$CB" worktree list --porcelain | grep -c 'fraim-collect')" "0"
+check "журнал получил запись о сборе" "$(grep -c 'Сбор волны 1' "$BDIR/journal.md")" "1"
+check "collected.tsv помнит, что вернулось" "$(grep -c "	one	" "$BDIR/collected.tsv")" "1"
+
+# Повтор: собранное не собирается дважды.
+OUT=$(sh -c "$DLIB"'; dispatch_collect "$CB" "'"$BID"'" 1' 2>&1)
+check "повторный сбор ничего не сливает" "$(printf '%s' "$OUT" | grep -c 'уже собрана')" "2"
+
+# Отказ 1: незакоммиченная работа. Слить можно только коммит.
+cat > "$CB/plan2.md" <<'PLAN'
+## Subtask: three
+**Role**: run-task
+**Summary**: третья
+
+### `three.py`
+- почему
+PLAN
+BID2=build-dirty; export BID2
+sh -c "$DLIB"'; build_seal "$CB" "'"$BID2"'" "$CB/plan2.md"' >/dev/null 2>&1
+git -C "$CB" worktree add -q -b w-three "$SANDBOX/$BID2-three" fraim/build-dirty 2>/dev/null
+printf 'three\n' >> "$SANDBOX/$BID2-three/three.py"
+OUT=$(sh -c "$DLIB"'; dispatch_collect "$CB" "'"$BID2"'"' 2>&1)
+check "незакоммиченная работа — отказ" "$?" "1"
+check "отказ называет незакоммиченное" "$(printf '%s' "$OUT" | grep -c 'незакоммиченное')" "1"
+check "ветка сборки при отказе не двинулась" \
+      "$(git -C "$CB" show fraim/build-dirty:three.py | tail -1)" "base"
+
+# Отказ 2: правка вне объявленных путей. Ровно ради этой строки существует сверка с деревом.
+git -C "$SANDBOX/$BID2-three" commit -qam "three" >/dev/null
+printf 'stray\n' >> "$SANDBOX/$BID2-three/one.py"
+git -C "$SANDBOX/$BID2-three" commit -qam "stray" >/dev/null
+OUT=$(sh -c "$DLIB"'; dispatch_collect "$CB" "'"$BID2"'"' 2>&1)
+check "правка вне своих путей — отказ" "$?" "1"
+check "отказ называет чужой файл" "$(printf '%s' "$OUT" | grep -c 'one.py')" "1"
+check "ветка сборки не приняла чужую правку" \
+      "$(git -C "$CB" show fraim/build-dirty:three.py | tail -1)" "base"
+
+# ------------------------------------------------- барьер: какая волна поднимется
+# Пока волна не собрана, следующая не поднимается — это и есть барьер, и он держится не
+# на сигнале среды, а на записи о сборе в git.
+printf '\nдиспетчер: барьер между волнами\n'
+
+WB="$SANDBOX/waves-build"; mkdir -p "$WB/ai/builds"; export WB
+git -C "$WB" init -q 2>/dev/null; git -C "$WB" config user.email t@t; git -C "$WB" config user.name t
+printf 'x\n' > "$WB/f.py"; git -C "$WB" add -A >/dev/null; git -C "$WB" commit -qm init >/dev/null
+cp "$PLANS/waves.md" "$WB/plan.md"
+WBID=build-waves; export WBID
+sh -c "$DLIB"'; build_seal "$WB" "$WBID" "$WB/plan.md"' >/dev/null 2>&1
+
+check "первая несобранная волна — первая" \
+      "$(sh -c "$DLIB"'; build_next_wave "$WB" "$WBID"')" "1"
+printf '1\tcontract\tabc123\t2026-09-09T00:00:00Z\n' > "$WB/ai/builds/$WBID/collected.tsv"
+check "волна 1 собрана — следующая вторая" \
+      "$(sh -c "$DLIB"'; build_next_wave "$WB" "$WBID"')" "2"
+printf '2\tbackend\tdef456\t2026-09-09T00:00:00Z\n' >> "$WB/ai/builds/$WBID/collected.tsv"
+check "волна собрана наполовину — она же и остаётся следующей" \
+      "$(sh -c "$DLIB"'; build_next_wave "$WB" "$WBID"')" "2"
+printf '2\tfrontend\tghi789\t2026-09-09T00:00:00Z\n' >> "$WB/ai/builds/$WBID/collected.tsv"
+sh -c "$DLIB"'; build_next_wave "$WB" "$WBID"' >/dev/null 2>&1
+check "все волны собраны — поднимать нечего" "$?" "1"
 
 printf '\n%s пройдено, %s провалено\n' "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ]

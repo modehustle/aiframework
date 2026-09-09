@@ -61,6 +61,8 @@ Reactive work has **no size limit** — a long session with a human in it is not
 mode. `/make-task` is not the procedure for "this got big"; it is the procedure for
 **handing the work to someone who is not in this conversation** — a fresh chat, a cheaper
 executor, tomorrow's you. Size does not decide that, and neither do you: the human does.
+**Never write a task for yourself to then execute in the same session**: that is the
+ceremony without the handoff it exists for. Just do the work and save it.
 You are about to change something you do not understand → `/investigate`.
 
 `fraim status` gives a deterministic verdict on the current project — drift count,
@@ -87,14 +89,14 @@ BLKEOF
 # know" — the mode section is then omitted rather than guessed.
 CTX_ROOT=${CTX_ROOT:-}
 
-# The parallel-mode section of the project block.
+# The fleet-mode section of the project block.
 #
 # This is how the mode reaches the agent at all: it reads AGENTS.md on entering the
 # project, and that is where it learns whether it is a conductor here. No command starts
 # the mode — the mode IS the answer to "who am I in this project", which is exactly what
 # MODES.md §1 says a mode is.
 #
-# What a switch may and may not do: it selects which of the three defined modes is in
+# What a switch may and may not do: it selects which of the two defined modes is in
 # force; it does NOT hand out authority. The wall and the ratification of each mode live
 # in MODES.md and are not configurable — a conductor does not become allowed to accept
 # because someone flipped a key. That distinction is what keeps this on the right side of
@@ -102,7 +104,7 @@ CTX_ROOT=${CTX_ROOT:-}
 context_mode_block() {
     cat <<'BLKEOF'
 
-## Parallel mode is on in this project — read this before anything else
+## Fleet mode is on in this project — read this before anything else
 
 You are the **conductor** here. Not "also a conductor": that is the whole of your role in
 this project until the mode is switched off.
@@ -121,11 +123,11 @@ project skeleton itself. Four workers sat idle while it did. Writing the code yo
 the single most likely way for this mode to fail, and it never announces itself as a
 mistake — it feels like being helpful.
 
-`fraim status` reports it deterministically: a parallel-mode project with changed files
+`fraim status` reports it deterministically: a fleet-mode project with changed files
 and no sealed build is flagged as work going around the fleet. If you see that line about
 your own work, you have already drifted — stop and dispatch.
 
-**Empty project?** Laying the foundation is not parallel work (`bootstrap` does not declare
+**Empty project?** Laying the foundation is not fleet work (`bootstrap` does not declare
 `parallel: yes`, and under this mode the foundation is written by the build, once). Say so
 to the human and let them decide, rather than quietly doing it and calling it groundwork.
 
@@ -133,17 +135,24 @@ The short version, so you do not start in the wrong place:
 
 - **Do not write the subtasks' code yourself.** Your job is planning, dispatch and
   verification. Writing the code is what the fleet is for.
-- **Split only what is genuinely independent.** Two blocks are parallel only if neither
-  reads the other's result. "Frontend and backend" qualifies only when the contract
-  between them already exists; without it that is one sequential piece, not two.
-  If nothing splits cleanly, say so and offer the ordinary task route instead — that is a
-  correct answer, not a failure.
+- **Two blocks run in the same wave only if neither reads the other's result.** "Frontend
+  and backend" qualifies only when the contract between them already exists; without it the
+  contract is the first wave and both sides are the second.
+- **Paths collide → four ways out, in this order.** Group the colliding pieces into one
+  subtask; or redraw the boundaries so the file belongs to exactly one; or order them with
+  `**After**:` so they run in different waves (paths may collide across waves — they do not
+  run at the same time); and only then say the work does not split. The last one is a legal
+  answer and the LAST one: name what failed in the first three before you give it.
 - **Judge the work by the tree, never by the workers' reports.** A report is written by
   the party being judged. `fraim dispatch verify` shows what git says actually changed.
 - **You never accept the build.** One acceptance per build, and it belongs to the human.
 
 Mechanics: `fraim dispatch check ПЛАН` before anything is handed out, then
-`fraim dispatch ПЛАН`, `fraim dispatch run СБОРКА`, `fraim dispatch watch СБОРКА`,
+`fraim dispatch ПЛАН`, `fraim dispatch run СБОРКА` (one wave — the first uncollected one),
+`fraim dispatch watch СБОРКА`, `fraim dispatch collect СБОРКА` (merges the wave into the
+build branch, refuses on uncommitted work, on a file outside the declared paths, and on a
+conflict; then prints the wave's combined diff — read it whole, that is where a divergence
+the path check cannot see shows up), then the next `run`, and
 `fraim dispatch verify СБОРКА ПОДЗАДАЧА`. The human runs `fraim dispatch accept`.
 BLKEOF
 }
@@ -170,7 +179,7 @@ BLKEOF
 # What the hook prints. Read by the harness, not by a human.
 context_hook_payload() {
     _chp_root=$1
-    [ "$(config_get mode "$_chp_root" 2>/dev/null || :)" = parallel ] || return 1
+    [ "$(mode_get "$_chp_root")" = fleet ] || return 1
     if command -v python3 >/dev/null 2>&1; then
         context_mode_block | python3 -c '
 import json, sys
@@ -272,10 +281,10 @@ If it is not installed, do the same with ordinary git — the rules above are th
 CLI is only the convenience.
 BLKEOF
 
-    # Appended only where the project actually runs in parallel mode. In task mode the
-    # block is byte-identical to what it has always been, so switching a project into the
+    # Appended only where the project actually runs the fleet. In reactive mode the block
+    # is byte-identical to what it has always been, so switching a project into the fleet
     # mode and back leaves no trace in AGENTS.md.
-    if [ -n "$CTX_ROOT" ] && [ "$(config_get mode "$CTX_ROOT" 2>/dev/null || :)" = parallel ]; then
+    if [ -n "$CTX_ROOT" ] && [ "$(mode_get "$CTX_ROOT")" = fleet ]; then
         context_mode_block
     fi
 }

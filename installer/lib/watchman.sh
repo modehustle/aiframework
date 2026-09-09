@@ -412,7 +412,7 @@ wm_check_remote() {
 # stops being read.
 wm_check_parallel_drift() {
     _root=$1
-    [ "$(config_get mode "$_root" 2>/dev/null || :)" = parallel ] || return 0
+    [ "$(mode_get "$_root")" = fleet ] || return 0
     wm_is_git "$_root" || return 0
 
     # A build exists the moment `dispatch` seals its journal.
@@ -431,7 +431,7 @@ wm_check_parallel_drift() {
     [ "${_wp_n:-0}" -gt 0 ] || return 0
 
     wm_add parallel-drift attention \
-        "режим параллельный, но работа идёт мимо сборки: изменено $_wp_n $(wm_plural "$_wp_n" файл файла файлов), сборок нет" \
+        "режим флота, но работа идёт мимо сборки: изменено $_wp_n $(wm_plural "$_wp_n" файл файла файлов), сборок нет" \
         "fraim dispatch ПЛАН"
 }
 

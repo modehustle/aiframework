@@ -18,7 +18,7 @@ convenience in `install.sh`). Distribution: shell installer + Claude Code plugin
 ## Components & responsibilities
 | component / dir | responsibility |
 |---|---|
-| `installer/bin/fraim`, `installer/lib/*.sh` | the CLI: state, lifecycle, watchman, deterministic verbs, fleet/ADE, scaffold, skills generation; the roles picker discovers agents from the harness table (`harness_detect`, independent of any execution environment) and models live from each agent's own source (native command, cache file, embedded binary catalogue); the fleet launch is an explicit lifecycle — worktree create → agent launch command (model in argv via `launchcmd_<agent>` or the devin built-in) → confirmed `tui-idle` → `worker-start --terminal` Dispatch binding, with best-effort cleanup of partial resources |
+| `installer/bin/fraim`, `installer/lib/*.sh` | the CLI: state, lifecycle, watchman, deterministic verbs, fleet/ADE (plan → waves → per-wave launch → collect → acceptance), scaffold, skills generation; the roles picker discovers agents from the harness table (`harness_detect`, independent of any execution environment) and models live from each agent's own source (native command, cache file, embedded binary catalogue); the fleet launch is an explicit lifecycle — worktree create → agent launch command (model in argv via `launchcmd_<agent>` or the devin built-in) → confirmed `tui-idle` → `worker-start --terminal` Dispatch binding, with best-effort cleanup of partial resources |
 | `procedures/` (13 `.md` + `manifest.json`) | canonical, engine-agnostic methodology text; manifest holds versions, tiers, order |
 | `installer/install.sh` + `fraim init` | delivery: clone to `~/.fraim/src`, link binary, lay skills into detected harnesses |
 | `installer/templates/` | fixed templates: foundation, task, investigation, stack |
@@ -30,6 +30,19 @@ convenience in `install.sh`). Distribution: shell installer + Claude Code plugin
 ## Data model (key entities)
 - **project registry** (`~/.fraim/`): registered projects, install state, version.
 - **per-project state**: `ai/` tree (tasks, archive, investigations), foundation files, `fraim.conf`.
+- **mode** (`mode` in `ai/fraim.conf`): `reactive` (default — the agent does the work in the
+  session) or `fleet` (conductor + workers). Read only through `mode_get`, which also maps
+  the legacy values `task`/`parallel`. The only thing the switch does is add the conductor
+  block to `AGENTS.md` and the `fraim mode --hook` SessionStart hook.
+- **build** (`ai/builds/<id>/`): plan copy, journal, `fleet.tsv` (a cache of the
+  environment's ids, one block per wave) and `collected.tsv` (our truth: wave, subtask,
+  merged sha, time). Each build owns a branch `fraim/<id>` — workers branch from it and
+  `dispatch collect` merges them back into it; the trunk is written by a human after
+  acceptance.
+- **wave**: a subtask may declare `**After**: id[, id]`; waves are derived from that
+  (`dispatch_waves`), never written by hand. Paths may not collide inside a wave and may
+  collide across waves. A wave is launched only when the previous one is fully collected —
+  the barrier is a record in git, not a signal from the environment.
 - **manifest**: procedure name → file, tier, order, description.
 
 ## Data flow
