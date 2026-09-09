@@ -2416,6 +2416,52 @@ check "строка состава на плоском плане" \
       "$(sh -c "$DLIB"'; dispatch_cost_line "$PLANS/flat.md"')" \
       "состав: 2 подзадачи, 1 волна, до 2 воркера одновременно"
 
+# ---------------------------------------------------- поволновая проверка плана
+printf '\nдиспетчер: проверка плана по волнам\n'
+
+# Один файл у двух подзадач ОДНОЙ волны — отказ, как и был.
+cat > "$PLANS/clash.md" <<'PLAN'
+## Subtask: a
+**Role**: run-task
+**Summary**: раз
+
+### `shared.py`
+- почему
+
+### `a1.py`
+- почему
+
+## Subtask: b
+**Role**: run-task
+**Summary**: два
+
+### `shared.py`
+- почему
+
+### `b1.py`
+- почему
+PLAN
+sh -c "$DLIB"'; dispatch_check "$PLANS/clash.md"' >/dev/null 2>&1
+check "пересечение внутри волны — отказ" "$?" "1"
+CLASH=$(sh -c "$DLIB"'; dispatch_check "$PLANS/clash.md"' 2>&1 >/dev/null)
+check "отказ называет волну" "$(printf '%s' "$CLASH" | grep -c 'волна 1')" "1"
+check "отказ показывает лестницу выходов" "$(printf '%s' "$CLASH" | grep -c 'After')" "1"
+
+# Тот же файл, но подзадачи разведены по волнам — проходит. Это и есть выход №3.
+sh -c "$DLIB"'; dispatch_check "$PLANS/waves.md"' >/dev/null 2>&1
+check "пересечение между волнами — проходит" "$?" "0"
+
+# Порядок, который не разбирается, роняет проверку целиком.
+sh -c "$DLIB"'; dispatch_check "$PLANS/cycle.md"' >/dev/null 2>&1
+check "цикл роняет dispatch-check" "$?" "1"
+sh -c "$DLIB"'; dispatch_check "$PLANS/ghost.md"' >/dev/null 2>&1
+check "After в никуда роняет dispatch-check" "$?" "1"
+
+# Отчёт показывает волну каждой подзадачи — до раздачи, а не после.
+check "отчёт называет волну подзадачи" \
+      "$(sh -c "$DLIB"'; dispatch_report "$PLANS/waves.md"' | awk 'NR>1 { printf "%s%s", $1, $2 }' | tr -d ' ')" \
+      "1contract2backend2frontend"
+
 # ---------------------------------------------------- сбор волны в ветку сборки
 # Настоящие worktree и настоящие коммиты, без стаба среды: реестр чекаутов ведёт git, и
 # сбор обязан работать одинаково, кто бы чекаут ни создал — Orca или руки.
@@ -2504,6 +2550,30 @@ check "правка вне своих путей — отказ" "$?" "1"
 check "отказ называет чужой файл" "$(printf '%s' "$OUT" | grep -c 'one.py')" "1"
 check "ветка сборки не приняла чужую правку" \
       "$(git -C "$CB" show fraim/build-dirty:three.py | tail -1)" "base"
+
+# ------------------------------------------------- барьер: какая волна поднимется
+# Пока волна не собрана, следующая не поднимается — это и есть барьер, и он держится не
+# на сигнале среды, а на записи о сборе в git.
+printf '\nдиспетчер: барьер между волнами\n'
+
+WB="$SANDBOX/waves-build"; mkdir -p "$WB/ai/builds"; export WB
+git -C "$WB" init -q 2>/dev/null; git -C "$WB" config user.email t@t; git -C "$WB" config user.name t
+printf 'x\n' > "$WB/f.py"; git -C "$WB" add -A >/dev/null; git -C "$WB" commit -qm init >/dev/null
+cp "$PLANS/waves.md" "$WB/plan.md"
+WBID=build-waves; export WBID
+sh -c "$DLIB"'; build_seal "$WB" "$WBID" "$WB/plan.md"' >/dev/null 2>&1
+
+check "первая несобранная волна — первая" \
+      "$(sh -c "$DLIB"'; build_next_wave "$WB" "$WBID"')" "1"
+printf '1\tcontract\tabc123\t2026-09-09T00:00:00Z\n' > "$WB/ai/builds/$WBID/collected.tsv"
+check "волна 1 собрана — следующая вторая" \
+      "$(sh -c "$DLIB"'; build_next_wave "$WB" "$WBID"')" "2"
+printf '2\tbackend\tdef456\t2026-09-09T00:00:00Z\n' >> "$WB/ai/builds/$WBID/collected.tsv"
+check "волна собрана наполовину — она же и остаётся следующей" \
+      "$(sh -c "$DLIB"'; build_next_wave "$WB" "$WBID"')" "2"
+printf '2\tfrontend\tghi789\t2026-09-09T00:00:00Z\n' >> "$WB/ai/builds/$WBID/collected.tsv"
+sh -c "$DLIB"'; build_next_wave "$WB" "$WBID"' >/dev/null 2>&1
+check "все волны собраны — поднимать нечего" "$?" "1"
 
 printf '\n%s пройдено, %s провалено\n' "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ]

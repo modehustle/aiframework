@@ -110,25 +110,43 @@ dispatch_check() {
         _dc_bad=1
     fi
 
-    # 2. Collision: the same path claimed by two subtasks.
-    _dc_pairs=$(printf '%s\n' "$_dc_recs" | while IFS='|' read -r _id _role _sum _paths; do
+    # 2. Order: waves are derived here, and a plan whose order does not resolve is refused
+    #    before anything else looks at paths — a ghost `After` or a cycle makes every
+    #    per-wave answer below meaningless. dispatch_waves names the defect itself.
+    if _dc_waves=$(dispatch_waves "$_dc_plan"); then :; else
+        printf >&2 'dispatch-check: порядок подзадач не разбирается\n'
+        _dc_bad=1
+        _dc_waves=
+    fi
+
+    # 3. Collision: the same path claimed by two subtasks OF THE SAME WAVE.
+    #
+    # Across waves a shared path is legal and is the whole point of order: wave N+1 starts
+    # from what wave N left in the build branch, so the second worker sees the file as the
+    # first one left it. Inside a wave nothing changed — two workers on one file still means
+    # git merges both edits silently and "one acceptance" becomes a lie.
+    _dc_pairs=$(printf '%s\n' "$_dc_recs" | while IFS='|' read -r _id _role _sum _paths _after; do
         [ -n "$_paths" ] || continue
+        _dcp_w=$(printf '%s\n' "$_dc_waves" | awk -F'\t' -v i="$_id" '$1 == i { print $2; exit }')
         printf '%s\n' "$_paths" | tr ',' '\n' | while read -r _p; do
-            [ -n "$_p" ] && printf '%s\t%s\n' "$_p" "$_id"
+            [ -n "$_p" ] && printf '%s\t%s\t%s\n' "$_p" "${_dcp_w:-1}" "$_id"
         done
     done)
-    _dc_dups=$(printf '%s\n' "$_dc_pairs" | cut -f1 | sort | uniq -d)
+    _dc_dups=$(printf '%s\n' "$_dc_pairs" | cut -f1,2 | sort | uniq -d)
     if [ -n "$_dc_dups" ]; then
-        printf >&2 'dispatch-check: один файл у двух подзадач — параллельно их запускать нельзя:\n'
-        printf '%s\n' "$_dc_dups" | while read -r _p; do
+        printf >&2 'dispatch-check: один файл у двух подзадач одной волны — так их запускать нельзя:\n'
+        printf '%s\n' "$_dc_dups" | while IFS='	' read -r _p _w; do
             [ -n "$_p" ] || continue
-            _who=$(printf '%s\n' "$_dc_pairs" | awk -F'\t' -v p="$_p" '$1 == p { printf "%s%s", sep, $2; sep=", " }')
-            printf >&2 '  %s — в подзадачах: %s\n' "$_p" "$_who"
+            _who=$(printf '%s\n' "$_dc_pairs" |
+                   awk -F'\t' -v p="$_p" -v w="$_w" '$1 == p && $2 == w { printf "%s%s", sep, $3; sep=", " }')
+            printf >&2 '  %s — волна %s, в подзадачах: %s\n' "$_p" "$_w" "$_who"
         done
+        printf >&2 '  выходы по порядку: свести в одну подзадачу · перекроить границы ·\n'
+        printf >&2 '  поставить «**After**: ИМЯ» и развести по волнам\n'
         _dc_bad=1
     fi
 
-    # 3. Every role resolves to an executor on THIS machine's table.
+    # 4. Every role resolves to an executor on THIS machine's table.
     # The loop variable carries a `_dc_` prefix because core.sh's fraim_procedure_file
     # assigns a bare `_r` internally, and sh has no locals: a plain `_r` here comes back
     # holding the install path after the first call into it.
@@ -137,12 +155,12 @@ dispatch_check() {
         roles_resolve "$_dc_r" "$_dc_root" >/dev/null || _dc_bad=1
     done
 
-    # 4. A known procedure that may not run in parallel. `prune` and the rest write the
+    # 5. A known procedure that may not run in parallel. `prune` and the rest write the
     #    foundation, and under this mode the foundation is written by the build once
     #    (invariant 0.4) — dispatching two of them is a collision no path check can see,
     #    because they collide inside the same file the plan never listed.
     #    An UNKNOWN role is not refused here: it already fell back to a default executor
-    #    in step 3, and refusing a plan because this machine lacks a procedure would make
+    #    in step 4, and refusing a plan because this machine lacks a procedure would make
     #    plans non-portable, which is the thing roles exist to avoid.
     for _dc_r in $_dc_roles; do
         if fraim_procedure_file "$_dc_r" >/dev/null 2>&1 && ! roles_is_parallel "$_dc_r"; then
@@ -154,7 +172,7 @@ dispatch_check() {
         fi
     done
 
-    # 5. Known refusals. Not a failure — the launch will handle it — but the conductor
+    # 6. Known refusals. Not a failure — the launch will handle it — but the conductor
     #    should read it here rather than discover it in the launch output, because it
     #    changes what the build will actually cost.
     printf '%s\n' "$_dc_recs" | while IFS='|' read -r _id _role _sum _paths; do
@@ -370,16 +388,18 @@ dispatch_plural() {
 # is obvious here and invisible three hours later.
 dispatch_report() {
     _dr_plan=$1; _dr_root=${2:-}
+    _dr_waves=$(dispatch_waves "$_dr_plan" 2>/dev/null) || _dr_waves=
     # Literal: POSIX printf pads bytes, and Cyrillic headings would land short.
-    printf 'подзадача  роль            агент   модель   усилие  источник\n'
-    dispatch_parse_plan "$_dr_plan" | while IFS='|' read -r _id _role _sum _paths; do
+    printf 'волна  подзадача  роль            агент   модель   усилие  источник\n'
+    dispatch_parse_plan "$_dr_plan" | while IFS='|' read -r _id _role _sum _paths _after; do
         [ -n "$_id" ] || continue
         _ex=$(roles_resolve "$_role" "$_dr_root") || continue
         _ag=$(printf '%s' "$_ex" | cut -f1)
         _mo=$(printf '%s' "$_ex" | cut -f2)
         _ef=$(printf '%s' "$_ex" | cut -f3)
-        printf '%-10s %-15s %-7s %-8s %-7s %s\n' \
-            "$_id" "$_role" "$_ag" "$_mo" "$_ef" "$(roles_source "$_role" "$_dr_root")"
+        _w=$(printf '%s\n' "$_dr_waves" | awk -F'\t' -v i="$_id" '$1 == i { print $2; exit }')
+        printf '%-6s %-10s %-15s %-7s %-8s %-7s %s\n' \
+            "${_w:-1}" "$_id" "$_role" "$_ag" "$_mo" "$_ef" "$(roles_source "$_role" "$_dr_root")"
     done
 }
 
@@ -420,7 +440,8 @@ dispatch_write_task() {
         printf -- '  соберёт это со всей сборки и внесёт одной записью.\n'
         printf -- '\n'
         printf -- '- **Закоммить свою работу.** Не оставляй сделанное незакоммиченным: сборку\n'
-        printf -- '  собирают слиянием веток, и то, что не в коммите, до неё не доедет.\n'
+        printf -- '  собирают слиянием веток, и то, что не в коммите, до неё не доедет —\n'
+        printf -- '  сбор откажется собирать твою подзадачу и назовёт незакоммиченные файлы.\n'
         printf -- '- Сборка %s. Приёмка одна на всю сборку, отдельной приёмки этой подзадачи нет.\n' "$_wt_build"
     } > "$_wt_dir/task.md" || return 1
 
@@ -551,11 +572,16 @@ build_next_wave() {
 # subtask<TAB>task_id<TAB>dispatch_id<TAB>taken_at
 build_fleet_file() { printf '%s/fleet.tsv\n' "$(build_dir "$1" "$2")"; }
 
-# Start every subtask of a build. Returns 1 if any worker failed to start — but only
-# after trying them all, because the subtasks are independent by construction and
+# Start one WAVE of a build. Returns 1 if any worker failed to start — but only after
+# trying them all, because the subtasks of a wave are independent by construction and
 # abandoning the rest would throw away work that is already running.
+#
+# Which wave: the one named, or the first that is not fully collected. The conductor never
+# has to remember a number, and the barrier is enforced here — while a wave is uncollected,
+# `run` keeps offering that same wave rather than racing ahead into work whose base does not
+# exist yet.
 dispatch_launch() {
-    _dl_root=$1; _dl_build=$2
+    _dl_root=$1; _dl_build=$2; _dl_wave=${3:-}
 
     _dl_dir=$(build_dir "$_dl_root" "$_dl_build")
     _dl_plan="$_dl_dir/plan.md"
@@ -578,6 +604,18 @@ dispatch_launch() {
     fleet_present || { printf >&2 'среда исполнения не найдена на этой машине\n'; return 1; }
     fleet_ready   || { printf >&2 'среда исполнения не отвечает — запусти её (orca open)\n'; return 1; }
 
+    if [ -z "$_dl_wave" ]; then
+        _dl_wave=$(build_next_wave "$_dl_root" "$_dl_build") || {
+            printf >&2 'все волны сборки %s собраны — поднимать нечего\n' "$_dl_build"
+            return 1
+        }
+    fi
+    _dl_ids=$(dispatch_wave_ids "$_dl_plan" "$_dl_wave") || return 1
+    [ -n "$_dl_ids" ] || {
+        printf >&2 'в сборке %s нет волны %s\n' "$_dl_build" "$_dl_wave"; return 1
+    }
+    printf 'Волна %s\n' "$_dl_wave"
+
     # Workers branch from the BUILD branch, not from whatever the conductor has checked
     # out: that is what lets a later wave start on top of what an earlier one left, and it
     # keeps the trunk out of the fleet's way entirely. Builds created before the build
@@ -594,15 +632,16 @@ dispatch_launch() {
     _dl_finfo=$(mktemp) || return 1
     _FLEET_INFO=$_dl_finfo
 
+    # Appended, not truncated: a second wave must not erase the first wave's ids, which are
+    # the only record of who ran what if the environment forgets.
     _dl_file=$(build_fleet_file "$_dl_root" "$_dl_build")
-    printf '# сборка %s · run %s · снято %s\n' \
-        "$_dl_build" "$_dl_run" "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" > "$_dl_file"
+    printf '# сборка %s · волна %s · run %s · снято %s\n' \
+        "$_dl_build" "$_dl_wave" "$_dl_run" "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" >> "$_dl_file"
 
     _dl_bad=0
     # Not a pipe into `while`: the loop must write $_dl_bad and the cache file, and in a
     # subshell both would be lost the moment the pipeline ends.
-    _dl_recs=$(dispatch_parse_plan "$_dl_plan")
-    for _dl_id in $(printf '%s\n' "$_dl_recs" | cut -d'|' -f1); do
+    for _dl_id in $_dl_ids; do
         [ -n "$_dl_id" ] || continue
         _dl_role=$(dispatch_field "$_dl_plan" "$_dl_id" 2)
         _dl_sum=$(dispatch_field "$_dl_plan" "$_dl_id" 3)

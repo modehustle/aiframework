@@ -1009,11 +1009,13 @@ cmd_dispatch() {
             dispatch_verify_tree "$_tree" "$_base" "$_paths"
             ;;
         run)
-            [ $# -ge 2 ] || die "нужно: fraim dispatch run СБОРКА"
+            [ $# -ge 2 ] || die "нужно: fraim dispatch run СБОРКА [ВОЛНА]"
             say "Поднимаю флот для сборки $2..."
-            if dispatch_launch "$_root" "$2"; then
+            if dispatch_launch "$_root" "$2" "${3:-}"; then
                 say ""
                 ok "флот поднят"
+                dim "    состояние:       fraim dispatch watch $2"
+                dim "    собрать волну:   fraim dispatch collect $2"
             else
                 say ""
                 warn "часть воркеров не поднялась — что поднялось, записано в ai/builds/$2/fleet.tsv"
@@ -1100,11 +1102,12 @@ cmd_dispatch() {
             say ""
             ok "задания записаны, журнал заведён: ai/builds/$_bid/journal.md"
             if fleet_present; then
-                dim "    поднять флот:    fraim dispatch run $_bid"
+                dim "    поднять волну:   fraim dispatch run $_bid"
                 dim "    состояние:       fraim dispatch watch $_bid"
             else
                 dim "    среды исполнения на этой машине нет — задания можно исполнить вручную"
             fi
+            dim "    собрать волну:     fraim dispatch collect $_bid"
             dim "    сверить с деревом: fraim dispatch verify $_bid ПОДЗАДАЧА"
             ;;
     esac
