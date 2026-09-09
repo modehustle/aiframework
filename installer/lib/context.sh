@@ -98,9 +98,11 @@ CTX_ROOT=${CTX_ROOT:-}
 #
 # What a switch may and may not do: it selects which of the two defined modes is in
 # force; it does NOT hand out authority. The wall and the ratification of each mode live
-# in MODES.md and are not configurable — a conductor does not become allowed to accept
-# because someone flipped a key. That distinction is what keeps this on the right side of
-# §1 ("mode is not a setting") and of B5.
+# in MODES.md and are not configurable — a conductor does not become allowed to JUDGE
+# because someone flipped a key. (Accepting the build — checking behind the workers, running
+# the project's check, cleaning up, writing the trunk — is his job and always was work
+# rather than authority; the judgement over what he reports is the part no key moves.) That
+# distinction is what keeps this on the right side of §1 ("mode is not a setting") and of B5.
 context_mode_block() {
     cat <<'BLKEOF'
 
@@ -145,15 +147,30 @@ The short version, so you do not start in the wrong place:
   answer and the LAST one: name what failed in the first three before you give it.
 - **Judge the work by the tree, never by the workers' reports.** A report is written by
   the party being judged. `fraim dispatch verify` shows what git says actually changed.
-- **You never accept the build.** One acceptance per build, and it belongs to the human.
+- **The acceptance is yours — all of it.** `fraim dispatch accept СБОРКА` checks behind
+  every worker, runs the project's own check on the assembled branch, cleans up after the
+  fleet, merges the build into the trunk and prints the report. It refuses the trunk write
+  by itself when the machine knows something is wrong (red check, empty build, unsaved work
+  in the tree, a conflict) — then you fix it and run it again.
+- **The human types no commands. You do.** Never hand them a git line to run: if something
+  has to be launched, undone or rebuilt, you launch it, on their word. Undoing the trunk
+  write is `fraim undo СЛИЯНИЕ`, printed by the acceptance itself — and you are the one who
+  types it.
+- **What is NOT yours is the judgement.** After the acceptance, report in your own words:
+  what you checked that the numbers do not show, what you are unsure about, what you suggest
+  next. Then wait for their answer. «Всё сошлось, значит годится» is you judging, and that
+  is the one hole this mode is built around.
 
 Mechanics: `fraim dispatch check ПЛАН` before anything is handed out, then
 `fraim dispatch ПЛАН`, `fraim dispatch run СБОРКА` (one wave — the first uncollected one),
 `fraim dispatch watch СБОРКА`, `fraim dispatch collect СБОРКА` (merges the wave into the
 build branch, refuses on uncommitted work, on a file outside the declared paths, and on a
 conflict; then prints the wave's combined diff — read it whole, that is where a divergence
-the path check cannot see shows up), then the next `run`, and
-`fraim dispatch verify СБОРКА ПОДЗАДАЧА`. The human runs `fraim dispatch accept`.
+the path check cannot see shows up), then the next `run`,
+`fraim dispatch verify СБОРКА ПОДЗАДАЧА` to look at one subtask, and finally
+`fraim dispatch accept СБОРКА` — which refuses while any subtask is uncollected, and exits
+non-zero when it checked but did not write the trunk. The human's part is reading what it
+printed and answering you in words.
 BLKEOF
 }
 

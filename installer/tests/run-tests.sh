@@ -2575,5 +2575,129 @@ printf '2\tfrontend\tghi789\t2026-09-09T00:00:00Z\n' >> "$WB/ai/builds/$WBID/col
 sh -c "$DLIB"'; build_next_wave "$WB" "$WBID"' >/dev/null 2>&1
 check "все волны собраны — поднимать нечего" "$?" "1"
 
+# ------------------------------------------------------- приёмка дирижёра целиком
+# Приёмка — вся работа дирижёра: сверить за воркерами, прогнать мастер-проверку, прибрать,
+# увести в ствол и напечатать отчёт в вывод. Человек команд не набирает, поэтому проверяется
+# то, чем этот вывод и это слияние могут соврать: неполный сбор, красная проверка, грязное
+# рабочее дерево, чекаут с незакоммиченной работой — и обратимость записи в ствол.
+printf '\nдиспетчер: приёмка дирижёра\n'
+
+DLIBV="$DLIB"'
+    . "'"$REPO"'/installer/lib/verbs.sh"'
+
+AB="$SANDBOX/accept"; mkdir -p "$AB/ai/builds"; export AB
+git -C "$AB" init -q; git -C "$AB" config user.email t@t; git -C "$AB" config user.name t
+git -C "$AB" symbolic-ref HEAD refs/heads/main
+printf 'base\n' > "$AB/one.py"; printf 'base\n' > "$AB/two.py"; printf '# d\n' > "$AB/DECISIONS.md"
+git -C "$AB" add -A >/dev/null; git -C "$AB" commit -qm init >/dev/null
+
+cat > "$AB/plan.md" <<'PLAN'
+## Subtask: one
+**Role**: run-task
+**Summary**: первая
+
+### `one.py`
+- почему
+
+## Subtask: two
+**Role**: run-task
+**Summary**: вторая
+**After**: one
+
+### `two.py`
+- почему
+PLAN
+
+ABID=build-accept; export ABID
+ABDIR="$AB/ai/builds/$ABID"
+sh -c "$DLIB"'; build_seal "$AB" "$ABID" "$AB/plan.md"' >/dev/null 2>&1
+
+# Отказ до сбора: отчёт о наполовину собранной сборке описал бы не ту работу, которая есть.
+OUT=$(sh -c "$DLIB"'; build_accept "$AB" "$ABID"' 2>&1); RC=$?
+check "несобранная сборка не принимается" "$RC" "2"
+check "отказ называет несобранные подзадачи" "$(printf '%s' "$OUT" | grep -c 'two')" "1"
+check "ствол не тронут" "$(git -C "$AB" log --oneline | wc -l | tr -d ' ')" "1"
+
+git -C "$AB" worktree add -q -b aw-one "$SANDBOX/$ABID-one" "fraim/$ABID"
+printf 'one\n' >> "$SANDBOX/$ABID-one/one.py"
+git -C "$SANDBOX/$ABID-one" commit -qam one >/dev/null
+sh -c "$DLIB"'; dispatch_collect "$AB" "$ABID" 1' >/dev/null 2>&1
+git -C "$AB" worktree add -q -b aw-two "$SANDBOX/$ABID-two" "fraim/$ABID"
+printf 'two\n' >> "$SANDBOX/$ABID-two/two.py"
+git -C "$SANDBOX/$ABID-two" commit -qam two >/dev/null
+sh -c "$DLIB"'; dispatch_collect "$AB" "$ABID" 2' >/dev/null 2>&1
+
+# Воркер второй подзадачи продолжил работу после сбора — его чекаут трогать нельзя.
+printf 'черновик\n' >> "$SANDBOX/$ABID-two/two.py"
+# Фундамент сборки пишет дирижёр в ветку сборки; ни одна подзадача его не объявляла.
+git -C "$AB" worktree add -q "$SANDBOX/$ABID-fnd" "fraim/$ABID"
+printf -- '- решение\n' >> "$SANDBOX/$ABID-fnd/DECISIONS.md"
+git -C "$SANDBOX/$ABID-fnd" commit -qam foundation >/dev/null
+git -C "$AB" worktree remove --force "$SANDBOX/$ABID-fnd"
+
+# Красная мастер-проверка: собранное в ствол не уходит. Это не суждение, а факт,
+# и поэтому решает его машина, а не человек.
+printf 'build_check = sh -c "exit 3"\n' > "$AB/ai/fraim.conf"
+OUT=$(sh -c "$DLIB"'; build_accept "$AB" "$ABID"' 2>&1); RC=$?
+check "красная проверка не пускает в ствол" "$RC" "1"
+check "вывод называет код проверки" \
+      "$(printf '%s' "$OUT" | grep -c 'проектная проверка вернула код 3')" "1"
+check "ствол при красной проверке не тронут" \
+      "$(git -C "$AB" log --oneline | wc -l | tr -d ' ')" "1"
+check "сборка не помечена принятой" "$([ -f "$ABDIR/accepted" ] && echo yes || echo no)" "no"
+check "отчёт живёт в выводе, а не файлом" \
+      "$([ -f "$ABDIR/report.md" ] && echo yes || echo no)" "no"
+
+# Зелёная проверка, но грязное рабочее дерево: слияние утащило бы чужую незаписанную работу.
+printf 'build_check = true\n' > "$AB/ai/fraim.conf"
+printf 'чужое\n' >> "$AB/one.py"
+OUT=$(sh -c "$DLIB"'; build_accept "$AB" "$ABID"' 2>&1); RC=$?
+check "грязное дерево не пускает в ствол" "$RC" "1"
+check "вывод называет несохранённое" "$(printf '%s' "$OUT" | grep -c 'несохранённое')" "1"
+git -C "$AB" checkout -q -- one.py
+
+# Всё сошлось: сверка, проверка, чистка, ствол — одной командой и без единой команды человеку.
+OUT=$(sh -c "$DLIB"'; build_accept "$AB" "$ABID"' 2>&1); RC=$?
+check "приёмка прошла" "$RC" "0"
+check "обе подзадачи в выводе" \
+      "$(printf '%s' "$OUT" | grep -cE '^    (one|two) +волна')" "2"
+check "файл, который не объявлял никто, назван" \
+      "$(printf '%s' "$OUT" | grep -c 'не объявлял никто: DECISIONS.md')" "1"
+check "вывод называет слияние в ствол" "$(printf '%s' "$OUT" | grep -c 'в ствол: main')" "1"
+check "вывод называет команду отмены" "$(printf '%s' "$OUT" | grep -c 'fraim undo')" "1"
+check "собранное действительно в стволе" \
+      "$(git -C "$AB" show main:two.py | tail -1)" "two"
+check "слияние помечено как наше" \
+      "$(git -C "$AB" log -1 --format=%B main | grep -c '^fraim: ')" "1"
+check "сборка помечена принятой" "$(grep -c '^Принял: дирижёр' "$ABDIR/accepted")" "1"
+check "журнал знает про ствол" "$(grep -c 'увёл в ствол дирижёр' "$ABDIR/journal.md")" "1"
+check "список знает, что сборка в стволе" \
+      "$(sh -c "$DLIB"'; build_list "$AB"' | grep -c 'в стволе')" "1"
+
+# Чистка: снимается только доказанно лишнее. Чекаут с незакоммиченной работой — это то,
+# ради чего режим существует, и он остаётся нетронутым при любом исходе приёмки.
+check "чистка сняла чекаут собранной подзадачи" \
+      "$(git -C "$AB" worktree list --porcelain | grep -c "$ABID-one")" "0"
+check "чекаут с незакоммиченным оставлен" \
+      "$(git -C "$AB" worktree list --porcelain | grep -c "$ABID-two")" "1"
+check "работа воркера цела" "$(tail -1 "$SANDBOX/$ABID-two/two.py")" "черновик"
+check "вывод предупредил про оставленный чекаут" \
+      "$(printf '%s' "$OUT" | grep -c 'оставлен: есть незакоммиченное')" "1"
+
+# Дважды в ствол одно и то же не уводят.
+sh -c "$DLIB"'; build_accept "$AB" "$ABID"' >/dev/null 2>&1
+check "принятая сборка второй раз не принимается" "$?" "2"
+
+# Обратная связь человека — словами, а рычаг под неё один: отмена слияния одной командой.
+# Без -m 1 revert на слиянии падает, и именно поэтому запись в ствол вообще допустима.
+AMERGE=$(git -C "$AB" rev-parse --short main)
+sh -c "$DLIBV"'; verb_undo "$AB" "'"$AMERGE"'"' >/dev/null 2>&1
+check "запись в ствол отменяется одной командой" "$?" "0"
+check "после отмены ствол вернулся к прежнему" \
+      "$(git -C "$AB" show main:two.py | tail -1)" "base"
+check "ветка сборки цела и после отмены" \
+      "$(git -C "$AB" show "fraim/$ABID:two.py" | tail -1)" "two"
+
+
 printf '\n%s пройдено, %s провалено\n' "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ]

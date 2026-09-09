@@ -61,6 +61,7 @@ fraim — эксплуатационный слой для проектов на
                             (--brief — задание агенту вычистить найденное)
   fraim dispatch ПЛАН       режим флота: проверить план и завести сборку
   fraim dispatch collect СБОРКА  свести волну в ветку сборки
+  fraim dispatch accept СБОРКА   приёмка дирижёра: сверка, проверка, чистка, ствол
                             run СБОРКА — поднять флот в среде исполнения
                             watch СБОРКА — что среда говорит о воркерах
                             verify СБОРКА ПОДЗАДАЧА — сверить дерево с путями
@@ -961,9 +962,11 @@ cmd_restore() { verb_restore "$(pwd -P)" "$@"; }
 
 # Dispatch: split a task into parallel subtasks for independent workers.
 # Takes an optional plan file; without it, looks for build-plan.md in project.
-# The mechanics of a build. Called by the conductor agent, not typed by the human — the
-# human says what they want and reads the report; these are the steps the agent takes to
-# get there. `accept` is the exception and belongs to the human alone (B5).
+# The mechanics of a build. Called by the conductor agent — the human types none of these.
+# They say what they want and read what came back; every step in between, `accept` (check
+# behind the workers, run the project's check, clean up, write the trunk, report) included,
+# is the agent's. The human's judgement comes after, in words, and its lever is
+# `fraim undo <слияние>` — which the agent runs too.
 cmd_dispatch() {
     _sub=${1:-}
 
@@ -1059,8 +1062,8 @@ cmd_dispatch() {
                     dim "    следующая волна:  fraim dispatch run $2"
                     dim "    (волна $_next — воркеры пойдут от собранной ветки)"
                 else
-                    dim "    все волны собраны — сверить и принять:"
-                    dim "    fraim dispatch verify $2 ПОДЗАДАЧА · fraim dispatch accept $2"
+                    dim "    все волны собраны — принять работу флота:"
+                    dim "    fraim dispatch accept $2  (сверка, мастер-проверка, чистка, отчёт)"
                 fi
             else
                 say ""
@@ -1068,9 +1071,23 @@ cmd_dispatch() {
             fi
             ;;
         accept)
+            # The whole of the acceptance, and all of it the conductor's: check behind every
+            # worker, run the project's check on the assembled branch, clean up after the
+            # fleet, write the trunk, print the report. The human types nothing — they read
+            # this output and answer in words (MODES.md §4, вариант B).
             [ $# -ge 2 ] || die "нужно: fraim dispatch accept СБОРКА"
-            build_accept "$_root" "$2" >/dev/null || die "приёмка не прошла"
-            ok "сборка $2 принята"
+            _arc=0
+            build_accept "$_root" "$2" || _arc=$?
+            [ "$_arc" -eq 2 ] && die "приёмка не прошла"
+            say ""
+            if [ "$_arc" -eq 0 ]; then
+                ok "сборка $2 принята, проверена и в стволе"
+                dim "    покажи человеку, что выше, и скажи своими словами, чего в цифрах"
+                dim "    не видно и в чём ты не уверен — решает он"
+            else
+                warn "сборка $2 проверена, в ствол не уведена — разберись и повтори"
+                exit 1
+            fi
             ;;
         list)
             build_list "$_root"
