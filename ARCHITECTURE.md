@@ -18,7 +18,7 @@ convenience in `install.sh`). Distribution: shell installer + Claude Code plugin
 ## Components & responsibilities
 | component / dir | responsibility |
 |---|---|
-| `installer/bin/fraim`, `installer/lib/*.sh` | the CLI: state, lifecycle, watchman, deterministic verbs, fleet/ADE (plan → waves → per-wave launch → collect → acceptance), scaffold, skills generation; the roles picker discovers agents from the harness table (`harness_detect`, independent of any execution environment) and models live from each agent's own source (native command, cache file, embedded binary catalogue); the fleet launch is an explicit lifecycle — worktree create → agent launch command (model in argv via `launchcmd_<agent>` or the devin built-in) → confirmed `tui-idle` → `worker-start --terminal` Dispatch binding, with best-effort cleanup of partial resources |
+| `installer/bin/fraim`, `installer/lib/*.sh` | the CLI: state, lifecycle, watchman, deterministic verbs, fleet/ADE (plan → waves → per-wave launch → collect → the conductor's acceptance → the human's ratification), scaffold, skills generation; the roles picker discovers agents from the harness table (`harness_detect`, independent of any execution environment) and models live from each agent's own source (native command, cache file, embedded binary catalogue); the fleet launch is an explicit lifecycle — worktree create → agent launch command (model in argv via `launchcmd_<agent>` or the devin built-in) → confirmed `tui-idle` → `worker-start --terminal` Dispatch binding, with best-effort cleanup of partial resources |
 | `procedures/` (13 `.md` + `manifest.json`) | canonical, engine-agnostic methodology text; manifest holds versions, tiers, order |
 | `installer/install.sh` + `fraim init` | delivery: clone to `~/.fraim/src`, link binary, lay skills into detected harnesses |
 | `installer/templates/` | fixed templates: foundation, task, investigation, stack |
@@ -35,10 +35,19 @@ convenience in `install.sh`). Distribution: shell installer + Claude Code plugin
   the legacy values `task`/`parallel`. The only thing the switch does is add the conductor
   block to `AGENTS.md` and the `fraim mode --hook` SessionStart hook.
 - **build** (`ai/builds/<id>/`): plan copy, journal, `fleet.tsv` (a cache of the
-  environment's ids, one block per wave) and `collected.tsv` (our truth: wave, subtask,
-  merged sha, time). Each build owns a branch `fraim/<id>` — workers branch from it and
-  `dispatch collect` merges them back into it; the trunk is written by a human after
-  acceptance.
+  environment's ids, one block per wave), `collected.tsv` (our truth: wave, subtask,
+  merged sha, time), and — after `dispatch accept` — `report.md` plus the state marker
+  `accepted` or `returned`. Each build owns a branch `fraim/<id>` — workers branch from it
+  and `dispatch collect` merges them back into it; the trunk is written by a human after
+  ratification.
+- **acceptance vs ratification**: `dispatch accept` is the CONDUCTOR's stage — it refuses
+  while any subtask is uncollected, then verifies the assembled branch against the union of
+  the plan's declared paths, runs the project's own check (`build_check`) in a throwaway
+  checkout of the build branch, cleans up the checkouts and workers the build itself created
+  (only those provably redundant), and writes `report.md`. The human's ratification is not a
+  subcommand: it is the trunk write, and its negative form is
+  `dispatch return <build> "why"`, which clears the acceptance and records the reason in the
+  build journal.
 - **wave**: a subtask may declare `**After**: id[, id]`; waves are derived from that
   (`dispatch_waves`), never written by hand. Paths may not collide inside a wave and may
   collide across waves. A wave is launched only when the previous one is fully collected —

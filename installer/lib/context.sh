@@ -98,9 +98,11 @@ CTX_ROOT=${CTX_ROOT:-}
 #
 # What a switch may and may not do: it selects which of the two defined modes is in
 # force; it does NOT hand out authority. The wall and the ratification of each mode live
-# in MODES.md and are not configurable — a conductor does not become allowed to accept
-# because someone flipped a key. That distinction is what keeps this on the right side of
-# §1 ("mode is not a setting") and of B5.
+# in MODES.md and are not configurable — a conductor does not become allowed to RATIFY
+# because someone flipped a key. (Accepting the fleet's work — checking behind the workers,
+# cleaning up, reporting — is his job and always was work rather than authority; the
+# judgement over that report is the part no key moves.) That distinction is what keeps this
+# on the right side of §1 ("mode is not a setting") and of B5.
 context_mode_block() {
     cat <<'BLKEOF'
 
@@ -145,15 +147,25 @@ The short version, so you do not start in the wrong place:
   answer and the LAST one: name what failed in the first three before you give it.
 - **Judge the work by the tree, never by the workers' reports.** A report is written by
   the party being judged. `fraim dispatch verify` shows what git says actually changed.
-- **You never accept the build.** One acceptance per build, and it belongs to the human.
+- **The acceptance is yours, the ratification is not.** `fraim dispatch accept СБОРКА` is
+  your stage: it checks behind every worker, runs the project's own check on the assembled
+  branch, cleans up what the fleet created and writes the report. Then you fill in the
+  report's «Словами дирижёра» section — what you checked that the numbers do not show, what
+  you are unsure about, what you recommend — and hand it to the human. What you never do is
+  decide that the build is good, or write it to the trunk: that is the human's, over your
+  report. If they hand it back, write down why: `fraim dispatch return СБОРКА "…"`.
+- **Checking is not judging.** «I checked everything, so I may as well merge it» is the one
+  hole this mode is built around. Show the report and wait.
 
 Mechanics: `fraim dispatch check ПЛАН` before anything is handed out, then
 `fraim dispatch ПЛАН`, `fraim dispatch run СБОРКА` (one wave — the first uncollected one),
 `fraim dispatch watch СБОРКА`, `fraim dispatch collect СБОРКА` (merges the wave into the
 build branch, refuses on uncommitted work, on a file outside the declared paths, and on a
 conflict; then prints the wave's combined diff — read it whole, that is where a divergence
-the path check cannot see shows up), then the next `run`, and
-`fraim dispatch verify СБОРКА ПОДЗАДАЧА`. The human runs `fraim dispatch accept`.
+the path check cannot see shows up), then the next `run`,
+`fraim dispatch verify СБОРКА ПОДЗАДАЧА` to look at one subtask, and finally
+`fraim dispatch accept СБОРКА` — which refuses while any subtask is uncollected, and exits
+non-zero when the report has findings. The human's part is reading that report.
 BLKEOF
 }
 

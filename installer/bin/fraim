@@ -61,6 +61,7 @@ fraim — эксплуатационный слой для проектов на
                             (--brief — задание агенту вычистить найденное)
   fraim dispatch ПЛАН       режим флота: проверить план и завести сборку
   fraim dispatch collect СБОРКА  свести волну в ветку сборки
+  fraim dispatch accept СБОРКА   приёмка дирижёра: сверка, чистка, отчёт человеку
                             run СБОРКА — поднять флот в среде исполнения
                             watch СБОРКА — что среда говорит о воркерах
                             verify СБОРКА ПОДЗАДАЧА — сверить дерево с путями
@@ -963,7 +964,9 @@ cmd_restore() { verb_restore "$(pwd -P)" "$@"; }
 # Takes an optional plan file; without it, looks for build-plan.md in project.
 # The mechanics of a build. Called by the conductor agent, not typed by the human — the
 # human says what they want and reads the report; these are the steps the agent takes to
-# get there. `accept` is the exception and belongs to the human alone (B5).
+# get there, `accept` (check behind the workers, clean up, report) included. `return` is
+# the one the human types, and only to say the report did not convince them: ratification
+# itself is not a subcommand, it is the trunk write the gate stands in front of (B5).
 cmd_dispatch() {
     _sub=${1:-}
 
@@ -1059,8 +1062,8 @@ cmd_dispatch() {
                     dim "    следующая волна:  fraim dispatch run $2"
                     dim "    (волна $_next — воркеры пойдут от собранной ветки)"
                 else
-                    dim "    все волны собраны — сверить и принять:"
-                    dim "    fraim dispatch verify $2 ПОДЗАДАЧА · fraim dispatch accept $2"
+                    dim "    все волны собраны — принять работу флота:"
+                    dim "    fraim dispatch accept $2  (сверка, мастер-проверка, чистка, отчёт)"
                 fi
             else
                 say ""
@@ -1068,15 +1071,42 @@ cmd_dispatch() {
             fi
             ;;
         accept)
+            # The conductor's stage, and the longest one: verify behind every worker, run
+            # the project's own check on the assembled branch, clean up what the fleet
+            # created, write the report. What the human then does with that report is
+            # ratification, and it is not a subcommand here — the gate stands before the
+            # trunk write and no verb steps over it (MODES.md §4).
             [ $# -ge 2 ] || die "нужно: fraim dispatch accept СБОРКА"
-            build_accept "$_root" "$2" >/dev/null || die "приёмка не прошла"
-            ok "сборка $2 принята"
+            _arc=0
+            build_accept "$_root" "$2" || _arc=$?
+            [ "$_arc" -eq 2 ] && die "приёмка не прошла"
+            say ""
+            if [ "$_arc" -eq 0 ]; then
+                ok "сборка $2 проверена и прибрана"
+            else
+                warn "сборка $2 проверена — в отчёте есть чем заняться"
+            fi
+            dim "    допиши в отчёте раздел «Словами дирижёра» и покажи его человеку:"
+            dim "    ратификация — его, и без неё в ствол не уходит ничего (B5)"
+            dim "    вернул словами:  fraim dispatch return $2 \"что не так\""
+            # Non-zero on findings: the report exists either way, but «разберись, потом
+            # показывай» has to be visible to whatever ran the command, not only readable.
+            [ "$_arc" -eq 0 ] || exit 1
+            ;;
+        return)
+            # The human's other answer, written down instead of left in the chat. It clears
+            # the acceptance, so the conductor checks and reports again rather than handing
+            # back the same report with a sentence added.
+            [ $# -ge 3 ] || die "нужно: fraim dispatch return СБОРКА \"что не так\""
+            build_return "$_root" "$2" "$3" >/dev/null || die "возврат не записан"
+            ok "сборка $2 возвращена дирижёру — причина в журнале сборки"
+            dim "    приёмка снята: после правки  fraim dispatch accept $2"
             ;;
         list)
             build_list "$_root"
             ;;
         "")
-            die "нужно: fraim dispatch ПЛАН (или check / run / watch / collect / verify / accept / list)"
+            die "нужно: fraim dispatch ПЛАН (или check / run / watch / collect / verify / accept / return / list)"
             ;;
         *)
             _plan=$_sub
