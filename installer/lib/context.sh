@@ -146,6 +146,12 @@ The short version, so you do not start in the wrong place:
 - **Judge the work by the tree, never by the workers' reports.** A report is written by
   the party being judged. `fraim dispatch verify` shows what git says actually changed.
 - **You never accept the build.** One acceptance per build, and it belongs to the human.
+- **Acceptance is not the end of the build.** After it the build still holds worker
+  checkouts, their branches, the build branch, the assignments and an empty lessons
+  section, and none of that disappears because the human said "принято". The human moves
+  the build branch into the trunk; you write the lessons and run `fraim dispatch close`.
+  Until you do, `fraim status` carries "сборка принята, но за ней не убрано" — and that
+  line is about you.
 
 Mechanics: `fraim dispatch check ПЛАН` before anything is handed out, then
 `fraim dispatch ПЛАН`, `fraim dispatch run СБОРКА` (one wave — the first uncollected one),
@@ -153,7 +159,10 @@ Mechanics: `fraim dispatch check ПЛАН` before anything is handed out, then
 build branch, refuses on uncommitted work, on a file outside the declared paths, and on a
 conflict; then prints the wave's combined diff — read it whole, that is where a divergence
 the path check cannot see shows up), then the next `run`, and
-`fraim dispatch verify СБОРКА ПОДЗАДАЧА`. The human runs `fraim dispatch accept`.
+`fraim dispatch verify СБОРКА ПОДЗАДАЧА`. The human runs `fraim dispatch accept` — its
+output names what the build still holds — and the build ends with `fraim dispatch close
+СБОРКА`, which refuses while the lessons are unwritten, while the build branch is not in
+the trunk, or while a worker checkout holds uncommitted work.
 BLKEOF
 }
 

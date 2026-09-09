@@ -2575,5 +2575,153 @@ printf '2\tfrontend\tghi789\t2026-09-09T00:00:00Z\n' >> "$WB/ai/builds/$WBID/col
 sh -c "$DLIB"'; build_next_wave "$WB" "$WBID"' >/dev/null 2>&1
 check "все волны собраны — поднимать нечего" "$?" "1"
 
+# ---------------------------------------------------- уборка за принятой сборкой
+# Приёмка — ратификация, а не конец сборки. Здесь проверяется, что после неё убирается
+# ровно то, что сборка создала, и что каждый отказ гейта — про потерю работы, а не про
+# порядок: непринятая сборка, пустые уроки, ветка мимо ствола, грязный чекаут.
+printf '\nдиспетчер: уборка за сборкой\n'
+
+XB="$SANDBOX/closeproj"; mkdir -p "$XB/ai/builds" "$XB/ai/tasks"; export XB
+git -C "$XB" init -q; git -C "$XB" config user.email t@t; git -C "$XB" config user.name t
+printf '# ARCHITECTURE\nmap\n' > "$XB/ARCHITECTURE.md"
+printf 'base\n' > "$XB/one.py"; printf 'base\n' > "$XB/two.py"
+git -C "$XB" add -A >/dev/null; git -C "$XB" commit -qm init >/dev/null
+
+cat > "$XB/plan.md" <<'PLAN'
+## Subtask: one
+**Role**: run-task
+**Summary**: первая
+
+### `one.py`
+- почему
+
+## Subtask: two
+**Role**: run-task
+**Summary**: вторая
+
+### `two.py`
+- почему
+PLAN
+
+XBID=build-close; export XBID
+XBD="$XB/ai/builds/$XBID"; export XBD
+sh -c "$DLIB"'; build_seal "$XB" "$XBID" "$XB/plan.md"' >/dev/null 2>&1
+sh -c "$DLIB"'; dispatch_write_task "$XB" "$XBID" one run-task "первая" "one.py"' >/dev/null 2>&1
+sh -c "$DLIB"'; dispatch_write_task "$XB" "$XBID" two run-task "вторая" "two.py"' >/dev/null 2>&1
+git -C "$XB" worktree add -q -b wc-one "$SANDBOX/$XBID-one" "fraim/$XBID"
+git -C "$XB" worktree add -q -b wc-two "$SANDBOX/$XBID-two" "fraim/$XBID"
+printf 'one\n' >> "$SANDBOX/$XBID-one/one.py"
+git -C "$SANDBOX/$XBID-one" commit -qam one >/dev/null
+printf 'two\n' >> "$SANDBOX/$XBID-two/two.py"
+git -C "$SANDBOX/$XBID-two" commit -qam two >/dev/null
+sh -c "$DLIB"'; dispatch_collect "$XB" "$XBID"' >/dev/null 2>&1
+
+# 1. До приёмки убирать нечего: уборка сносит ровно те чекауты, по которым принимают.
+OUT=$(sh -c "$DLIB"'; build_close "$XB" "$XBID"' 2>&1); RC=$?
+check "непринятая сборка — уборка отказывает" "$RC" "1"
+check "отказ называет причину: не принята" "$(printf '%s' "$OUT" | grep -c 'ещё не принята')" "1"
+
+# Приёмка идёт через CLI: её исход и есть то место, где дирижёр узнаёт, что ратификация
+# сборку не закончила. Строчка в процедуре — просьба, вывод команды — часть его хода.
+OUT=$(cd "$XB" && "$FRAIM" dispatch accept "$XBID" 2>&1)
+check "приёмка называет несделанную уборку" "$(printf '%s' "$OUT" | grep -c 'принято — не убрано')" "1"
+check "приёмка называет ненаписанные уроки" "$(printf '%s' "$OUT" | grep -c 'уроки дирижёра не написаны')" "1"
+check "приёмка называет команду уборки" "$(printf '%s' "$OUT" | grep -c "fraim dispatch close $XBID")" "1"
+
+# 2. Сторож видит принятую и неубранную сборку сам — без участия агента и без флагов.
+"$FRAIM" status "$XB" 2>/dev/null | grep -q 'принята, но за ней не убрано'
+check "сторож видит принятую и неубранную сборку" "$?" "0"
+"$FRAIM" status "$XB" 2>/dev/null | grep -q "fraim dispatch close $XBID"
+check "сторож называет команду уборки" "$?" "0"
+
+# 3. Пустые уроки. Раздел создаётся с комментарием внутри, и комментарий за содержимое
+#    не считается: иначе гейт пропускал бы ровно то состояние, ради которого он есть.
+check "раздел с одним комментарием читается как пустой" \
+      "$(sh -c "$DLIB"'; build_lessons_filled "$XBD/journal.md"' && echo filled || echo empty)" "empty"
+OUT=$(sh -c "$DLIB"'; build_close "$XB" "$XBID"' 2>&1); RC=$?
+check "пустые уроки — уборка отказывает" "$RC" "1"
+check "отказ называет уроки" "$(printf '%s' "$OUT" | grep -c 'Уроки дирижёра')" "1"
+check "отказ ничего не тронул: чекаут на месте" \
+      "$(git -C "$XB" worktree list --porcelain | grep -c "$XBID-one")" "1"
+
+# Уроки пишет человек, комментарий-подсказку он при этом обычно оставляет.
+awk '/^## Уроки дирижёра/ { print; print ""; print "- имя сборки не равно имени плана"; next } { print }' \
+    "$XBD/journal.md" > "$XBD/journal.new" && mv "$XBD/journal.new" "$XBD/journal.md"
+check "раздел с текстом и комментарием читается как заполненный" \
+      "$(sh -c "$DLIB"'; build_lessons_filled "$XBD/journal.md"' && echo filled || echo empty)" "filled"
+
+# 4. Ветка сборки не в стволе. Единственный отказ, который защищает работу, а не порядок:
+#    удалить её сейчас — потерять всю сборку.
+OUT=$(sh -c "$DLIB"'; build_close "$XB" "$XBID"' 2>&1); RC=$?
+check "ветка сборки не в стволе — уборка отказывает" "$RC" "1"
+check "отказ называет ствол" "$(printf '%s' "$OUT" | grep -c 'не в стволе')" "1"
+check "ветка сборки при отказе цела" \
+      "$(git -C "$XB" rev-parse --verify --quiet "refs/heads/fraim/$XBID" >/dev/null 2>&1 && echo yes || echo no)" "yes"
+
+# 5. Человек увёл сборку в ствол — теперь убирать можно.
+git -C "$XB" merge -q --no-ff -m "сборка $XBID" "fraim/$XBID" >/dev/null 2>&1
+OUT=$(cd "$XB" && "$FRAIM" dispatch close "$XBID" 2>&1); RC=$?
+check "уборка прошла" "$RC" "0"
+check "чекауты воркеров сняты" \
+      "$(git -C "$XB" worktree list --porcelain | grep -c "$XBID-")" "0"
+check "ветки воркеров удалены" \
+      "$(git -C "$XB" branch --list 'wc-*' | grep -c .)" "0"
+check "ветка сборки удалена" \
+      "$(git -C "$XB" rev-parse --verify --quiet "refs/heads/fraim/$XBID" >/dev/null 2>&1 && echo yes || echo no)" "no"
+check "задания сняты" "$([ -d "$XB/ai/parallel/$XBID" ] && echo yes || echo no)" "no"
+check "работа сборки осталась в стволе" "$(git -C "$XB" show HEAD:one.py | tail -1)" "one"
+check "журнал получил запись об уборке" "$(grep -c '^## Уборка' "$XBD/journal.md")" "1"
+check "маркер уборки поставлен" "$([ -f "$XBD/closed" ] && echo yes || echo no)" "yes"
+check "сторож замолчал" "$("$FRAIM" status "$XB" 2>/dev/null | grep -c 'не убрано')" "0"
+check "список сборок знает, что убрано" \
+      "$(sh -c "$DLIB"'; build_list "$XB"' | grep -c 'принята, убрана')" "1"
+
+OUT=$(sh -c "$DLIB"'; build_close "$XB" "$XBID"' 2>&1); RC=$?
+check "повторная уборка отказывает" "$RC" "1"
+check "повтор говорит, что уже убрано" "$(printf '%s' "$OUT" | grep -c 'уже убрано')" "1"
+
+# 6. Грязный чекаут: в нём работа, которую никто не видел, и снос чекаута её уничтожит.
+XB2=build-dirty-close; export XB2
+XBD2="$XB/ai/builds/$XB2"; export XBD2
+cat > "$XB/plan2.md" <<'PLAN'
+## Subtask: three
+**Role**: run-task
+**Summary**: третья
+
+### `three.py`
+- почему
+PLAN
+printf 'base\n' > "$XB/three.py"
+git -C "$XB" add three.py >/dev/null; git -C "$XB" commit -qm three >/dev/null
+sh -c "$DLIB"'; build_seal "$XB" "$XB2" "$XB/plan2.md"' >/dev/null 2>&1
+sh -c "$DLIB"'; dispatch_write_task "$XB" "$XB2" three run-task "третья" "three.py"' >/dev/null 2>&1
+git -C "$XB" worktree add -q -b wc-three "$SANDBOX/$XB2-three" "fraim/$XB2"
+printf 'three\n' >> "$SANDBOX/$XB2-three/three.py"
+git -C "$SANDBOX/$XB2-three" commit -qam three >/dev/null
+sh -c "$DLIB"'; dispatch_collect "$XB" "$XB2"' >/dev/null 2>&1
+sh -c "$DLIB"'; build_accept "$XB" "$XB2"' >/dev/null 2>&1
+awk '/^## Уроки дирижёра/ { print; print ""; print "- вторая сборка, второй урок"; next } { print }' \
+    "$XBD2/journal.md" > "$XBD2/journal.new" && mv "$XBD2/journal.new" "$XBD2/journal.md"
+git -C "$XB" merge -q --no-ff -m "сборка $XB2" "fraim/$XB2" >/dev/null 2>&1
+printf 'ещё не сохранено\n' >> "$SANDBOX/$XB2-three/three.py"
+
+OUT=$(sh -c "$DLIB"'; build_close "$XB" "$XB2"' 2>&1); RC=$?
+check "грязный чекаут — уборка отказывает" "$RC" "1"
+check "отказ называет незакоммиченное" "$(printf '%s' "$OUT" | grep -c 'незакоммиченное')" "1"
+check "грязный чекаут не снесён" \
+      "$(git -C "$XB" worktree list --porcelain | grep -c "$XB2-three")" "1"
+check "ветка сборки при отказе цела" \
+      "$(git -C "$XB" rev-parse --verify --quiet "refs/heads/fraim/$XB2" >/dev/null 2>&1 && echo yes || echo no)" "yes"
+check "маркер уборки не поставлен" "$([ -f "$XBD2/closed" ] && echo yes || echo no)" "no"
+
+# 7. В ai/parallel лежит не только то, что мы туда положили — папка перестаёт быть нашей (B6).
+printf 'чужая заметка\n' > "$XB/ai/parallel/$XB2/three/notes.md"
+check "чужой файл делает папку заданий не нашей" \
+      "$(sh -c "$DLIB"'; build_leftovers "$XB" "$XB2"' | grep -c '	foreign$')" "1"
+
+# 8. Чистка предлагает уборку сама — и её отказ приезжает с именем и причиной.
+OUT=$(cd "$XB" && "$FRAIM" clean </dev/null 2>&1)
+check "чистка видит неубранную сборку" "$(printf '%s' "$OUT" | grep -c "убрать за принятой сборкой «$XB2»")" "1"
+
 printf '\n%s пройдено, %s провалено\n' "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ]
