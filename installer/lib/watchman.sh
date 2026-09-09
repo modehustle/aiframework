@@ -435,6 +435,30 @@ wm_check_parallel_drift() {
         "fraim dispatch ПЛАН"
 }
 
+# 4f2. Принятая сборка, за которой не убрано.
+#
+# Приёмка — ратификация, а не конец сборки: после неё остаются чекауты воркеров, их ветки,
+# ветка сборки, задания и пустой раздел уроков. В первом живом прогоне всё это пережило
+# приёмку — дирижёр слил ветку, отчитался и остановился, а хвосты нашёл человек.
+#
+# Почему это находка сторожа, а не строчка в процедуре: текст процедуры — просьба к модели,
+# и она уже была там по смыслу. Держит только проверка по файлам и git — та же логика, что
+# у wm_check_parallel_drift. Находка живёт ровно до `fraim dispatch close`, который и есть
+# детерминированная половина уборки.
+wm_check_build_cleanup() {
+    _root=$1
+    [ -d "$_root/ai/builds" ] || return 0
+    for _bcu in "$_root"/ai/builds/*; do
+        [ -f "$_bcu/journal.md" ] || continue
+        [ -f "$_bcu/accepted" ] || continue
+        [ -f "$_bcu/closed" ] && continue
+        _bcu_id=$(basename -- "$_bcu")
+        wm_add build-cleanup attention \
+            "сборка «$_bcu_id» принята, но за ней не убрано" "fraim dispatch close $_bcu_id"
+    done
+    return 0
+}
+
 wm_check_dirty() {
     _root=$1
     wm_is_git "$_root" || return 0
@@ -791,6 +815,7 @@ wm_run() {
     config_is_on check_remote         "$_root" && wm_check_remote "$_root"
     config_is_on check_dirty          "$_root" && wm_check_dirty "$_root"
     config_is_on check_parallel_drift "$_root" && wm_check_parallel_drift "$_root"
+    config_is_on check_build_cleanup  "$_root" && wm_check_build_cleanup "$_root"
     config_is_on check_worktrees      "$_root" && wm_check_worktrees "$_root"
     config_is_on check_ade            "$_root" && wm_check_ade "$_root"
     wm_check_queue "$_root"

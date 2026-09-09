@@ -81,6 +81,18 @@ clean_scan() {
     done
     IFS=$_clean_ifs
 
+    # Принятые сборки, за которыми не убрано. Гейт остаётся гейтом: он откажет на пустых
+    # уроках и на ветке, которой нет в стволе, — и его отказ напечатается в хвосте чистки
+    # именем и причиной. Действие предлагается только тогда, когда убирать действительно
+    # есть что: чистка, которая «сделала» ноль работы, учит не читать её вывод.
+    for _cb in "$_root"/ai/builds/*; do
+        [ -f "$_cb/journal.md" ] || continue
+        [ -f "$_cb/accepted" ] || continue
+        [ -f "$_cb/closed" ] && continue
+        _cb_id=$(basename -- "$_cb")
+        clean_add build-close "$_cb_id" "убрать за принятой сборкой «$_cb_id»"
+    done
+
     # Несохранённый фундамент. Сохраняются ровно те пути, которые считает сторож, — у
     # чистки, как и у глагола, нет режима «сохрани всё» (B6).
     if verb_is_git "$_root" && config_is_on check_dirty "$_root"; then
@@ -198,6 +210,9 @@ clean_apply() {
             task-seal)
                 if clean_run "$_text" verb_task_seal "$_root" "$_arg"; then _done=$((_done + 1))
                 else _refused=$((_refused + 1)); dim "  гейт отказал — это ответ: допиши отчёт и запусти чистку снова"; fi ;;
+            build-close)
+                if clean_run "$_text" build_close "$_root" "$_arg"; then _done=$((_done + 1))
+                else _refused=$((_refused + 1)); dim "  гейт отказал — это ответ: допиши уроки или слей ветку сборки в ствол"; fi ;;
             commit)
                 # shellcheck disable=SC2086
                 if clean_run "$_text" verb_commit "$_root" fix "чистка: сохранены изменения фундамента и ai/" $_arg; then

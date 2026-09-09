@@ -65,6 +65,7 @@ fraim — эксплуатационный слой для проектов на
                             watch СБОРКА — что среда говорит о воркерах
                             verify СБОРКА ПОДЗАДАЧА — сверить дерево с путями
                             check ПЛАН · accept СБОРКА · list
+                            close СБОРКА — убрать за принятой сборкой (гейт)
   fraim mode [reactive|fleet] режим проекта: агент сам или дирижёр с флотом
   fraim roles [set [ИМЯ]]   таблица ролей: во что разворачивается роль на этой машине
                             (set — выбрать агента, модель и усилие из списка)
@@ -1071,12 +1072,41 @@ cmd_dispatch() {
             [ $# -ge 2 ] || die "нужно: fraim dispatch accept СБОРКА"
             build_accept "$_root" "$2" >/dev/null || die "приёмка не прошла"
             ok "сборка $2 принята"
+            # Ратификация — не конец сборки: за ней остаются чекауты, ветки и пустые
+            # уроки. Первый живой прогон кончился именно здесь, поэтому следующий шаг
+            # печатается прямо в исход приёмки, а не живёт в тексте процедуры.
+            say ""
+            dim "    принято — не убрано. За сборкой ещё числится:"
+            build_leftovers "$_root" "$2" 2>/dev/null |
+                while IFS='	' read -r _k _a _b _c _d; do
+                    case $_k in
+                        build-branch)
+                            if [ "$_b" = in-trunk ]; then dim "      ветка $_a (в стволе)"
+                            else dim "      ветка $_a — НЕ в стволе: слить до уборки"; fi ;;
+                        worktree) dim "      чекаут $_a ($_b): $_c" ;;
+                        tasks)    dim "      задания $_a" ;;
+                        lessons)  # у этой строки два поля: состояние приходит вторым
+                                  if [ "$_a" = empty ]; then dim "      уроки дирижёра не написаны"; fi ;;
+                        dispatch) dim "      воркер среды $_b" ;;
+                    esac
+                    # Иначе последняя непопавшая ветка case вернула бы 1, а под `set -e`
+                    # это убило бы команду молча — те же грабли, что у dispatch_worker_tree.
+                    :
+                done || :
+            dim "    убрать за сборкой: fraim dispatch close $2"
+            ;;
+        close)
+            [ $# -ge 2 ] || die "нужно: fraim dispatch close СБОРКА"
+            say "Убираю за сборкой $2..."
+            build_close "$_root" "$2" || die "уборка не прошла"
+            say ""
+            ok "за сборкой $2 убрано"
             ;;
         list)
             build_list "$_root"
             ;;
         "")
-            die "нужно: fraim dispatch ПЛАН (или check / run / watch / collect / verify / accept / list)"
+            die "нужно: fraim dispatch ПЛАН (или check / run / watch / collect / verify / accept / close / list)"
             ;;
         *)
             _plan=$_sub

@@ -941,6 +941,331 @@ build_accept() {
     printf '%s\n' "$_ba_dir/accepted"
 }
 
+# ---------------------------------------------------------------------------
+# Close: the cleanup after acceptance, and why it is a gate rather than a sentence
+#
+# Acceptance is ratification, not the end of the build. What a build still holds the
+# moment the human says "принято" is real and invisible: N worker checkouts, N worker
+# branches, the build branch, the environment's terminals, and a journal whose lessons
+# section is still empty. In the first live build every one of them survived the
+# acceptance — the conductor merged the branch, reported success and stopped; the
+# leftovers were found by hand two turns later, by the human, who had to name them.
+#
+# The obvious fix is a sentence in the procedure: "убери за собой". That sentence was
+# already there in spirit, and it is worth exactly what wm_check_parallel_drift was built
+# to say — text in a context block is a request to a model, and a request is not a
+# guarantee. So the cleanup is a VERB behind a GATE: what is left over is computed from
+# git rather than remembered, the gate refuses instead of guessing, and the watchman keeps
+# naming an accepted build until it is closed.
+#
+# What the gate refuses on, and why each refusal is loss rather than pedantry:
+#   1. the build is not accepted   — cleaning before ratification deletes the evidence the
+#                                    ratification is about (B5, MODES.md §4 вариант A)
+#   2. the lessons section is empty — §11.4: the one class of lesson only the conductor
+#                                    sees. After the checkouts are gone there is nothing
+#                                    left to write it from
+#   3. the build branch is not in the trunk — deleting it then loses the whole build. This
+#                                    is the refusal that protects work, not process
+#   4. a checkout with uncommitted work — removing it destroys work nobody has seen
+#   5. a checkout whose HEAD is not in the build branch — it was never collected, and the
+#                                    build branch is the only place that could prove it was
+#
+# Nothing is touched until every subtask passes: a half-cleaned build is worse than an
+# untouched one, because the remaining half no longer looks like a leftover.
+# ---------------------------------------------------------------------------
+
+# The marker that says this build has been cleaned up after. A file rather than a line in
+# the journal for the same reason `accepted` is one: the watchman and the cleanup ask this
+# question on every scan, and a marker is a test, not a parse.
+build_closed_file() { printf '%s/closed\n' "$(build_dir "$1" "$2")"; }
+
+# The branch a checkout has out, by the checkout's name. The environment names worker
+# branches itself (`modehustle/<build>-<subtask>` in the first live build), so guessing the
+# name would be guessing at somebody else's vocabulary — git already knows it.
+dispatch_worker_branch() {
+    _wb_root=$1; _wb_name=$2
+    git -C "$_wb_root" worktree list --porcelain 2>/dev/null |
+        awk -v n="$_wb_name" '
+            /^worktree / { p = substr($0, 10); sub(/.*\//, "", p); cur = (p == n); next }
+            /^branch /   { if (cur) { b = substr($0, 8); sub(/^refs\/heads\//, "", b)
+                                      print b; exit } }
+        '
+}
+
+# Is the build branch already in the trunk? 0 yes, 1 no, 2 there is no such branch.
+#
+# The trunk is the root checkout's HEAD, not a branch name we decided on: `main` and
+# `master` are both wrong somewhere, and the conductor's own checkout is by construction
+# the one the human writes to (MODES.md §4).
+build_in_trunk() {
+    _bit_root=$1
+    _bit_br=$(build_branch "$2")
+    git -C "$_bit_root" rev-parse --verify --quiet "refs/heads/$_bit_br" >/dev/null 2>&1 || return 2
+    git -C "$_bit_root" merge-base --is-ancestor "refs/heads/$_bit_br" HEAD 2>/dev/null
+}
+
+# Has anybody written the conductor's lessons yet?
+#
+# `verb_section_filled` cannot answer this one: the section is created WITH a comment in
+# it (§11.4, вариант D — an empty section on purpose), and that function reads any `<…>`
+# as an unfilled placeholder. So a filled section would read as empty for as long as the
+# author left the hint comment in place, which is what an author does. Comments are
+# stripped here, across lines, and what is left decides.
+build_lessons_filled() {
+    _blf=$1
+    [ -f "$_blf" ] || return 1
+    awk '
+        /^## Уроки дирижёра/ { sec = 1; next }
+        sec && /^#/          { sec = 0 }
+        !sec                 { next }
+        {
+            line = $0
+            while (1) {
+                if (inc) {
+                    j = index(line, "-->")
+                    if (j == 0) { line = ""; break }
+                    line = substr(line, j + 3); inc = 0; continue
+                }
+                i = index(line, "<!--")
+                if (i == 0) break
+                head = substr(line, 1, i - 1)
+                rest = substr(line, i + 4)
+                j = index(rest, "-->")
+                if (j == 0) { line = head; inc = 1; break }
+                line = head substr(rest, j + 3)
+            }
+            gsub(/[[:space:]-]/, "", line)
+            if (line != "") found = 1
+        }
+        END { exit !found }
+    ' "$_blf"
+}
+
+# One line per resource the build still holds, read from git rather than remembered.
+# The vocabulary is fixed because three readers share it — the gate, the watchman and
+# `fraim clean` — and a second phrasing of the same fact is a second truth (A3):
+#
+#   build-branch<TAB>ВЕТКА<TAB>in-trunk|not-in-trunk
+#   worktree<TAB>ПОДЗАДАЧА<TAB>merged|unmerged|dirty<TAB>ПУТЬ<TAB>ВЕТКА
+#   tasks<TAB>ПУТЬ<TAB>ours|foreign
+#   lessons<TAB>filled|empty
+#   dispatch<TAB>ПОДЗАДАЧА<TAB>ID
+build_leftovers() {
+    _bl_root=$1; _bl_id=$2
+    _bl_dir=$(build_dir "$_bl_root" "$_bl_id")
+    [ -f "$_bl_dir/journal.md" ] || return 1
+
+    _bl_br=$(build_branch "$_bl_id")
+    _bl_ref=HEAD
+    if git -C "$_bl_root" rev-parse --verify --quiet "refs/heads/$_bl_br" >/dev/null 2>&1; then
+        _bl_ref="refs/heads/$_bl_br"
+        if git -C "$_bl_root" merge-base --is-ancestor "$_bl_ref" HEAD 2>/dev/null; then
+            printf 'build-branch\t%s\tin-trunk\n' "$_bl_br"
+        else
+            printf 'build-branch\t%s\tnot-in-trunk\n' "$_bl_br"
+        fi
+    fi
+
+    if [ -f "$_bl_dir/plan.md" ]; then
+        for _bl_s in $(dispatch_subtask_ids "$_bl_dir/plan.md"); do
+            _bl_t=$(dispatch_worker_tree "$_bl_root" "$_bl_id-$_bl_s")
+            [ -n "$_bl_t" ] || continue
+            _bl_b=$(dispatch_worker_branch "$_bl_root" "$_bl_id-$_bl_s")
+            _bl_h=$(git -C "$_bl_t" rev-parse HEAD 2>/dev/null || :)
+            if [ -n "$(cd "$_bl_t" 2>/dev/null && git status --porcelain 2>/dev/null | head -1)" ]; then
+                _bl_st=dirty
+            elif [ -n "$_bl_h" ] &&
+                 git -C "$_bl_root" merge-base --is-ancestor "$_bl_h" "$_bl_ref" 2>/dev/null; then
+                _bl_st=merged
+            else
+                _bl_st=unmerged
+            fi
+            printf 'worktree\t%s\t%s\t%s\t%s\n' "$_bl_s" "$_bl_st" "$_bl_t" "${_bl_b:-—}"
+        done
+    fi
+
+    # The assignments dispatch wrote. `ours` means the folder holds nothing but the task.md
+    # files this CLI put there — anything else and the folder stops being ours to delete
+    # (B6), whoever put it there and whatever it is.
+    _bl_par="$_bl_root/ai/parallel/$_bl_id"
+    if [ -d "$_bl_par" ]; then
+        if [ -z "$(find "$_bl_par" -type f ! -name task.md 2>/dev/null | head -1)" ]; then
+            printf 'tasks\t%s\tours\n' "$_bl_par"
+        else
+            printf 'tasks\t%s\tforeign\n' "$_bl_par"
+        fi
+    fi
+
+    if build_lessons_filled "$_bl_dir/journal.md"; then
+        printf 'lessons\tfilled\n'
+    else
+        printf 'lessons\tempty\n'
+    fi
+
+    build_fleet_rows "$_bl_root" "$_bl_id" 2>/dev/null |
+        while IFS='	' read -r _bl_fs _bl_ft _bl_fd _bl_fa; do
+            [ -n "$_bl_fd" ] && [ "$_bl_fd" != "—" ] &&
+                printf 'dispatch\t%s\t%s\n' "$_bl_fs" "$_bl_fd"
+        done
+    return 0
+}
+
+# Is there anything left to clean up? Used by the watchman and by `clean`, which must not
+# offer an action that would do nothing.
+build_has_leftovers() {
+    build_leftovers "$1" "$2" 2>/dev/null |
+        grep -qE '^(worktree|build-branch|tasks|dispatch)	'
+}
+
+# The cleanup itself. Refuses (exit 1) and touches NOTHING when any precondition fails;
+# the refusal's last line is the reason, because that is the line `fraim clean` shows.
+build_close() {
+    _bc_root=$1; _bc_id=$2
+
+    _bc_dir=$(build_dir "$_bc_root" "$_bc_id")
+    [ -d "$_bc_dir" ] || { printf >&2 'нет такой сборки: %s\n' "$_bc_id"; return 1; }
+    [ -f "$_bc_dir/journal.md" ] ||
+        { printf >&2 'сборка %s: нет журнала — она не заводилась через dispatch\n' "$_bc_id"; return 1; }
+    [ -f "$_bc_dir/accepted" ] ||
+        { printf >&2 'сборка %s ещё не принята: уборка идёт после приёмки, иначе убирать нечем — fraim dispatch accept %s\n' \
+            "$_bc_id" "$_bc_id"; return 1; }
+    [ -f "$(build_closed_file "$_bc_root" "$_bc_id")" ] &&
+        { printf >&2 'за сборкой %s уже убрано\n' "$_bc_id"; return 1; }
+
+    build_lessons_filled "$_bc_dir/journal.md" ||
+        { printf >&2 'в журнале сборки %s пуст раздел «## Уроки дирижёра»: впиши уроки раздачи до уборки — после неё их будет не из чего вспомнить\n' \
+            "$_bc_id"; return 1; }
+
+    _bc_br=$(build_branch "$_bc_id")
+    _bc_ref=HEAD
+    build_in_trunk "$_bc_root" "$_bc_id"; _bc_tr=$?
+    case $_bc_tr in
+        0) _bc_ref="refs/heads/$_bc_br" ;;
+        1) printf >&2 'ветка сборки %s не в стволе: удалить её сейчас — потерять всю сборку. Слей её в ствол и повтори уборку\n' \
+               "$_bc_br"; return 1 ;;
+    esac
+
+    # Pre-flight over every worker, and only then a single action. Reported all at once:
+    # finding out about the second dirty checkout after fixing the first costs a round trip
+    # for nothing.
+    _bc_bad=0
+    _bc_plan="$_bc_dir/plan.md"
+    _bc_left=$(build_leftovers "$_bc_root" "$_bc_id") || _bc_left=
+    printf '%s\n' "$_bc_left" | while IFS='	' read -r _k _a _b _c _d; do
+        case "$_k	$_b" in
+            'worktree	dirty')
+                printf >&2 '  %-12s в чекауте есть незакоммиченное — не удаляю: %s\n' "$_a" "$_c" ;;
+            'worktree	unmerged')
+                printf >&2 '  %-12s работа чекаута не в ветке сборки — она не собрана: %s\n' "$_a" "$_c" ;;
+        esac
+    done
+    if printf '%s\n' "$_bc_left" | grep -qE '^worktree	[^	]*	(dirty|unmerged)	'; then _bc_bad=1; fi
+    [ "$_bc_bad" -eq 0 ] ||
+        { printf >&2 'уборка не тронула ничего: разберись с перечисленными чекаутами и повтори\n'; return 1; }
+
+    # From here the actions run. Each one is reported, and any failure leaves the build
+    # open — a `closed` marker over a half-cleaned build would hide exactly what is left.
+    _bc_fail=0; _bc_wt=0; _bc_brn=0
+    _bc_stamp=$(date -u '+%Y-%m-%dT%H:%M:%SZ')
+    _bc_log="$_bc_dir/.close.log"; : > "$_bc_log"
+
+    # §9.6 first, while we still know the ids: the environment closes exactly the terminals
+    # it opened for us. It is best-effort on purpose — a dead ADE must not hold a git
+    # cleanup hostage, and worker-release is idempotent by their contract.
+    if command -v fleet_present >/dev/null 2>&1 && fleet_present; then
+        printf '%s\n' "$_bc_left" | while IFS='	' read -r _k _a _b _c _d; do
+            [ "$_k" = dispatch ] || continue
+            if fleet_worker_release "$_b" >/dev/null 2>&1; then
+                printf '  %-12s воркер среды освобождён (%s)\n' "$_a" "$_b"
+            else
+                printf '  %-12s среда не отпустила воркера %s — это её состояние, не наше\n' "$_a" "$_b"
+            fi
+        done
+    fi
+
+    printf '%s\n' "$_bc_left" | while IFS='	' read -r _k _a _b _c _d; do
+        [ "$_k" = worktree ] || continue
+        if git -C "$_bc_root" worktree remove "$_c" >/dev/null 2>&1; then
+            printf 'worktree\n' >> "$_bc_log"
+            printf '  %-12s чекаут снят: %s\n' "$_a" "$_c"
+        else
+            printf 'fail\n' >> "$_bc_log"
+            printf '  %-12s чекаут снять не удалось: %s\n' "$_a" "$_c"
+            continue
+        fi
+        [ -n "$_d" ] && [ "$_d" != "—" ] || continue
+        # `-d`, never `-D`: the ancestry was checked above, so a refusal here means the
+        # check and git disagree, and git wins.
+        if git -C "$_bc_root" branch -d "$_d" >/dev/null 2>&1; then
+            printf 'branch\n' >> "$_bc_log"
+            printf '  %-12s ветка удалена: %s\n' "$_a" "$_d"
+        else
+            printf 'fail\n' >> "$_bc_log"
+            printf '  %-12s ветку %s git удалять отказался — оставляю\n' "$_a" "$_d"
+        fi
+    done
+    git -C "$_bc_root" worktree prune >/dev/null 2>&1 || :
+
+    _bc_wt=$(grep -c '^worktree$' "$_bc_log" 2>/dev/null || :)
+    _bc_brn=$(grep -c '^branch$' "$_bc_log" 2>/dev/null || :)
+    if grep -q '^fail$' "$_bc_log" 2>/dev/null; then _bc_fail=1; fi
+    rm -f "$_bc_log"
+
+    # The assignments: ours to delete only while they are ours (B6).
+    _bc_par="$_bc_root/ai/parallel/$_bc_id"
+    _bc_tasks=нет
+    if printf '%s\n' "$_bc_left" | grep -q '^tasks	.*	ours$'; then
+        if rm -rf "$_bc_par" 2>/dev/null; then
+            _bc_tasks="удалены (ai/parallel/$_bc_id)"
+            printf '  задания сняты: ai/parallel/%s\n' "$_bc_id"
+        else
+            _bc_tasks="удалить не удалось"; _bc_fail=1
+        fi
+    elif printf '%s\n' "$_bc_left" | grep -q '^tasks	.*	foreign$'; then
+        _bc_tasks="оставлены: в ai/parallel/$_bc_id лежит не только task.md"
+        printf '  ai/parallel/%s не тронут: там лежит не только task.md\n' "$_bc_id"
+    fi
+
+    _bc_brdel=нет
+    if [ "$_bc_tr" -eq 0 ]; then
+        if git -C "$_bc_root" branch -d "$_bc_br" >/dev/null 2>&1; then
+            _bc_brdel="удалена (была в стволе)"
+            printf '  ветка сборки удалена: %s\n' "$_bc_br"
+        else
+            _bc_brdel="удалить не удалось"; _bc_fail=1
+            printf '  ветку сборки %s удалить не удалось — оставляю\n' "$_bc_br"
+        fi
+    fi
+
+    {
+        printf '\n## Уборка — %s\n\n' "$_bc_stamp"
+        printf -- '- чекаутов снято: %s\n' "$_bc_wt"
+        printf -- '- веток воркеров удалено: %s\n' "$_bc_brn"
+        printf -- '- ветка сборки %s: %s\n' "$_bc_br" "$_bc_brdel"
+        printf -- '- задания: %s\n' "$_bc_tasks"
+        [ "$_bc_fail" -eq 0 ] || printf -- '- убрано не всё: часть ресурсов осталась, сборка не закрыта\n'
+    } >> "$_bc_dir/journal.md"
+
+    if [ "$_bc_fail" -ne 0 ]; then
+        printf >&2 'убрано не всё — сборка %s остаётся открытой, разберись с перечисленным и повтори\n' "$_bc_id"
+        return 1
+    fi
+
+    {
+        printf 'Убрана: %s\n' "$_bc_stamp"
+        printf 'Ствол: %s\n' "$(cd "$_bc_root" && git rev-parse --short HEAD 2>/dev/null || echo '—')"
+    } > "$(build_closed_file "$_bc_root" "$_bc_id")" || return 1
+
+    # The save point, where there is one to make. Guarded rather than assumed: dispatch.sh
+    # is sourced on its own by the tests, and a missing verb must not turn a finished
+    # cleanup into a failure.
+    if command -v verb_commit >/dev/null 2>&1; then
+        verb_commit "$_bc_root" clean "уборка за сборкой $_bc_id" \
+            "ai/builds/$_bc_id" >/dev/null 2>&1 || :
+    fi
+    return 0
+}
+
 # Pending builds, newest first: id and whether it has been accepted.
 # A directory under ai/builds is a BUILD only if it has a journal. Anything else is a
 # folder someone put a plan in — that is what ai/builds/v2-core was in the first live
@@ -952,8 +1277,10 @@ build_list() {
         [ -d "$_b" ] || continue
         if [ ! -f "$_b/journal.md" ]; then
             printf '%s\tне сборка (нет журнала)\n' "$(basename -- "$_b")"
+        elif [ -f "$_b/accepted" ] && [ -f "$_b/closed" ]; then
+            printf '%s\tпринята, убрана\n' "$(basename -- "$_b")"
         elif [ -f "$_b/accepted" ]; then
-            printf '%s\tпринята\n' "$(basename -- "$_b")"
+            printf '%s\tпринята, НЕ убрана\n' "$(basename -- "$_b")"
         else
             printf '%s\tне принята\n' "$(basename -- "$_b")"
         fi
