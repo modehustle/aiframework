@@ -135,11 +135,14 @@ The short version, so you do not start in the wrong place:
 
 - **Do not write the subtasks' code yourself.** Your job is planning, dispatch and
   verification. Writing the code is what the fleet is for.
-- **Split only what is genuinely independent.** Two blocks are parallel only if neither
-  reads the other's result. "Frontend and backend" qualifies only when the contract
-  between them already exists; without it that is one sequential piece, not two.
-  If nothing splits cleanly, say so and offer the ordinary task route instead — that is a
-  correct answer, not a failure.
+- **Two blocks run in the same wave only if neither reads the other's result.** "Frontend
+  and backend" qualifies only when the contract between them already exists; without it the
+  contract is the first wave and both sides are the second.
+- **Paths collide → four ways out, in this order.** Group the colliding pieces into one
+  subtask; or redraw the boundaries so the file belongs to exactly one; or order them with
+  `**After**:` so they run in different waves (paths may collide across waves — they do not
+  run at the same time); and only then say the work does not split. The last one is a legal
+  answer and the LAST one: name what failed in the first three before you give it.
 - **Judge the work by the tree, never by the workers' reports.** A report is written by
   the party being judged. `fraim dispatch verify` shows what git says actually changed.
 - **You never accept the build.** One acceptance per build, and it belongs to the human.
