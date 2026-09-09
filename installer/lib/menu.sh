@@ -218,12 +218,12 @@ menu_mode() {
         warn "здесь нет проекта под системой — режим переключать нечему"
         return 0
     fi
-    _mm_cur=$(config_get mode "$_mm_root")
+    _mm_cur=$(mode_get "$_mm_root")
     say "Сейчас: ${C_BLD}$_mm_cur${C_OFF}"
     say ""
     case $_mm_cur in
-        parallel) _mm_to=task ;;
-        *)        _mm_to=parallel ;;
+        fleet) _mm_to=reactive ;;
+        *)     _mm_to=fleet ;;
     esac
     printf '  Переключить на %s%s%s? [y/N] ' "$C_BLD" "$_mm_to" "$C_OFF"
     read -r _mm_a </dev/tty 2>/dev/null || return 0

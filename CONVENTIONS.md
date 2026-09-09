@@ -45,3 +45,4 @@
 - POSIX printf with more arguments than conversions reprocesses the surplus as FORMAT (dash) — build the string in a variable, then printf '%s
 - '
 - A stub CLI keyed on "$1 $2" must order overlapping patterns (worktree rm before worktree*) or cleanup verbs answer with the wrong subcommand's JSON
+- The project mode has legacy values on disk (`task`, `parallel`): compare `mode_get` against `reactive`/`fleet`, never `config_get mode` against a literal — a raw comparison reads a legacy value as "not fleet" and switches the mode off silently

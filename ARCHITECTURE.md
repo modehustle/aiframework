@@ -30,6 +30,10 @@ convenience in `install.sh`). Distribution: shell installer + Claude Code plugin
 ## Data model (key entities)
 - **project registry** (`~/.fraim/`): registered projects, install state, version.
 - **per-project state**: `ai/` tree (tasks, archive, investigations), foundation files, `fraim.conf`.
+- **mode** (`mode` in `ai/fraim.conf`): `reactive` (default — the agent does the work in the
+  session) or `fleet` (conductor + workers). Read only through `mode_get`, which also maps
+  the legacy values `task`/`parallel`. The only thing the switch does is add the conductor
+  block to `AGENTS.md` and the `fraim mode --hook` SessionStart hook.
 - **manifest**: procedure name → file, tier, order, description.
 
 ## Data flow

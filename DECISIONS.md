@@ -3,6 +3,13 @@
 > Newest on top. One entry per decision. Never rewrite history — supersede with a new
 > entry, or relocate stale entries to `ai/archive/decisions_log.md` via `/prune`.
 
+## 2026-09-09 — two modes, not three: reactive is the default, fleet is the switch
+
+Context: `MODES.md` described three modes (reactive, task, parallel), but the task mode was never one: by the five-row test in MODES.md §1 it differs from reactive in nothing, and the `mode` config key never switched it on — `task` was literally "not parallel". The name promised authority the code did not implement, and the agent read it as licence to write a task for itself and then execute it in the same session.
+Decision: `mode` takes `reactive` (default) and `fleet`. The task ceremony (`/make-task` → `/run-task` → `task-seal`) stays as a PROCEDURE inside the reactive mode — the way to hand work to someone who is not in this conversation — and writing a task for yourself to execute in the same session is now stated as forbidden in the AGENTS.md project block. The legacy values `task` and `parallel` are read as `reactive`/`fleet` (mode_canon in config.sh) but never written; `fraim mode task|parallel` still works and warns. Every "is the fleet on here" test goes through `mode_get`, so a legacy value cannot silently fall back to the default.
+Alternatives: renaming without legacy aliases rejected (every installed project carries `mode = parallel` in ai/fraim.conf and would silently lose the mode); keeping `parallel` as the name rejected (the human switches on a fleet, not a property of the work, and `fraim fleet` already exists); dropping `/make-task` along with the mode rejected (the fleet worker IS a `/run-task`, and handing work to another session is a real need).
+Consequences: MODES.md §2 is now two modes and keeps the old anchor `#2-три-режима` so existing links do not break; the conductor procedure says `fraim mode fleet`. The refusal class "chunks overlap, cannot split" is untouched by this and is the next piece of work (sequential waves + a collect verb).
+
 ## 2026-09-08 — role picker agent list comes from the harness table, not Orca
 
 Context: `roles_agents_available` asked Orca (`orca account list --json`) for the list of agents in the role picker, coupling the picker to a specific execution environment. Devin (a harness fraim installs into) was invisible because Orca doesn't list it as a provider; Kimi (not installed, not in the harness table) appeared because Orca knows it as a provider. The product is environment-agnostic — Orca is one possible ADE, not a dependency.

@@ -472,6 +472,40 @@ git -C "$PROJ2" add -A >/dev/null; git -C "$PROJ2" commit -qm "bootstrap: founda
 "$FRAIM" status "$PROJ2" >/dev/null 2>&1
 check "заполненный фундамент → exit 0" "$?" "0"
 
+# ---------------------------------------------------------------- режим
+# Два режима, не три: reactive (агент делает сам) и fleet (дирижёр и флот). Старые имена
+# `task` и `parallel` лежат в ai/fraim.conf у всех проектов, заведённых до переименования,
+# и должны читаться, а не ронять режим в дефолт молча.
+printf '\nfraim mode\n'
+
+cd "$PROJ2" || exit 1
+check "режим по умолчанию — реактивный" "$("$FRAIM" mode | sed -n 's/.*режим: \([a-z]*\).*/\1/p' | head -1)" "reactive"
+check "реактивный режим не пишет дирижёрский блок в AGENTS.md" \
+      "$(grep -c 'Fleet mode is on' "$PROJ2/AGENTS.md")" "0"
+
+"$FRAIM" mode fleet >/dev/null 2>&1
+check "режим fleet записан в проект" \
+      "$(sed -n 's/^mode = //p' "$PROJ2/ai/fraim.conf" | head -1)" "fleet"
+check "AGENTS.md получил дирижёрский блок" "$(grep -c 'Fleet mode is on' "$PROJ2/AGENTS.md")" "1"
+
+# Легаси-значение читается как флот — иначе у установленного проекта режим отвалится молча.
+printf 'mode = parallel\n' > "$PROJ2/ai/fraim.conf"
+check "старое имя parallel читается как fleet" "$("$FRAIM" mode | sed -n 's/.*режим: \([a-z]*\).*/\1/p' | head -1)" "fleet"
+printf 'mode = task\n' > "$PROJ2/ai/fraim.conf"
+check "старое имя task читается как reactive" "$("$FRAIM" mode | sed -n 's/.*режим: \([a-z]*\).*/\1/p' | head -1)" "reactive"
+
+# Принять старое имя команда обязана, но записать — новое.
+"$FRAIM" mode parallel >/dev/null 2>&1
+check "старое имя на входе пишется новым" \
+      "$(sed -n 's/^mode = //p' "$PROJ2/ai/fraim.conf" | head -1)" "fleet"
+
+"$FRAIM" mode reactive >/dev/null 2>&1
+check "возврат в реактивный убирает дирижёрский блок" \
+      "$(grep -c 'Fleet mode is on' "$PROJ2/AGENTS.md")" "0"
+"$FRAIM" mode nonsense >/dev/null 2>&1
+check "неизвестный режим отвергнут" "$?" "2"
+cd "$SANDBOX" || exit 1
+
 # --- фундамент: считаем изменения, а не время ------------------------------
 # Раньше мерилось время между последним коммитом кода и последним коммитом карты.
 # В цикле задач это работало, а в реактивном режиме — самом частом — инвертировалось:

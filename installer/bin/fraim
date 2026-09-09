@@ -64,7 +64,7 @@ fraim — эксплуатационный слой для проектов на
                             watch СБОРКА — что среда говорит о воркерах
                             verify СБОРКА ПОДЗАДАЧА — сверить дерево с путями
                             check ПЛАН · accept СБОРКА · list
-  fraim mode [task|parallel]  режим проекта: обычный или дирижёр с флотом
+  fraim mode [reactive|fleet] режим проекта: агент сам или дирижёр с флотом
   fraim roles [set [ИМЯ]]   таблица ролей: во что разворачивается роль на этой машине
                             (set — выбрать агента, модель и усилие из списка)
   fraim init                поставить скиллы / подхватить новый харнес
@@ -1176,7 +1176,7 @@ cmd_roles_set() {
     dim "    → $_rs_file"
 }
 
-# The mode of this project: which of the three defined modes is in force here.
+# The mode of this project: which of the two defined modes is in force here.
 #
 # Not a preset of behaviours — MODES.md §1 is explicit that a mode answers "who has the
 # right to do what", and the authority inside each mode lives in the foundation and is not
@@ -1186,11 +1186,11 @@ cmd_roles_set() {
 # whole mechanism.
 cmd_mode() {
     _md_root=$(verb_root)
-    _md_cur=$(config_get mode "$_md_root")
+    _md_cur=$(mode_get "$_md_root")
 
     # Called by the harness at session start, not by a human: prints the mode's briefing
-    # as JSON for `additionalContext`. Silent and successful in task mode, so the hook can
-    # stay installed harmlessly if someone leaves it behind.
+    # as JSON for `additionalContext`. Silent and successful in reactive mode, so the hook
+    # can stay installed harmlessly if someone leaves it behind.
     if [ "${1:-}" = --hook ]; then
         context_hook_payload "$_md_root" || :
         return 0
@@ -1200,23 +1200,29 @@ cmd_mode() {
         say "режим: ${C_BLD}$_md_cur${C_OFF} · $(config_source mode "$_md_root")"
         say ""
         case $_md_cur in
-            parallel)
+            fleet)
                 dim "    агент, входящий в проект, работает дирижёром: планирует, раздаёт"
                 dim "    флоту и сверяет, но приёмка — твоя (B5)"
-                dim "    вернуть обычный режим: fraim mode task" ;;
+                dim "    вернуть реактивный режим: fraim mode reactive" ;;
             *)
-                dim "    одна задача — одна приёмка, исполняет одна сессия"
-                dim "    включить дирижёра и флот: fraim mode parallel" ;;
+                dim "    агент делает работу сам, в этом разговоре: точка сохранения,"
+                dim "    строка в DECISIONS.md, сторож на входе — задачи он себе не заводит"
+                dim "    включить дирижёра и флот: fraim mode fleet" ;;
         esac
         return 0
     fi
 
+    # Старые имена принимаются, но не пишутся: `task` был реактивным режимом под другим
+    # именем, `parallel` — флотом. Они лежат в ai/fraim.conf у всех проектов, заведённых
+    # до переименования, и молча ронять их режим нельзя.
     case $1 in
-        task|parallel) _md_new=$1 ;;
-        *) die "режим бывает task или parallel, а не «$1»" ;;
+        reactive|fleet) _md_new=$1 ;;
+        task)     _md_new=reactive; warn "«task» — старое имя реактивного режима, пишу reactive" ;;
+        parallel) _md_new=fleet;    warn "«parallel» — старое имя режима флота, пишу fleet" ;;
+        *) die "режим бывает reactive или fleet, а не «$1»" ;;
     esac
 
-    if [ "$_md_new" = parallel ] && ! fleet_present; then
+    if [ "$_md_new" = fleet ] && ! fleet_present; then
         warn "среды исполнения на этой машине нет — флот поднять будет нечем"
         dim "    планирование и проверки работают, а «fraim dispatch run» откажет"
     fi
@@ -1232,11 +1238,11 @@ cmd_mode() {
 
     # The hook is what actually STARTS the mode: AGENTS.md is a file the agent may read,
     # a SessionStart hook is text the harness puts into its context before the first turn.
-    case $_md_new in parallel) _md_hook=on ;; *) _md_hook=off ;; esac
+    case $_md_new in fleet) _md_hook=on ;; *) _md_hook=off ;; esac
     if context_hook_set "$_md_root" "$_md_hook"; then
         case $_md_new in
-            parallel) dim "    хук SessionStart поставлен — дирижёрская инструкция придёт" ;;
-            *)        dim "    хук SessionStart снят" ;;
+            fleet) dim "    хук SessionStart поставлен — дирижёрская инструкция придёт" ;;
+            *)     dim "    хук SessionStart снят" ;;
         esac
         dim "    в контекст агента на старте сессии, без единого нажатия"
     else
