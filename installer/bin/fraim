@@ -59,14 +59,14 @@ fraim — эксплуатационный слой для проектов на
   fraim clean [--yes]       прибрать всё, что чинится без суждения
   fraim publish [--check]   копия проекта вне этой машины: создать, отправить, сверить
                             (--brief — задание агенту вычистить найденное)
-  fraim dispatch ПЛАН       режим флота: проверить план и завести сборку
+  fraim dispatch ПЛАН       флот: проверить план и завести сборку
   fraim dispatch collect СБОРКА  свести волну в ветку сборки
   fraim dispatch accept СБОРКА   приёмка дирижёра: сверка, проверка, чистка, ствол
                             run СБОРКА — поднять флот в среде исполнения
                             watch СБОРКА — что среда говорит о воркерах
                             verify СБОРКА ПОДЗАДАЧА — сверить дерево с путями
                             check ПЛАН · accept СБОРКА · list
-  fraim mode [reactive|fleet] режим проекта: агент сам или дирижёр с флотом
+  fraim mode                убрать остатки старого режима флота из проекта
   fraim roles [set [ИМЯ]]   таблица ролей: во что разворачивается роль на этой машине
                             (set — выбрать агента, модель и усилие из списка)
   fraim init                поставить скиллы / подхватить новый харнес
@@ -151,7 +151,6 @@ cmd_init() {
         # the machine block here would have overwritten what `fraim scaffold` puts in a
         # project's AGENTS.md — and it would be the wrong text anyway: a routing table for
         # skills installed on this machine says nothing to the agent that clones the repo.
-        CTX_ROOT=$_cwd
         if context_install "$_cwd/AGENTS.md" context_project_block; then
             dim "    контекстный блок → $_cwd/AGENTS.md"
         fi
@@ -1220,85 +1219,47 @@ cmd_roles_set() {
     dim "    → $_rs_file"
 }
 
-# The mode of this project: which of the two defined modes is in force here.
-#
-# Not a preset of behaviours — MODES.md §1 is explicit that a mode answers "who has the
-# right to do what", and the authority inside each mode lives in the foundation and is not
-# configurable. What this switches is which mode is active, and the visible effect is the
-# context block in AGENTS.md: that is where an agent entering the project learns whether it
-# is a conductor. So there is no command to "start conducting" — being in the mode is the
-# whole mechanism.
+# The retired project mode (DECISIONS 2026-09-15). There is one way of working — the
+# agent does the work in the conversation — and the conductor is a procedure the human
+# asks for, not a role a project switch assigns. Projects switched into the fleet before
+# that still carry three leftovers; this verb removes exactly those and nothing else (B6):
+# the `mode` line in ai/fraim.conf, the conductor section in AGENTS.md (gone by itself once
+# the project block is rewritten) and the SessionStart hook in .claude/settings.json.
 cmd_mode() {
+    # A leftover hook calls this at every session start. It must stay silent and green.
+    [ "${1:-}" = --hook ] && return 0
+
     _md_root=$(verb_root)
-    _md_cur=$(mode_get "$_md_root")
+    say "режимов больше нет: агент работает сам, в разговоре"
+    dim "    дирижёр и флот — процедура /conductor, её запускают по просьбе человека"
+    say ""
 
-    # Called by the harness at session start, not by a human: prints the mode's briefing
-    # as JSON for `additionalContext`. Silent and successful in reactive mode, so the hook
-    # can stay installed harmlessly if someone leaves it behind.
-    if [ "${1:-}" = --hook ]; then
-        context_hook_payload "$_md_root" || :
-        return 0
+    _md_did=
+    _md_conf=$(config_project_file "$_md_root")
+    if [ -n "$(config_read_file "$_md_conf" mode)" ]; then
+        _md_tmp="$_md_conf.fraim.$$"
+        grep -v '^[[:space:]]*mode[[:space:]]*=' "$_md_conf" > "$_md_tmp" && mv "$_md_tmp" "$_md_conf" ||
+            die "не удалось убрать строку mode из ai/fraim.conf"
+        ok "строка mode убрана из ai/fraim.conf"; _md_did=1
     fi
 
-    if [ $# -eq 0 ]; then
-        say "режим: ${C_BLD}$_md_cur${C_OFF} · $(config_source mode "$_md_root")"
-        say ""
-        case $_md_cur in
-            fleet)
-                dim "    агент, входящий в проект, работает дирижёром: планирует, раздаёт"
-                dim "    флоту и сверяет, но приёмка — твоя (B5)"
-                dim "    вернуть реактивный режим: fraim mode reactive" ;;
-            *)
-                dim "    агент делает работу сам, в этом разговоре: точка сохранения,"
-                dim "    строка в DECISIONS.md, сторож на входе — задачи он себе не заводит"
-                dim "    включить дирижёра и флот: fraim mode fleet" ;;
-        esac
-        return 0
+    if [ -f "$_md_root/AGENTS.md" ] && grep -q '^## Fleet mode is on' "$_md_root/AGENTS.md"; then
+        context_install "$_md_root/AGENTS.md" context_project_block ||
+            die "не удалось обновить AGENTS.md"
+        ok "дирижёрский блок убран из AGENTS.md"; _md_did=1
     fi
 
-    # Старые имена принимаются, но не пишутся: `task` был реактивным режимом под другим
-    # именем, `parallel` — флотом. Они лежат в ai/fraim.conf у всех проектов, заведённых
-    # до переименования, и молча ронять их режим нельзя.
-    case $1 in
-        reactive|fleet) _md_new=$1 ;;
-        task)     _md_new=reactive; warn "«task» — старое имя реактивного режима, пишу reactive" ;;
-        parallel) _md_new=fleet;    warn "«parallel» — старое имя режима флота, пишу fleet" ;;
-        *) die "режим бывает reactive или fleet, а не «$1»" ;;
-    esac
-
-    if [ "$_md_new" = fleet ] && ! fleet_present; then
-        warn "среды исполнения на этой машине нет — флот поднять будет нечем"
-        dim "    планирование и проверки работают, а «fraim dispatch run» откажет"
-    fi
-
-    config_set_file "$(config_project_file "$_md_root")" mode "$_md_new" ||
-        die "не удалось записать режим"
-
-    CTX_ROOT=$_md_root
-    context_install "$_md_root/AGENTS.md" context_project_block ||
-        die "режим записан, но AGENTS.md обновить не удалось — агент его не увидит"
-
-    ok "режим: $_md_new"
-
-    # The hook is what actually STARTS the mode: AGENTS.md is a file the agent may read,
-    # a SessionStart hook is text the harness puts into its context before the first turn.
-    case $_md_new in fleet) _md_hook=on ;; *) _md_hook=off ;; esac
-    if context_hook_set "$_md_root" "$_md_hook"; then
-        case $_md_new in
-            fleet) dim "    хук SessionStart поставлен — дирижёрская инструкция придёт" ;;
-            *)     dim "    хук SessionStart снят" ;;
-        esac
-        dim "    в контекст агента на старте сессии, без единого нажатия"
+    if context_hook_remove "$_md_root"; then
+        ok "хук SessionStart убран из .claude/settings.json"; _md_did=1
     else
-        _md_rc=$?
-        if [ "$_md_rc" -eq 2 ]; then
-            warn "нет python3 — хук SessionStart не поставлен"
-            dim "    режим держится только на AGENTS.md, а это агент может и пролистать"
-        else
-            warn ".claude/settings.json не удалось обновить — хук не поставлен"
-        fi
+        case $? in
+            2) warn "нет python3 — хук «$CTX_HOOK_MARK» в .claude/settings.json убери руками" ;;
+            1) warn ".claude/settings.json не удалось прочитать — хук «$CTX_HOOK_MARK» остался" ;;
+        esac
     fi
-    dim "    AGENTS.md обновлён"
+
+    [ -n "$_md_did" ] || dim "    остатков старого режима здесь нет"
+    return 0
 }
 
 # The role table (MODES.md §11.3): what a role resolves to here, and from which level.

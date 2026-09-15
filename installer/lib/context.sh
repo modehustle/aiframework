@@ -27,7 +27,8 @@ without being asked. `DECISIONS.md` is append-only. A stale foundation is a bug.
 | new authored project, foundation not laid yet | `/bootstrap` |
 | packaging a stack into Docker | `/docker-deploy` |
 | making a running service reachable from outside | `/expose` |
-| a feature or a notable change was just agreed | `/make-task`, then `/run-task` |
+| the human asks to hand work to another session | `/make-task`, then `/run-task` |
+| the human asks to conduct: cheap workers, or a split across directions | `/conductor` |
 | the executor reported the plan is defective | `/revise-task` |
 | the run drifted into live debugging and is done | `/reconcile-task` |
 | where is this bug / is X even feasible | `/investigate` |
@@ -63,6 +64,9 @@ mode. `/make-task` is not the procedure for "this got big"; it is the procedure 
 executor, tomorrow's you. Size does not decide that, and neither do you: the human does.
 **Never write a task for yourself to then execute in the same session**: that is the
 ceremony without the handoff it exists for. Just do the work and save it.
+The same holds for `/conductor` (handing pieces to workers on cheaper models, or splitting
+work of different directions across a fleet): it runs when the human asks for it, never
+on your own initiative.
 You are about to change something you do not understand → `/investigate`.
 
 `fraim status` gives a deterministic verdict on the current project — drift count,
@@ -84,166 +88,48 @@ BLKEOF
 #
 # Hence it names no slash-commands and assumes no CLI: it states the invariant, then says
 # what to do with fraim and what to do without it.
-# The project root whose block is being written. Set by the caller before context_install,
-# because the block functions take no arguments and sh has no locals. Empty means "do not
-# know" — the mode section is then omitted rather than guessed.
-CTX_ROOT=${CTX_ROOT:-}
-
-# The fleet-mode section of the project block.
-#
-# This is how the mode reaches the agent at all: it reads AGENTS.md on entering the
-# project, and that is where it learns whether it is a conductor here. No command starts
-# the mode — the mode IS the answer to "who am I in this project", which is exactly what
-# MODES.md §1 says a mode is.
-#
-# What a switch may and may not do: it selects which of the two defined modes is in
-# force; it does NOT hand out authority. The wall and the ratification of each mode live
-# in MODES.md and are not configurable — a conductor does not become allowed to JUDGE
-# because someone flipped a key. (Accepting the build — checking behind the workers, running
-# the project's check, cleaning up, writing the trunk — is his job and always was work
-# rather than authority; the judgement over what he reports is the part no key moves.) That
-# distinction is what keeps this on the right side of §1 ("mode is not a setting") and of B5.
-context_mode_block() {
-    cat <<'BLKEOF'
-
-## Fleet mode is on in this project — read this before anything else
-
-You are the **conductor** here. Not "also a conductor": that is the whole of your role in
-this project until the mode is switched off.
-
-**Before your first tool call, do these two things in order.** They are not advice.
-
-1. Read the `conductor` skill. It is the procedure for this mode, and every step below
-   assumes you have it.
-2. Answer, in your reply, which of the two you are doing: **dispatching this to a fleet**,
-   or **telling the human why it cannot be split**. There is no third option, and "I'll
-   just do this part first" is not one of them.
-
-The failure this is written against is real and it is the default one: on the first live
-build the conductor read this block, agreed it was the conductor, and then wrote the
-project skeleton itself. Four workers sat idle while it did. Writing the code yourself is
-the single most likely way for this mode to fail, and it never announces itself as a
-mistake — it feels like being helpful.
-
-`fraim status` reports it deterministically: a fleet-mode project with changed files
-and no sealed build is flagged as work going around the fleet. If you see that line about
-your own work, you have already drifted — stop and dispatch.
-
-**Empty project?** Laying the foundation is not fleet work (`bootstrap` does not declare
-`parallel: yes`, and under this mode the foundation is written by the build, once). Say so
-to the human and let them decide, rather than quietly doing it and calling it groundwork.
-
-The short version, so you do not start in the wrong place:
-
-- **Do not write the subtasks' code yourself.** Your job is planning, dispatch and
-  verification. Writing the code is what the fleet is for.
-- **Two blocks run in the same wave only if neither reads the other's result.** "Frontend
-  and backend" qualifies only when the contract between them already exists; without it the
-  contract is the first wave and both sides are the second.
-- **Paths collide → four ways out, in this order.** Group the colliding pieces into one
-  subtask; or redraw the boundaries so the file belongs to exactly one; or order them with
-  `**After**:` so they run in different waves (paths may collide across waves — they do not
-  run at the same time); and only then say the work does not split. The last one is a legal
-  answer and the LAST one: name what failed in the first three before you give it.
-- **Judge the work by the tree, never by the workers' reports.** A report is written by
-  the party being judged. `fraim dispatch verify` shows what git says actually changed.
-- **The acceptance is yours — all of it.** `fraim dispatch accept СБОРКА` checks behind
-  every worker, runs the project's own check on the assembled branch, cleans up after the
-  fleet, merges the build into the trunk and prints the report. It refuses the trunk write
-  by itself when the machine knows something is wrong (red check, empty build, unsaved work
-  in the tree, a conflict) — then you fix it and run it again.
-- **The human types no commands. You do.** Never hand them a git line to run: if something
-  has to be launched, undone or rebuilt, you launch it, on their word. Undoing the trunk
-  write is `fraim undo СЛИЯНИЕ`, printed by the acceptance itself — and you are the one who
-  types it.
-- **What is NOT yours is the judgement.** After the acceptance, report in your own words:
-  what you checked that the numbers do not show, what you are unsure about, what you suggest
-  next. Then wait for their answer. «Всё сошлось, значит годится» is you judging, and that
-  is the one hole this mode is built around.
-
-Mechanics: `fraim dispatch check ПЛАН` before anything is handed out, then
-`fraim dispatch ПЛАН`, `fraim dispatch run СБОРКА` (one wave — the first uncollected one),
-`fraim dispatch watch СБОРКА`, `fraim dispatch collect СБОРКА` (merges the wave into the
-build branch, refuses on uncommitted work, on a file outside the declared paths, and on a
-conflict; then prints the wave's combined diff — read it whole, that is where a divergence
-the path check cannot see shows up), then the next `run`,
-`fraim dispatch verify СБОРКА ПОДЗАДАЧА` to look at one subtask, and finally
-`fraim dispatch accept СБОРКА` — which refuses while any subtask is uncollected, and exits
-non-zero when it checked but did not write the trunk. The human's part is reading what it
-printed and answering you in words.
-BLKEOF
-}
-
 # ---------------------------------------------------------------------------
-# Starting the mode, rather than asking for it
+# The retired fleet mode's leftovers
 #
-# A context block is a file the agent MAY read. The first live build proved what that is
-# worth: the conductor read the block, agreed it was the conductor, and then wrote the
-# project skeleton itself. A watchman finding after the fact is diagnosis, not a start —
-# nobody reads `fraim status` in the middle of being helpful.
-#
-# A SessionStart hook is different in kind. The harness runs it before the agent's first
-# turn and puts `additionalContext` INTO the context — the agent does not choose to read
-# it, the same way it does not choose to read the system prompt. That is the closest thing
-# to a deterministic start a harness offers.
-#
-# This is DETERMINISM.md's own plan: "хуки харнеса ложатся вторым поясом там, где среда
-# даёт: SessionStart может сам прогнать fraim status, чтобы вердикт приезжал в контекст
-# без единого нажатия". The gate in the CLI stays the first belt for environments with no
-# hooks; this is the second, and for the mode it is the one that matters.
+# Until 2026-09-15 a project could be switched into a fleet mode: `mode = fleet` in
+# ai/fraim.conf, a conductor section in AGENTS.md and a SessionStart hook
+# (`fraim mode --hook`) in .claude/settings.json. The mode is gone — the conductor is a
+# procedure the human asks for. Refreshing the project block drops the section by itself;
+# the hook needs removing, and `fraim mode --hook` stays a silent success so a leftover
+# hook never breaks a session start.
 # ---------------------------------------------------------------------------
-
-# What the hook prints. Read by the harness, not by a human.
-context_hook_payload() {
-    _chp_root=$1
-    [ "$(mode_get "$_chp_root")" = fleet ] || return 1
-    if command -v python3 >/dev/null 2>&1; then
-        context_mode_block | python3 -c '
-import json, sys
-print(json.dumps({"hookSpecificOutput": {
-    "hookEventName": "SessionStart",
-    "additionalContext": sys.stdin.read(),
-}}, ensure_ascii=False))'
-        return 0
-    fi
-    return 1
-}
-
 CTX_HOOK_MARK='fraim mode --hook'
 
-# Add or remove the hook in the project's .claude/settings.json.
+# Remove our hook from the project's .claude/settings.json, if it is there.
 #
-# Merged, never replaced: the file belongs to the project and may already carry hooks and
-# permissions somebody depends on. Where no JSON-safe editor exists we touch nothing and
-# say so — the same rule the permission hint follows.
-context_hook_set() {
-    _chs_root=$1; _chs_on=$2
+# Merged, never replaced: the file belongs to the project and may carry hooks and
+# permissions somebody depends on. Returns 0 when the hook was removed, 3 when there was
+# nothing of ours, 2 with no python3 (nothing touched), 1 when the file could not be
+# read or written.
+context_hook_remove() {
+    _chr_file=$1/.claude/settings.json
+    [ -f "$_chr_file" ] || return 3
+    grep -qF "$CTX_HOOK_MARK" "$_chr_file" 2>/dev/null || return 3
     command -v python3 >/dev/null 2>&1 || return 2
-    mkdir -p "$_chs_root/.claude" 2>/dev/null || return 1
-    python3 - "$_chs_root/.claude/settings.json" "$_chs_on" "$CTX_HOOK_MARK" <<'PY'
+    python3 - "$_chr_file" "$CTX_HOOK_MARK" <<'PY'
 import json, sys
-path, on, mark = sys.argv[1], sys.argv[2] == "on", sys.argv[3]
+path, mark = sys.argv[1], sys.argv[2]
 try:
     with open(path) as f:
         data = json.load(f)
-except FileNotFoundError:
-    data = {}
 except (json.JSONDecodeError, OSError):
     sys.exit(1)
 if not isinstance(data, dict):
     sys.exit(1)
 
-hooks = data.setdefault("hooks", {})
-starts = hooks.setdefault("SessionStart", [])
-# Drop any entry of ours, so this is idempotent and `task` is a clean removal.
+hooks = data.get("hooks", {})
+starts = hooks.get("SessionStart", [])
 starts[:] = [
     g for g in starts
     if not (isinstance(g, dict) and any(
         isinstance(h, dict) and mark in str(h.get("command", ""))
         for h in g.get("hooks", [])))
 ]
-if on:
-    starts.append({"hooks": [{"type": "command", "command": mark, "timeout": 10}]})
 if not starts:
     hooks.pop("SessionStart", None)
 if not hooks:
@@ -297,13 +183,6 @@ fraim commit <kind> "<what changed>" <path>…  # a save point over the named pa
 If it is not installed, do the same with ordinary git — the rules above are the point, the
 CLI is only the convenience.
 BLKEOF
-
-    # Appended only where the project actually runs the fleet. In reactive mode the block
-    # is byte-identical to what it has always been, so switching a project into the fleet
-    # mode and back leaves no trace in AGENTS.md.
-    if [ -n "$CTX_ROOT" ] && [ "$(mode_get "$CTX_ROOT")" = fleet ]; then
-        context_mode_block
-    fi
 }
 
 # Harness-specific context files (CLAUDE.md and friends) get a pointer, not a copy.

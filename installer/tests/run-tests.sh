@@ -473,37 +473,44 @@ git -C "$PROJ2" add -A >/dev/null; git -C "$PROJ2" commit -qm "bootstrap: founda
 check "заполненный фундамент → exit 0" "$?" "0"
 
 # ---------------------------------------------------------------- режим
-# Два режима, не три: reactive (агент делает сам) и fleet (дирижёр и флот). Старые имена
-# `task` и `parallel` лежат в ai/fraim.conf у всех проектов, заведённых до переименования,
-# и должны читаться, а не ронять режим в дефолт молча.
-printf '\nfraim mode\n'
+# Режимов больше нет (DECISIONS 2026-09-15): дирижёр — процедура по просьбе человека.
+# У проектов, переключённых во флот раньше, остались строка mode, дирижёрский блок в
+# AGENTS.md и хук SessionStart. `fraim mode` убирает ровно их, а оставшийся хук
+# (`fraim mode --hook`) обязан молча отвечать успехом — иначе он ломает старт сессии.
+printf '\nfraim mode (остатки режима флота)\n'
 
 cd "$PROJ2" || exit 1
-check "режим по умолчанию — реактивный" "$("$FRAIM" mode | sed -n 's/.*режим: \([a-z]*\).*/\1/p' | head -1)" "reactive"
-check "реактивный режим не пишет дирижёрский блок в AGENTS.md" \
+check "обычный проект не получает дирижёрского блока" \
       "$(grep -c 'Fleet mode is on' "$PROJ2/AGENTS.md")" "0"
 
-"$FRAIM" mode fleet >/dev/null 2>&1
-check "режим fleet записан в проект" \
-      "$(sed -n 's/^mode = //p' "$PROJ2/ai/fraim.conf" | head -1)" "fleet"
-check "AGENTS.md получил дирижёрский блок" "$(grep -c 'Fleet mode is on' "$PROJ2/AGENTS.md")" "1"
+OUT=$("$FRAIM" mode --hook 2>&1)
+check "хук-остаток отвечает успехом" "$?" "0"
+check "хук-остаток молчит" "$OUT" ""
 
-# Легаси-значение читается как флот — иначе у установленного проекта режим отвалится молча.
-printf 'mode = parallel\n' > "$PROJ2/ai/fraim.conf"
-check "старое имя parallel читается как fleet" "$("$FRAIM" mode | sed -n 's/.*режим: \([a-z]*\).*/\1/p' | head -1)" "fleet"
-printf 'mode = task\n' > "$PROJ2/ai/fraim.conf"
-check "старое имя task читается как reactive" "$("$FRAIM" mode | sed -n 's/.*режим: \([a-z]*\).*/\1/p' | head -1)" "reactive"
-
-# Принять старое имя команда обязана, но записать — новое.
-"$FRAIM" mode parallel >/dev/null 2>&1
-check "старое имя на входе пишется новым" \
-      "$(sed -n 's/^mode = //p' "$PROJ2/ai/fraim.conf" | head -1)" "fleet"
-
-"$FRAIM" mode reactive >/dev/null 2>&1
-check "возврат в реактивный убирает дирижёрский блок" \
-      "$(grep -c 'Fleet mode is on' "$PROJ2/AGENTS.md")" "0"
-"$FRAIM" mode nonsense >/dev/null 2>&1
-check "неизвестный режим отвергнут" "$?" "2"
+printf 'mode = parallel\nbuild_check = true\n' > "$PROJ2/ai/fraim.conf"
+printf '\n## Fleet mode is on in this project — read this before anything else\nold\n' > "$SANDBOX/fleetblk"
+awk -v f="$SANDBOX/fleetblk" '$0 == "<!-- fraim:end -->" { while ((getline l < f) > 0) print l } { print }' \
+    "$PROJ2/AGENTS.md" > "$PROJ2/AGENTS.md.t" && mv "$PROJ2/AGENTS.md.t" "$PROJ2/AGENTS.md"
+mkdir -p "$PROJ2/.claude"
+cat > "$PROJ2/.claude/settings.json" <<'JSON'
+{"permissions": {"allow": ["Bash(ls)"]},
+ "hooks": {"SessionStart": [{"hooks": [{"type": "command", "command": "fraim mode --hook", "timeout": 10}]},
+                            {"hooks": [{"type": "command", "command": "echo mine"}]}]}}
+JSON
+"$FRAIM" mode >/dev/null 2>&1
+check "fraim mode отвечает успехом" "$?" "0"
+check "строка mode убрана" "$(grep -c '^mode' "$PROJ2/ai/fraim.conf")" "0"
+check "чужие настройки проекта целы" "$(grep -c '^build_check = true' "$PROJ2/ai/fraim.conf")" "1"
+check "дирижёрский блок убран из AGENTS.md" "$(grep -c 'Fleet mode is on' "$PROJ2/AGENTS.md")" "0"
+if command -v python3 >/dev/null 2>&1; then
+    check "наш хук убран" "$(grep -c 'fraim mode --hook' "$PROJ2/.claude/settings.json")" "0"
+    check "чужой хук цел" "$(grep -c 'echo mine' "$PROJ2/.claude/settings.json")" "1"
+    check "чужие разрешения целы" "$(grep -c 'Bash(ls)' "$PROJ2/.claude/settings.json")" "1"
+fi
+check "повторный запуск говорит, что убирать нечего" \
+      "$("$FRAIM" mode 2>&1 | grep -c 'остатков старого режима здесь нет')" "1"
+rm -rf "$PROJ2/.claude"
+printf '' > "$PROJ2/ai/fraim.conf"
 cd "$SANDBOX" || exit 1
 
 # --- фундамент: считаем изменения, а не время ------------------------------
@@ -2401,8 +2408,12 @@ check "7 подзадач — предупреждение о потолке п�
       "$(sh -c "$DLIB"'; dispatch_size_notes "$PLANS/big.md"' 2>&1 >/dev/null | grep -c 'потолок 6')" "1"
 check "широкая волна — предупреждение" \
       "$(sh -c "$DLIB"'; dispatch_size_notes "$PLANS/big.md"' 2>&1 >/dev/null | grep -c 'одновременно')" "1"
-check "подзадача с одним путём — предупреждение" \
-      "$(sh -c "$DLIB"'; dispatch_size_notes "$PLANS/big.md"' 2>&1 >/dev/null | grep -c 'мельче цены раздачи')" "7"
+# Нижних порогов нет: одна подзадача с одним путём на одного дешёвого воркера — законная
+# сборка (DECISIONS 2026-09-15). Потолки остаются.
+check "подзадача с одним путём — не предупреждение" \
+      "$(sh -c "$DLIB"'; dispatch_size_notes "$PLANS/big.md"' 2>&1 >/dev/null | grep -c 'мельче цены раздачи')" "0"
+check "маленькая плоская сборка не предупреждает ни о чём" \
+      "$(sh -c "$DLIB"'; dispatch_size_notes "$PLANS/flat.md"' 2>&1 >/dev/null)" ""
 sh -c "$DLIB"'; dispatch_size_notes "$PLANS/big.md"' >/dev/null 2>&1
 check "предупреждения не меняют код возврата" "$?" "0"
 check "чистый план не предупреждает ни о чём" \

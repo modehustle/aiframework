@@ -98,7 +98,6 @@ menu_items() {
 Доктор	что и куда установлено, что разошлось
 Реестр проектов	все проекты, которые ведёт система
 Добавить этот проект	зарегистрировать текущий каталог
-Режим проекта	обычный или дирижёр с флотом
 Настройки	что действует и откуда
 Выход	
 ITEMS
@@ -209,30 +208,6 @@ menu_getkey() {
     esac
 }
 
-# Switching the mode from the menu. Asked as a question rather than applied on click:
-# the mode decides who does the work in this project, and that is not a thing to flip by
-# landing on the wrong row.
-menu_mode() {
-    _mm_root=$(pwd -P)
-    if [ ! -d "$_mm_root/ai" ]; then
-        warn "здесь нет проекта под системой — режим переключать нечему"
-        return 0
-    fi
-    _mm_cur=$(mode_get "$_mm_root")
-    say "Сейчас: ${C_BLD}$_mm_cur${C_OFF}"
-    say ""
-    case $_mm_cur in
-        fleet) _mm_to=reactive ;;
-        *)     _mm_to=fleet ;;
-    esac
-    printf '  Переключить на %s%s%s? [y/N] ' "$C_BLD" "$_mm_to" "$C_OFF"
-    read -r _mm_a </dev/tty 2>/dev/null || return 0
-    case $_mm_a in
-        y|Y|д|Д) ( cmd_mode "$_mm_to" ) || true ;;
-        *) say "оставлено как есть" ;;
-    esac
-}
-
 # --- actions ----------------------------------------------------------------
 # Every command runs in a subshell: cmd_status and the verbs end in `exit`,
 # and without the subshell the first scan would close the menu.
@@ -257,8 +232,7 @@ menu_exec() {
         6) ( cmd_projects list ) || true ;;
         7) ( registry_init; _menu_p=$(pwd -P)
              if registry_add "$_menu_p"; then ok "в реестре: $_menu_p"; else warn "не удалось добавить: $_menu_p"; fi ) || true ;;
-        8) ( menu_mode ) || true ;;
-        9) ( cmd_config show ) || true ;;
+        8) ( cmd_config show ) || true ;;
     esac
     printf '\n  %sEnter — назад%s ' "$C_DIM" "$C_OFF"
     read -r _menu_ignored 2>/dev/null || true

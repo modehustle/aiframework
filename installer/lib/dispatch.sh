@@ -1,5 +1,5 @@
 #!/bin/sh
-# dispatch.sh — the conductor's half of parallel mode (MODES.md §2, §5).
+# dispatch.sh — the conductor's machinery: plan, build, waves, collect, acceptance (MODES.md §2, §5).
 #
 # What this file is NOT: it does not launch anything. Launching is six operations
 # against an execution environment (MODES.md §9) and lives in the adapter layer.
@@ -297,12 +297,16 @@ dispatch_wave_count() {
 # the machine after — and it read as a rule while working as the cheapest excuse to refuse.
 # What replaces it is a comparison the conductor states out loud in the plan: dispatching
 # is worth it when executing the piece costs more than dispatching it.
+#
+# Only ceilings, no floors. The lower bounds («below three subtasks dispatch rarely pays»,
+# «one path is probably smaller than the cost of dispatch») assumed the fleet exists for
+# calendar time. It also exists for tokens: a conductor on a strong model handing ONE piece
+# to ONE worker on a cheap model is a whole, legitimate build (DECISIONS 2026-09-15). The
+# human asked for it; a floor would only argue with them.
 # ---------------------------------------------------------------------------
 DISPATCH_MAX_SUBTASKS=6
-DISPATCH_WAVE_MIN=3
 DISPATCH_WAVE_MAX=5
 DISPATCH_MAX_WAVES=3
-DISPATCH_PATHS_MIN=2
 DISPATCH_PATHS_MAX=10
 
 # Warnings about size. Prints to stderr and always returns 0 — a caller must never be able
@@ -328,15 +332,9 @@ dispatch_size_notes() {
         _sn_w=1
         while [ "$_sn_w" -le "${_sn_depth:-1}" ]; do
             _sn_wn=$(printf '%s\n' "$_sn_waves" | awk -F'\t' -v w="$_sn_w" '$2 == w' | grep -c '[^[:space:]]')
-            if [ "$_sn_wn" -gt "$DISPATCH_WAVE_MAX" ]; then
+            [ "$_sn_wn" -le "$DISPATCH_WAVE_MAX" ] ||
                 printf >&2 'волна %s: %s подзадач одновременно — координация и приёмка растут быстрее выигрыша (потолок %s)\n' \
                     "$_sn_w" "$_sn_wn" "$DISPATCH_WAVE_MAX"
-            elif [ "$_sn_wn" -lt "$DISPATCH_WAVE_MIN" ] && [ "${_sn_depth:-1}" -eq 1 ]; then
-                # Only for a single-wave build: a narrow wave inside a chain is the point
-                # of waves, not a mistake.
-                printf >&2 'подзадач %s: раздача редко окупается ниже %s — но считаешь ты, а не эта строка\n' \
-                    "$_sn_wn" "$DISPATCH_WAVE_MIN"
-            fi
             _sn_w=$(( _sn_w + 1 ))
         done
     fi
@@ -344,11 +342,8 @@ dispatch_size_notes() {
     printf '%s\n' "$_sn_recs" | while IFS='|' read -r _sn_id _sn_role _sn_sum _sn_paths _sn_after; do
         [ -n "$_sn_id" ] || continue
         _sn_pn=$(printf '%s\n' "$_sn_paths" | tr ',' '\n' | grep -c '[^[:space:]]')
-        if [ "$_sn_pn" -lt "$DISPATCH_PATHS_MIN" ]; then
-            printf >&2 'подзадача %s: %s путь — вероятно, мельче цены раздачи\n' "$_sn_id" "$_sn_pn"
-        elif [ "$_sn_pn" -gt "$DISPATCH_PATHS_MAX" ]; then
+        [ "$_sn_pn" -le "$DISPATCH_PATHS_MAX" ] ||
             printf >&2 'подзадача %s: %s путей — вероятно, это два куска, а не один\n' "$_sn_id" "$_sn_pn"
-        fi
     done
     return 0
 }
