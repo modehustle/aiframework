@@ -4,7 +4,9 @@
 > Register this as your agent's workspace rule so it auto-loads.
 
 - Language: code, comments, docs in English. Chat may be in another language.
-- Workflow: planner→executor→reviser. Task queue in `ai/tasks/<slug>/`; archive to `ai/archive/`.
+- Workflow: reactive work in the session by default. The agent never routes itself into
+  `/make-task` or `/conductor` — both run only when the human asks.
+  Handoff when asked: planner→executor→reviser. Task queue in `ai/tasks/<slug>/`; archive to `ai/archive/`.
   Commands: `/make-task`, `/run-task`, `/revise-task`, `/reconcile-task`, `/orient`, `/prune`.
   Most sessions need none of them: reactive work is the default mode.
 - Before a task: read `ARCHITECTURE.md` + this file (including Known Pitfalls below).
@@ -45,7 +47,7 @@
 - POSIX printf with more arguments than conversions reprocesses the surplus as FORMAT (dash) — build the string in a variable, then printf '%s
 - '
 - A stub CLI keyed on "$1 $2" must order overlapping patterns (worktree rm before worktree*) or cleanup verbs answer with the wrong subcommand's JSON
-- The project mode has legacy values on disk (`task`, `parallel`): compare `mode_get` against `reactive`/`fleet`, never `config_get mode` against a literal — a raw comparison reads a legacy value as "not fleet" and switches the mode off silently
+- Projects switched into the retired fleet mode carry a SessionStart hook that runs `fraim mode --hook` on every session start: that invocation must stay a silent exit 0 forever, or removing the verb breaks sessions in projects nobody is looking at
 - A pipeline's exit status is its LAST command's: `dispatch_waves … | cut` (and `… | awk`) reported the filter's success and turned a refused plan (cycle, ghost After) into a confident answer — take the output into a variable first, then filter it. Both helpers had the bug; it survived one review
 - `sh -c '…$VAR…'` inside single quotes runs in a child shell that has none of the caller's variables: the test harness must `export` every path it passes that way, or the child silently works on an empty path and the assertion fails somewhere else
 - Worker checkouts are isolated by FILES only — ports, databases, caches and anything outside the repository are shared, and no check sees it (BACKLOG §6)

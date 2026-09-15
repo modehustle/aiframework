@@ -138,7 +138,7 @@ least stop it growing.
 3. Report:
    - What was created (`ARCHITECTURE.md` / `CONVENTIONS.md` / `DECISIONS.md` / `ai/` / `STACK.md`).
    - Which ambiguities the human resolved (dead code, live component, stale docs).
-   - Which **deviations / legacy risks** remain as to-dos (each a future `docker-deploy` change or `/make-task`).
-   - That the project is now a normal citizen — point the user at `/orient` for re-entry and `/make-task` for the first real task.
+   - Which **deviations / legacy risks** remain as to-dos (each a future piece of normal work or a `docker-deploy` change).
+   - That the project is now a normal citizen — point the user at `/orient` for re-entry; the first real task is ordinary work in a session.
 
 > Onboarding **documents and ratifies the present**; it does not redesign, reorganize, or remediate. Anything that changes code or the running stack is normal work afterward, never done here.

@@ -6,7 +6,7 @@
 > Register this as your agent's workspace rule so it auto-loads.
 
 - Language: code, comments, docs in English. Chat may be in another language.
-- Workflow: planner→executor→reviser. Task queue in `ai/tasks/<slug>/`; archive to `ai/archive/`.
+- Workflow: reactive work in the session by default; planner→executor→reviser when the human hands work off. Task queue in `ai/tasks/<slug>/`; archive to `ai/archive/`.
   Commands: `/make-task`, `/run-task`, `/revise-task`, `/reconcile-task`, `/orient`, `/prune`.
   Most sessions need none of them: reactive work is the default mode.
 - Before a task: read `ARCHITECTURE.md` + this file (including Known Pitfalls below).

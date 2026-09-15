@@ -46,7 +46,7 @@ Canonical order for an authored project from scratch:
 2. **Design session** with the human (`design-session.md`) → the agreed architecture, captured as a Design Brief. This is the authored-project equivalent of a per-stack prompt, but it is a *design artifact*, not a one-line deploy instruction.
 3. This workflow (Phases 2–3) → foundation files + a minimal runnable code skeleton.
 4. `docker-deploy.md` (when there is something to run) → the box + `STACK.md`.
-5. Forever after: the planner→executor loop (`/make-task`, `/run-task`) operates inside `ai/` and keeps the foundation current (Phase 5).
+5. Forever after: reactive work in the session keeps the foundation current; `/make-task` → `/run-task` hands work to another session when the human asks (Phase 5).
 
 ## Standard layout (environment invariant)
 

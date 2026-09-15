@@ -1,6 +1,6 @@
 ---
 name: make-task
-description: "Capture the agreed plan into a new task folder under ai/tasks/ so it can be executed without this conversation — by a fresh chat, a cheaper model, or /run-task right here"
+description: "Only when the human asks to hand work off: capture the agreed plan into a new task folder under ai/tasks/ so it can be executed without this conversation — by a fresh chat or a cheaper model"
 metadata:
   tier: strong
   order: 5

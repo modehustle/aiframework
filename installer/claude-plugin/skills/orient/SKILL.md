@@ -78,7 +78,7 @@ Based on state, name the single most likely next command — do not run it:
 - **An investigation has been open for days with no outcome** → \"Расследование `<slug>` открыто <N> дней без исхода. Доведи его через `/investigate` или признай тупик — за незакрытым расследованием могут стоять неубранные строки в базе.\"
 - **A queued plan looks stale** → \"Задача `<slug>` могла устареть, пока ждала в очереди. Перед `/run-task` стоит проверить её provenance — `/run-task` поймает это сам, либо почини через `/revise-task`.\"
 - **Runnable task(s) in the queue** → \"В очереди <N> задач(а). Запусти `/run-task`\" + (if several) \"и выбери, какую исполнять.\"
-- **Empty queue** → \"Очередь пуста. Обсуди следующий шаг и запусти `/make-task`, когда план согласован.\"
+- **Empty queue** → \"Очередь пуста. Скажи, что делаем дальше, — сделаю в этой сессии.\"
 - **Drift built up** (the watchman reported `drift` at attention level, or the foundation looks stale) → \"С последнего прунинга <N> хотфиксов — фундамент мог поплыть. Запусти `/prune`, чтобы свести его с реальностью.\"
 - **A trivial fix is all that is needed** → \"Это микро-правка — сделай прямо в этой сессии и поставь точку сохранения, полный цикл тут ни к чему.\"
 

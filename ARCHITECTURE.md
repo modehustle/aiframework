@@ -30,11 +30,13 @@ convenience in `install.sh`). Distribution: shell installer + Claude Code plugin
 ## Data model (key entities)
 - **project registry** (`~/.fraim/`): registered projects, install state, version.
 - **per-project state**: `ai/` tree (tasks, archive, investigations), foundation files, `fraim.conf`.
-- **mode** (`mode` in `ai/fraim.conf`): `reactive` (default — the agent does the work in the
-  session) or `fleet` (conductor + workers). Read only through `mode_get`, which also maps
-  the legacy values `task`/`parallel`. The only thing the switch does is add the conductor
-  block to `AGENTS.md` and the `fraim mode --hook` SessionStart hook.
-- **build** (`ai/builds/<id>/`): plan copy, journal, `fleet.tsv` (a cache of the
+- **no project mode.** The agent always works reactively in the session. The conductor
+  (`/conductor`) and the task handoff (`/make-task` → `/run-task`) are procedures the human
+  asks for, never started on the agent's initiative. The retired `mode` key is ignored on
+  disk; `fraim mode` only removes the old fleet mode's leftovers (the `mode` line, the
+  conductor section in `AGENTS.md`, the SessionStart hook) and `fraim mode --hook` is a
+  silent success so a leftover hook never breaks a session start.
+- **build** (`ai/builds/<id>/`) — started only on the human's request, one subtask is a valid build: plan copy, journal, `fleet.tsv` (a cache of the
   environment's ids, one block per wave), `collected.tsv` (our truth: wave, subtask,
   merged sha, time), and — after `dispatch accept` — the marker `accepted` (who, when, which
   merge, how to undo it). Each build owns a branch `fraim/<id>` — workers branch from it and

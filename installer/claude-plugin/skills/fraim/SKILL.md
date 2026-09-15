@@ -52,8 +52,9 @@ by design.
 | lay the foundation of a new authored project | `/bootstrap` | strong |
 | box a stack in Docker and write its passport | `/docker-deploy` | capable |
 | make a running service reachable from outside | `/expose` | capable |
-| plan an agreed feature for a fresh-chat executor | `/make-task` | strong |
+| hand an agreed plan to another session (the human asked) | `/make-task` | strong |
 | execute a prepared plan from the queue | `/run-task` | cheap |
+| conduct: cheap workers, or a split across directions (the human asked) | `/conductor` | capable |
 | repair a plan the executor called defective | `/revise-task` | strong |
 | close a run that drifted into live debugging | `/reconcile-task` | capable |
 | find out where a bug is, or whether X is feasible | `/investigate` | strong |
@@ -79,7 +80,7 @@ whose shape appeared while doing it. **That is legitimate.** Do not force it int
 
 Reactive work has **no size limit**. `/make-task` is not for \"this got big\" — it is for
 **handing the work to someone outside this conversation** (a fresh chat, a cheaper
-executor, tomorrow's user). That call is the human's, never yours. You are about to
+executor, tomorrow's user). That call is the human's, never yours — and so is `/conductor`. You are about to
 change something you do not understand → `/investigate`.
 
 ## Deterministic verbs — call them, do not reproduce them

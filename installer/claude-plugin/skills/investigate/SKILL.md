@@ -112,7 +112,7 @@ Fill exactly one outcome branch in `findings.md`:
 
 - **DIAGNOSIS** — state the root cause plainly. Then **route** it, and pre-classify so the next step is obvious:
   - **surgical** (a constant, a timeout, a wrong operator, one line, one file, no new branching) → just do it in a reactive session, with a save point.
-  - **structural** (new logic, a new wait strategy, a signature/contract change, multiple files) → `/make-task`.
+  - **structural** (new logic, a new wait strategy, a signature/contract change, multiple files) → a reactive session too, planned with the human as you go; `/make-task` only if the human wants to hand it to another session.
   - the cause is a plan that went stale in the queue → `/revise-task`.
   - the cause is documentation diverged from code → `/prune`.
 - **DEAD-END** — record what you ruled out (the `excluded` rows are the gold here), where exactly you got stuck, and what the human must decide or provide to unblock a future attempt. Preserve this carefully — a well-recorded dead-end is what makes the *next* investigation cheaper.
@@ -144,11 +144,11 @@ Naming each restored thing out loud is what makes a silent skip visible — to y
 `findings.md` is a **file artifact, not chat output** — it is written to `ai/investigations/<slug>/findings.md` first; printing it in chat is a copy, never a substitute (same rule as `/run-task`'s `result.md`). Then report to the user in a tight briefing:
 
 - **Outcome:** DIAGNOSIS or DEAD-END, in one line.
-- If DIAGNOSIS: the root cause + the recommended route (reactive fix | `/make-task` | `/revise-task` | `/prune`) + surgical/structural.
+- If DIAGNOSIS: the root cause + the recommended route (reactive fix | `/revise-task` | `/prune`) + surgical/structural.
 - If DEAD-END: what was ruled out, where you stuck, what you need from the human.
 - **Cleanup:** confirm both axes were restored to baseline — repo (every manifest path back or gone) and world (rows deleted, leases released, processes as found). Nothing left behind.
 - The next line:
-  - DIAGNOSIS → structural: *\"Причина найдена. Обсуди план и запусти `/make-task` — приложи `ai/investigations/<slug>/findings.md`, секция DIAGNOSIS ляжет в `context.md`.\"*
+  - DIAGNOSIS → structural: *\"Причина найдена, правка структурная — обсудим подход и сделаем в обычной сессии, опираясь на `ai/investigations/<slug>/findings.md`.\"*
   - DIAGNOSIS → surgical: *\"Причина найдена, правка хирургическая — можно сделать прямо сейчас, с точкой сохранения.\"*
   - DEAD-END: *\"Зашёл в тупик — записал, что исключено и где встал. Реши, что дальше: сузить вопрос, дать мне доступ/данные, или отложить.\"*
 
@@ -178,7 +178,7 @@ was skipped — the bypass being visible is the point.
 ## Stop signals (the agent stops and asks the human)
 
 - **5 consecutive barren cycles** (Step 3) — the stagnation tripwire; stop and declare a DEAD-END rather than flail.
-- **The urge to fix.** The moment a change would be *to make the problem go away* rather than *to observe it* — stop; that is a reactive session or `/make-task`, routed via the finding.
+- **The urge to fix.** The moment a change would be *to make the problem go away* rather than *to observe it* — stop; that is a reactive session, routed via the finding.
 - **About to seed world state** (insert rows into a live DB, trigger a run, start a worker) — announce it first and only proceed on the tracked-and-reversible path (MAY, above): announced + in the State manifest + undo command known. The user asking for it does not waive this.
 - **A world mutation that is not cleanly reversible** — deleting/overwriting pre-existing data, anything you cannot write an exact undo for. Stop; that is not observation. Reversible seeding you will delete is fine; irreversible change is not.
 - **Scope creeping from problem-scoped to project-scoped** — surface it, re-narrow with the human; do not drift into a general audit.

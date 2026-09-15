@@ -862,7 +862,7 @@ check "гейт: без исхода не архивирует" "$?" "2"
 python3 - "$FIND" <<'PY2'
 import pathlib, re, sys
 p = pathlib.Path(sys.argv[1]); t = p.read_text()
-t = t.replace("<root cause, plainly. Route: reactive fix (surgical) | /make-task (structural) | /revise-task | /prune.>",
+t = t.replace("<root cause, plainly. Route: reactive fix (surgical or structural) | /revise-task | /prune.>",
               "The selector is rebuilt on every render; the observer attaches to the old node.")
 p.write_text(t)
 PY2
@@ -1159,7 +1159,7 @@ python3 - "$CL/ai/investigations/solved-one/findings.md" <<'PYSOLVE'
 import pathlib, sys
 p = pathlib.Path(sys.argv[1]); t = p.read_text()
 t = t.replace('<the ONE unclear thing, as a question that can be answered>', 'why the counter lies')
-t = t.replace('<root cause, plainly. Route: reactive fix (surgical) | /make-task (structural) | /revise-task | /prune.>',
+t = t.replace('<root cause, plainly. Route: reactive fix (surgical or structural) | /revise-task | /prune.>',
               'it counted folders, not runnable tasks')
 t = t.replace('<what was ruled out, where exactly you got stuck, what the human must decide or provide.>', '')
 t = t.replace('<repo: what `git status` shows — and world: what was undone, counted against the baseline above>',
