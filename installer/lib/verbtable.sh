@@ -61,21 +61,23 @@ vt_skill() {
     vt_table | awk -F' ;; ' '{ c = $2; gsub(/\|/, "\\|", c); printf "| `%s` | %s |\n", c, $4 }'
 }
 
-# What the human says, and what that means here. The human does not type commands; the
-# agent has to recognise the request in words. One table, read by the AGENTS.md block,
-# the machine context block and the master skill.
-vt_phrases() {
-    cat <<'PH'
-| человек говорит | это значит |
+# What the human wants, and what that means here. Intents, not phrases: the human writes
+# in any language and in their own words, and a list of sample sentences fails on the first
+# wording it does not contain. The agent judges the intent; when it cannot tell «now» from
+# «later», now is the default — the work in front of it is done here.
+vt_intents() {
+    cat <<'IN'
+| The human's intent | What it means |
 |---|---|
-| «запиши задачу», «на потом», «поставь в задачи» | `/make-task` — обычная задача |
-| «заведи проект», «мастер-задача», «это большая штука из многих задач» | `/make-task` — мастер-задача |
-| «что у меня в задачах», «что на доске» | `fraim tasks` — пересказать |
-| «возьми задачу X», «давай X из задач» | `/run-task` |
-| «запиши вопрос», «в бэклог», «что в бэклоге» | `fraim backlog-new` (после его «да») / `fraim backlog` |
-| «отдай дешёвому», «раздай», «через флот» | `/conductor` |
-| «где мы», «что дальше» после паузы | `/orient` |
-| «разберись, почему…», «реально ли X» | `/investigate` |
-| «сверь документы с кодом» | `/prune` |
-PH
+| set work aside to do later, not now | `/make-task` — an ordinary task |
+| start something large that will take several tasks (a project) | `/make-task` — a master task |
+| know what is pending, planned or in progress | `fraim tasks` — report it |
+| work on a specific task from the board | `/run-task` |
+| keep an open question without acting on it | `fraim backlog-new` after the human confirms / `fraim backlog` to review |
+| have work done by cheaper models, or split into parallel directions | `/conductor` |
+| get back into the project after a break | `/orient` |
+| understand a behaviour nobody can explain, or check that something is feasible | `/investigate` |
+| bring the documents back in line with the code | `/prune` |
+IN
+    printf '\n%s\n' 'Judge the intent, in whatever language and wording it comes. Anything else the human asks for is work to do now, in this session. Unsure whether they mean now or later — do it now, or ask one question.'
 }

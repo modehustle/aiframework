@@ -87,7 +87,8 @@ convenience in `install.sh`). Distribution: shell installer + Claude Code plugin
 generates skills per harness, writes context blocks and the project registry.
 What an agent learns about the CLI comes from ONE table, `vt_table` in `verbtable.sh`: it
 renders the verb list that opens `fraim brief`, the agent half of `fraim help` and the verb
-table of the master skill; `vt_phrases` (the human's words → procedure or verb) is shared by
+table of the master skill; `vt_intents` (the human's intent → procedure or verb, judged in any
+language and wording, never matched as phrases) is shared by
 the project's AGENTS.md block and the master skill. The AGENTS.md block — always loaded by the
 harness — tells the agent to start with `fraim brief`, so the list it reads is the list of the
 CLI it runs.

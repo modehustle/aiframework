@@ -300,11 +300,38 @@ verb_restore() {
 # procedure with the rest of the paths it touched — one implementation of a commit,
 # and no surprise second commit inside a step that only meant to append a line.
 
+# A verb's text arrives on stdin. Two ways that can go wrong, and both must end in a
+# refusal that shows the right form, never in a hang:
+#   · stdin is a terminal — nobody is going to type a body;
+#   · stdin is open but nothing is coming — an agent harness or a script that runs every
+#     command with an inherited pipe. `cat` then waits for an EOF that never arrives, and
+#     the verb looks exactly like a hung session.
+# So the read runs in the background and the verb waits for the FIRST byte only, a few
+# seconds at most. A body that has started arriving is read to the end, however long.
+# The descriptor is passed explicitly: an asynchronous command in a non-interactive shell
+# otherwise gets /dev/null for stdin, and would always read nothing.
+FRAIM_BODY_WAIT=${FRAIM_BODY_WAIT:-30}   # tenths of a second
+
 verb_read_body() {
-    # Refuse rather than block: on a terminal there is no piped body, and a verb
-    # that silently waits for EOF looks identical to a hung agent session.
-    [ -t 0 ] && return 1
-    cat
+    [ -t 0 ] && { warn "текст не пришёл: вход — терминал"; return 1; }
+    _rb_tmp=$(mktemp) || return 1
+    exec 3<&0
+    cat <&3 > "$_rb_tmp" &
+    _rb_pid=$!
+    exec 3<&-
+    _rb_t=0
+    while kill -0 "$_rb_pid" 2>/dev/null; do
+        if [ -s "$_rb_tmp" ]; then wait "$_rb_pid" || :; break; fi
+        if [ "$_rb_t" -ge "$FRAIM_BODY_WAIT" ]; then
+            kill "$_rb_pid" 2>/dev/null || :
+            rm -f "$_rb_tmp"
+            warn "текст не пришёл на вход за $((FRAIM_BODY_WAIT / 10)) с — вход открыт, но пуст"
+            return 1
+        fi
+        if sleep 0.1 2>/dev/null; then _rb_t=$((_rb_t + 1)); else sleep 1; _rb_t=$((_rb_t + 10)); fi
+    done
+    cat "$_rb_tmp"
+    rm -f "$_rb_tmp"
 }
 
 verb_decide() {

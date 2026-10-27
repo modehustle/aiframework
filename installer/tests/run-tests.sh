@@ -350,7 +350,7 @@ check "имя проекта подставлено" "$(grep -c 'ARCHITECTURE �
 check "AGENTS.md несёт инвариант" "$(grep -c 'golden rule' "$PROJ2/AGENTS.md")" "1"
 check "AGENTS.md работает без CLI" "$(grep -c 'If `fraim` is not installed' "$PROJ2/AGENTS.md")" "1"
 check "AGENTS.md начинает с brief" "$(grep -c 'Start every session with `fraim brief`' "$PROJ2/AGENTS.md")" "1"
-check "AGENTS.md переводит слова человека в действия" "$(grep -c '«возьми задачу X»' "$PROJ2/AGENTS.md")" "1"
+check "AGENTS.md переводит намерения человека в действия" "$(grep -c 'work on a specific task from the board' "$PROJ2/AGENTS.md")" "1"
 check "CLAUDE.md указывает на AGENTS.md" "$(grep -c '@AGENTS.md' "$PROJ2/CLAUDE.md")" "1"
 check "AGENTS.md закоммичен скелетом" \
     "$(git -C "$PROJ2" ls-files --error-unmatch AGENTS.md >/dev/null 2>&1 && echo yes || echo no)" "yes"
@@ -869,6 +869,13 @@ check "длинная строка решения перенесена" \
 
 "$FRAIM" decide "empty" </dev/null >/dev/null 2>&1
 check "decide отвергает пустое тело" "$?" "2"
+# Вход открыт, но ничего не идёт — так харнес или скрипт отдаёт команде унаследованный канал.
+# Глагол обязан отказать с подсказкой, а не ждать конца потока вечно.
+rm -f "$SANDBOX/openfifo"; mkfifo "$SANDBOX/openfifo"; exec 4<>"$SANDBOX/openfifo"
+OUTF=$(FRAIM_BODY_WAIT=5 "$FRAIM" decide "open but empty" < "$SANDBOX/openfifo" 2>&1)
+check "открытый пустой вход — отказ, а не зависание" "$?" "2"
+check "отказ показывает, как передать текст" "$(printf '%s' "$OUTF" | grep -c "<<'EOF'")" "1"
+exec 4>&-
 check "decide не коммитит сам" \
       "$(git -C "$PROJ2" log --oneline -1 --format=%s | grep -c '^decide')" "0"
 

@@ -32,19 +32,21 @@ and line wrapping are theirs:
 
 **Work happens here and now.** The task board (`ai/tasks/`) and the backlog of open
 questions (`ai/backlog/`) are filled by the human only: never propose turning the work in
-front of you into a task. When the human says it in words, this is what it means:
+front of you into a task. The human speaks in words, not commands — recognise the intent:
 
-| человек говорит | это значит |
+| The human's intent | What it means |
 |---|---|
-| «запиши задачу», «на потом», «поставь в задачи» | `/make-task` — обычная задача |
-| «заведи проект», «мастер-задача», «это большая штука из многих задач» | `/make-task` — мастер-задача |
-| «что у меня в задачах», «что на доске» | `fraim tasks` — пересказать |
-| «возьми задачу X», «давай X из задач» | `/run-task` |
-| «запиши вопрос», «в бэклог», «что в бэклоге» | `fraim backlog-new` (после его «да») / `fraim backlog` |
-| «отдай дешёвому», «раздай», «через флот» | `/conductor` |
-| «где мы», «что дальше» после паузы | `/orient` |
-| «разберись, почему…», «реально ли X» | `/investigate` |
-| «сверь документы с кодом» | `/prune` |
+| set work aside to do later, not now | `/make-task` — an ordinary task |
+| start something large that will take several tasks (a project) | `/make-task` — a master task |
+| know what is pending, planned or in progress | `fraim tasks` — report it |
+| work on a specific task from the board | `/run-task` |
+| keep an open question without acting on it | `fraim backlog-new` after the human confirms / `fraim backlog` to review |
+| have work done by cheaper models, or split into parallel directions | `/conductor` |
+| get back into the project after a break | `/orient` |
+| understand a behaviour nobody can explain, or check that something is feasible | `/investigate` |
+| bring the documents back in line with the code | `/prune` |
+
+Judge the intent, in whatever language and wording it comes. Anything else the human asks for is work to do now, in this session. Unsure whether they mean now or later — do it now, or ask one question.
 
 At the end of a piece of work, if open questions remain — important, not for now — list
 them and ask which to keep; the approved ones go to `fraim backlog-new`.

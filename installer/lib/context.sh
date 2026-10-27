@@ -179,10 +179,10 @@ and line wrapping are theirs:
 
 **Work happens here and now.** The task board (`ai/tasks/`) and the backlog of open
 questions (`ai/backlog/`) are filled by the human only: never propose turning the work in
-front of you into a task. When the human says it in words, this is what it means:
+front of you into a task. The human speaks in words, not commands — recognise the intent:
 
 BLKEOF
-    vt_phrases
+    vt_intents
     cat <<'BLKEOF'
 
 At the end of a piece of work, if open questions remain — important, not for now — list

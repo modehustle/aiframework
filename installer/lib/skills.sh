@@ -112,11 +112,11 @@ an unsaved foundation) and deliberately touches nothing that needs judgement —
 board, foundation drift. It prints its plan and asks before doing anything. Every mutating procedure in this system ends by asking the human,
 by design.
 
-## What the human says
+## What the human wants
 
-The human talks; they do not type commands. Recognise the request:
+The human talks; they do not type commands. Recognise the intent:
 
-$(vt_phrases)
+$(vt_intents)
 
 ## Procedures
 

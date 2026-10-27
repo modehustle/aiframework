@@ -50,21 +50,23 @@ an unsaved foundation) and deliberately touches nothing that needs judgement —
 board, foundation drift. It prints its plan and asks before doing anything. Every mutating procedure in this system ends by asking the human,
 by design.
 
-## What the human says
+## What the human wants
 
-The human talks; they do not type commands. Recognise the request:
+The human talks; they do not type commands. Recognise the intent:
 
-| человек говорит | это значит |
+| The human's intent | What it means |
 |---|---|
-| «запиши задачу», «на потом», «поставь в задачи» | `/make-task` — обычная задача |
-| «заведи проект», «мастер-задача», «это большая штука из многих задач» | `/make-task` — мастер-задача |
-| «что у меня в задачах», «что на доске» | `fraim tasks` — пересказать |
-| «возьми задачу X», «давай X из задач» | `/run-task` |
-| «запиши вопрос», «в бэклог», «что в бэклоге» | `fraim backlog-new` (после его «да») / `fraim backlog` |
-| «отдай дешёвому», «раздай», «через флот» | `/conductor` |
-| «где мы», «что дальше» после паузы | `/orient` |
-| «разберись, почему…», «реально ли X» | `/investigate` |
-| «сверь документы с кодом» | `/prune` |
+| set work aside to do later, not now | `/make-task` — an ordinary task |
+| start something large that will take several tasks (a project) | `/make-task` — a master task |
+| know what is pending, planned or in progress | `fraim tasks` — report it |
+| work on a specific task from the board | `/run-task` |
+| keep an open question without acting on it | `fraim backlog-new` after the human confirms / `fraim backlog` to review |
+| have work done by cheaper models, or split into parallel directions | `/conductor` |
+| get back into the project after a break | `/orient` |
+| understand a behaviour nobody can explain, or check that something is feasible | `/investigate` |
+| bring the documents back in line with the code | `/prune` |
+
+Judge the intent, in whatever language and wording it comes. Anything else the human asks for is work to do now, in this session. Unsure whether they mean now or later — do it now, or ask one question.
 
 ## Procedures
 
