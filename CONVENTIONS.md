@@ -53,3 +53,10 @@
 - `sh -c '…$VAR…'` inside single quotes runs in a child shell that has none of the caller's variables: the test harness must `export` every path it passes that way, or the child silently works on an empty path and the assertion fails somewhere else
 - Worker checkouts are isolated by FILES only — ports, databases, caches and anything outside the repository are shared, and no check sees it (BACKLOG §6)
 - `build_next_wave` answers "nothing left" both when every wave is collected and when the plan cannot be read — the same shape as the pipeline-exit bug above. Anything that must know "is this build finished" asks positively (every subtask present in `collected.tsv`), never by the absence of a next wave
+- `read` with IFS set to a tab collapses empty fields and shifts the rest left (an empty `parent`
+  moved every later field of a board line) — a record with possibly empty fields needs a
+  non-whitespace separator (`\037`)
+- POSIX sh has no local variables: a helper called from a verb overwrites the verb's own variables
+  (`decide` lost its `_entry` to `fnd_move_decision`) — helpers prefix theirs (`_md_`, `_ac_`)
+- A background command in a non-interactive shell reads /dev/null, not the caller's stdin — pass the
+  descriptor explicitly (`exec 3<&0; cat <&3 &`), or the read silently gets nothing
