@@ -12,7 +12,7 @@ FRAIM="$REPO/installer/bin/fraim"
 PASS=0; FAIL=0
 ok()   { PASS=$((PASS+1)); printf '  ok   %s\n' "$1"; }
 bad()  { FAIL=$((FAIL+1)); printf '  FAIL %s\n     %s\n' "$1" "${2:-}"; }
-check(){ if [ "$2" = "$3" ]; then ok "$1"; else bad "$1" "ожидалось [$3], получено [$2]"; fi; }
+check(){ if [ "$2" = "$3" ]; then ok "$1"; else bad "$1" "expected [$3], got [$2]"; fi; }
 
 SANDBOX=$(mktemp -d)
 trap 'rm -rf "$SANDBOX"' EXIT
@@ -20,17 +20,17 @@ export HOME="$SANDBOX/home"
 export FRAIM_HOME="$HOME/.fraim"
 mkdir -p "$HOME" "$FRAIM_HOME"
 
-# Фикстуры ниже — намеренно минимальные каталоги: у них нет ни AGENTS.md, ни ai/fraim.conf,
-# потому что каждая проверяет что-то одно. Проверка соответствия стандарту сработала бы на
-# всех сразу и заглушила бы то, ради чего фикстура заведена. Выключаем её машинной настройкой
-# и включаем обратно в проекте, который её и проверяет (проект бьёт машину).
+# The fixtures below are deliberately minimal directories: they have neither AGENTS.md nor ai/fraim.conf,
+# because each one checks a single thing. The standard-conformance check would fire on
+# all of them at once and drown out what the fixture exists for. We turn it off with a machine setting
+# and turn it back on in the project that actually tests it (project beats machine).
 printf 'check_shape = off\n' > "$FRAIM_HOME/config"
 
 # ---------------------------------------------------------------- procedures
 printf '\nprocedures/\n'
 
 N=$(ls "$REPO"/procedures/*.md | grep -v manifest | wc -l | tr -d ' ')
-check "11 процедур на диске" "$N" "11"
+check "11 procedures on disk" "$N" "11"
 
 BADFM=""
 for f in "$REPO"/procedures/*.md; do
@@ -46,17 +46,17 @@ for f in "$REPO"/procedures/*.md; do
     [ -n "$t" ]                                      || BADFM="$BADFM $b:no-tier"
     [ -n "$o" ]                                      || BADFM="$BADFM $b:no-order"
 done
-check "фронтматтер всех процедур корректен" "${BADFM:-clean}" "clean"
+check "frontmatter of all procedures is valid" "${BADFM:-clean}" "clean"
 
-# --- рельсы -----------------------------------------------------------------
-# `fraim commit` прожил в двух процедурах несколько релизов, потому что ничто не
-# сверяло текст процедур с диспетчером. Эти три проверки ловят класс, а не случай.
+# --- rails ------------------------------------------------------------------
+# `fraim commit` lived in two procedures for several releases, because nothing
+# checked procedure text against the dispatcher. These three checks catch the class, not the case.
 
 DISPATCH=$(awk '/^case \$_cmd in/,/^esac$/' "$REPO/installer/bin/fraim" |
            sed -n 's/^[[:space:]]*\([a-z|_-]*\)).*/\1/p' | tr '|' '\n' |
            grep -E '^[a-z][a-z-]*$' | sort -u)
-# Только команды в коде — с бэктиком или в начале строки блока. Иначе английская
-# проза «a fraim project» читается как команда.
+# Only commands in code — with a backtick or at the start of a block line. Otherwise English
+# prose like «a fraim project» reads as a command.
 USED=$(grep -ohE '(^|`)fraim [a-z][a-z-]*' "$REPO"/procedures/*.md |
        sed 's/^`//; s/^fraim //' | sort -u)
 
@@ -64,28 +64,28 @@ UNKNOWN=""
 for v in $USED; do
     printf '%s\n' "$DISPATCH" | grep -qx "$v" || UNKNOWN="$UNKNOWN $v"
 done
-check "каждая команда fraim из процедур есть в CLI" "${UNKNOWN:-none}" "none"
+check "every fraim command in procedures exists in the CLI" "${UNKNOWN:-none}" "none"
 
 UNDOC=""
 HELP=$("$REPO/installer/bin/fraim" help 2>/dev/null)
 for v in $DISPATCH; do
     printf '%s\n' "$HELP" | grep -qw -- "$v" || UNDOC="$UNDOC $v"
 done
-check "каждая команда CLI описана в fraim help" "$(printf '%s' "${UNDOC:-none}" | tr -s ' ')" "none"
+check "every CLI command is described in fraim help" "$(printf '%s' "${UNDOC:-none}" | tr -s ' ')" "none"
 
-# Список глаголов агент узнаёт из одной таблицы (verbtable.sh): из неё собираются brief,
-# help и мастер-скилл. Глагол в таблице, которого нет в диспетчере, — обещание, которое
-# сломается на первом же вызове.
+# The agent learns the verb list from one table (verbtable.sh): brief, help and the master
+# skill are built from it. A verb in the table that the dispatcher lacks is a promise that
+# breaks on the very first call.
 VTCMDS=$(sh -c '. "'"$REPO"'/installer/lib/core.sh"; . "'"$REPO"'/installer/lib/foundation.sh"; . "'"$REPO"'/installer/lib/verbtable.sh"; vt_table' |
          awk -F' ;; ' '{ split($3, w, " "); print w[2] }' | sort -u)
 VTMISS=""
 for v in $VTCMDS; do
     printf '%s\n' "$DISPATCH" | grep -qx "$v" || VTMISS="$VTMISS $v"
 done
-check "каждый глагол из таблицы есть в CLI" "${VTMISS:-none}" "none"
+check "every verb in the table exists in the CLI" "${VTMISS:-none}" "none"
 
-# Гейты парсят заголовки, которые печатает шаблон. Тест берёт литерал из кода гейта
-# и ищет его в шаблонах — а не в собственной копии формата.
+# Gates parse headings that the template prints. The test takes the literal from the gate's code
+# and looks for it in the templates — not in its own copy of the format.
 MISSING_HEAD=""
 HEADS=$(grep -oE "verb_section_filled [^ ]+ '[^']+'" "$REPO/installer/lib/verbs.sh" |
         sed "s/.*'\(.*\)'/\1/" | sort -u)
@@ -95,35 +95,35 @@ for h in $HEADS; do
     grep -rqF "$h" "$REPO/installer/templates" || MISSING_HEAD="$MISSING_HEAD [$h]"
 done
 IFS=$OLDIFS
-check "заголовки, которые читают гейты, есть в шаблонах" "${MISSING_HEAD:-none}" "none"
+check "headings read by gates exist in templates" "${MISSING_HEAD:-none}" "none"
 
-# Ни одна процедура не меняет состояние git руками — ни одна, без исключений.
-# Список был закрытым и сократился до пустого: репозиторий заводит scaffold, точку
-# сохранения ставит commit, возврат делают undo и restore. Любое совпадение здесь —
-# либо новый глагол, либо ошибка.
+# No procedure changes git state by hand — none, no exceptions.
+# The list used to be a closed one and shrank to empty: scaffold creates the repository, commit
+# puts the save point, undo and restore do the going back. Any match here is
+# either a new verb or a bug.
 GITHAND=$(grep -lE 'git (commit|add|init|restore|checkout|reset|stash|clean|push)' \
           "$REPO"/procedures/*.md | while read -r f; do basename "$f"; done | sort | tr '\n' ' ')
-check "процедуры не трогают git руками" "$GITHAND" ""
+check "procedures do not touch git by hand" "$GITHAND" ""
 
 # ---------------------------------------------------------------- menu
-printf '\nfraim menu (экран)\n'
+printf '\nfraim menu (screen)\n'
 
-# Самое дорогое свойство меню — не то, как оно выглядит, а то, что его нет там,
-# где его быть не должно. Подавляющее большинство вызовов CLI делает агент через
-# пайп; команда, ждущая нажатия, повесила бы сессию молча.
+# The menu's most expensive property is not how it looks, but that it is absent where
+# it must not be. The overwhelming majority of CLI calls are made by an agent through a
+# pipe; a command waiting for a keypress would hang the session silently.
 OUT=$(timeout 10 "$FRAIM" menu </dev/null 2>&1 | head -1)
-check "menu без терминала печатает usage, а не ждёт клавишу" \
+check "menu without a terminal prints usage, does not wait for a key" \
       "$(printf '%s' "$OUT" | cut -c1-6)" "fraim "
 
 OUT=$(timeout 10 "$FRAIM" </dev/null 2>&1 | head -1)
-check "голый fraim без терминала печатает usage" \
+check "bare fraim without a terminal prints usage" \
       "$(printf '%s' "$OUT" | cut -c1-6)" "fraim "
 
-# Карточка меню рисуется ПОСЛЕ сторожа, а в POSIX sh нет локальных переменных: сторож
-# пишет _w, _n, _msg, пока работает. Меню, считавшее ширину до wm_run, получало
-# «Illegal number: точек сохранения» и рисовало одну пустую строку — ровно на проектах,
-# где находок больше всего. Рельс проверяет отрисовку на проекте с ремоутом и
-# неотправленными точками, то есть в той самой ситуации.
+# The menu card is drawn AFTER the watchman, and POSIX sh has no local variables: the watchman
+# writes _w, _n, _msg while it runs. A menu that computed its width before wm_run got
+# «Illegal number: точек сохранения» and drew one empty line — exactly on the projects
+# with the most findings. The rail checks rendering on a project with a remote and
+# unpushed save points, i.e. in that very situation.
 CARD="$SANDBOX/cardproj"
 mkdir -p "$CARD"
 git init -q --bare "$SANDBOX/card-remote.git"
@@ -143,20 +143,20 @@ CARDOUT=$(sh -c '
     . "'"$REPO"'/installer/lib/scaffold.sh"; . "'"$REPO"'/installer/lib/verbs.sh"; . "'"$REPO"'/installer/lib/tasks.sh"; . "'"$REPO"'/installer/lib/foundation.sh"; . "'"$REPO"'/installer/lib/verbtable.sh"
     . "'"$REPO"'/installer/lib/ade.sh"; . "'"$REPO"'/installer/lib/watchman.sh"; . "'"$REPO"'/installer/lib/update.sh"; . "'"$REPO"'/installer/lib/menu.sh"
     cd "'"$CARD"'" && menu_card && printf "%s\n" "$MENU_CARD"' 2>&1)
-check "карточка меню не падает на числах сторожа" "$(printf '%s' "$CARDOUT" | grep -c 'Illegal number')" "0"
-check "карточка меню показывает текст находок" \
+check "menu card does not crash on watchman numbers" "$(printf '%s' "$CARDOUT" | grep -c 'Illegal number')" "0"
+check "menu card shows findings text" \
       "$(printf '%s' "$CARDOUT" | grep -c 'не уехали в удалённую копию')" "1"
-# Длинную строку карточка режет по двоеточию, а не по колонке: посчитать колонку
-# правильно можно только зная локаль, а под LC_ALL=C кириллица режется пополам.
-check "длинная находка режется по смыслу" \
+# The card cuts a long line at the colon, not at a column: counting columns
+# correctly is only possible knowing the locale, and under LC_ALL=C Cyrillic gets cut in half.
+check "long finding is cut at a meaningful point" \
       "$(printf '%s' "$CARDOUT" | grep -c 'скелет развёрнут, но не заполнен: …')" "1"
 cd "$SANDBOX" || exit 1
 
-# Навигация после сторожа. В POSIX sh нет локальных переменных, а menu_card зовёт
-# сторожа, который пишет собственный `_n` (счётчик очереди). Счётчик пунктов меню жил
-# в такой же `_n`, и после первой же отрисовки карточки становился нулём: стрелка вниз
-# честно двигала выбор и тут же возвращала его на первую строку, а цифры 1-8 не
-# срабатывали вовсе. Рельс воспроизводит ровно эту последовательность.
+# Navigation after the watchman. POSIX sh has no local variables, and menu_card calls
+# the watchman, which writes its own `_n` (queue counter). The menu item counter lived
+# in the same `_n`, and after the very first card render it became zero: arrow down
+# honestly moved the selection and immediately returned it to the first line, and digits 1-8 did not
+# work at all. The rail reproduces exactly this sequence.
 NAV=$(sh -c '
     . "'"$REPO"'/installer/lib/core.sh"; . "'"$REPO"'/installer/lib/config.sh"
     . "'"$REPO"'/installer/lib/registry.sh"; . "'"$REPO"'/installer/lib/context.sh"
@@ -168,41 +168,41 @@ NAV=$(sh -c '
     MENU_SEL=$((MENU_SEL + 1)); [ "$MENU_SEL" -gt "$MENU_N" ] && MENU_SEL=1
     printf "%s/%s\n" "$MENU_SEL" "$MENU_N"' 2>&1)
 ITEMS_N=$(sh -c '. "'"$REPO"'/installer/lib/menu.sh"; menu_count')
-check "стрелка вниз двигает выбор после сторожа" "$NAV" "2/$ITEMS_N"
+check "arrow down moves selection after the watchman" "$NAV" "2/$ITEMS_N"
 
-# Меню обязано пережить код возврата каждого своего пункта. CLI работает под `set -e`,
-# а `fraim status` выходит с 1, как только в проекте есть что показать человеку, — то
-# есть в самом обычном случае. Без защиты выбор «Скан проекта» печатал вердикт и убивал
-# процесс посреди экрана, оставляя терминал без эха и без курсора.
+# The menu must survive the exit code of each of its items. The CLI runs under `set -e`,
+# and `fraim status` exits with 1 as soon as the project has something to show the human — that
+# is, in the most ordinary case. Without a guard, choosing «Скан проекта» printed the verdict and killed
+# the process mid-screen, leaving the terminal without echo and without a cursor.
 MBR=$(sed -n '/^menu_exec() {/,/^    esac$/p' "$REPO/installer/lib/menu.sh" |
       grep -cE '^        [0-9]+\)')
 MGUARD=$(sed -n '/^menu_exec() {/,/^    esac$/p' "$REPO/installer/lib/menu.sh" |
       grep -c '|| true')
-check "каждое действие меню переживает свой код возврата" "$MGUARD" "$MBR"
+check "every menu action survives its exit code" "$MGUARD" "$MBR"
 
-# Пункт меню и его действие живут в двух местах (menu_items и menu_exec). Рельс
-# ловит класс: добавили строку — забыли ветку. Последний пункт («Выход») ветки
-# не имеет по построению.
+# A menu item and its action live in two places (menu_items and menu_exec). The rail
+# catches the class: a line added — a branch forgotten. The last item («Выход») has
+# no branch by construction.
 ITEMS=$(sed -n '/^menu_items() {/,/^}/p' "$REPO/installer/lib/menu.sh" |
         sed -n '/<<.ITEMS./,/^ITEMS$/p' | grep -c '	')
 BRANCH=$(sed -n '/^menu_exec() {/,/^}/p' "$REPO/installer/lib/menu.sh" |
          grep -cE '^        [0-9]+\)')
-check "у каждого пункта меню есть действие" "$BRANCH" "$((ITEMS - 1))"
+check "every menu item has an action" "$BRANCH" "$((ITEMS - 1))"
 
 # ---------------------------------------------------------------- build
 printf '\nfraim build\n'
 
 "$FRAIM" build >/dev/null 2>&1
-check "build завершился успешно" "$?" "0"
+check "build succeeded" "$?" "0"
 
 PLUG="$REPO/installer/claude-plugin/skills"
-check "плагин: 12 скиллов" "$(find "$PLUG" -name SKILL.md | wc -l | tr -d ' ')" "12"
+check "plugin: 12 skills" "$(find "$PLUG" -name SKILL.md | wc -l | tr -d ' ')" "12"
 
 # The single-file rule is a compatibility constraint, not tidiness:
 # Hermes fetches only SKILL.md when installing from a URL, and omp discovers
 # skills non-recursively. Anything beside SKILL.md would arrive missing.
 EXTRA=$(find "$PLUG" -type f ! -name SKILL.md | wc -l | tr -d ' ')
-check "в каждом скилле ровно один файл" "$EXTRA" "0"
+check "exactly one file per skill" "$EXTRA" "0"
 
 # The text the agent reads must be the text under version control.
 DIFFS=0
@@ -214,18 +214,18 @@ for d in "$PLUG"/*/; do
     b=$(awk 'NR==1&&$0=="---"{f=1;next} f&&$0=="---"{f=0;next} !f' "$d/SKILL.md" | md5sum | cut -d' ' -f1)
     [ "$a" = "$b" ] || DIFFS=$((DIFFS+1))
 done
-check "тело скилла совпадает с исходником байт в байт" "$DIFFS" "0"
+check "skill body matches source byte for byte" "$DIFFS" "0"
 
 python3 -c "import json,sys;json.load(open('$REPO/procedures/manifest.json'))" 2>/dev/null
-check "манифест — валидный JSON" "$?" "0"
+check "manifest is valid JSON" "$?" "0"
 
 # ---------------------------------------------------------------- watchman
-printf '\nfraim status (сторож)\n'
+printf '\nfraim status (watchman)\n'
 
 PROJ="$SANDBOX/proj"
 mkdir -p "$PROJ"
 "$FRAIM" status "$PROJ" >/dev/null 2>&1
-check "проект не под системой → exit 2" "$?" "2"
+check "project not under the system → exit 2" "$?" "2"
 
 git -C "$PROJ" init -q
 git -C "$PROJ" config user.email t@t; git -C "$PROJ" config user.name t
@@ -234,7 +234,7 @@ printf '# Arch\n' > "$PROJ/ARCHITECTURE.md"
 printf 'x\n' > "$PROJ/main.py"
 git -C "$PROJ" add -A >/dev/null; git -C "$PROJ" commit -qm init
 "$FRAIM" status "$PROJ" >/dev/null 2>&1
-check "чистый проект → exit 0" "$?" "0"
+check "clean project → exit 0" "$?" "0"
 
 # Drift is code commits since ARCHITECTURE.md last moved. It counts every mode of work,
 # including the reactive one, which is why it replaced the hotfix counter.
@@ -246,21 +246,21 @@ i=1; while [ $i -le 2 ]; do
     i=$((i+1))
 done
 "$FRAIM" status "$PROJ" >/dev/null 2>&1
-check "2 коммита кода (ниже порога) → exit 0" "$?" "0"
+check "2 code commits (below threshold) → exit 0" "$?" "0"
 printf 'line 3\n' >> "$PROJ/app.py"
 git -C "$PROJ" add app.py >/dev/null 2>&1
 git -C "$PROJ" commit -qm "fix: change 3" >/dev/null 2>&1
 "$FRAIM" status "$PROJ" >/dev/null 2>&1
-check "3 коммита кода (порог) → exit 1" "$?" "1"
+check "3 code commits (threshold) → exit 1" "$?" "1"
 "$FRAIM" status "$PROJ" 2>/dev/null | grep -q '/prune'
-check "вердикт указывает на /prune" "$?" "0"
+check "verdict points to /prune" "$?" "0"
 
 # The map moving is one anchor; a prune commit is the other, and the nearer one wins.
 printf 'updated\n' >> "$PROJ/ARCHITECTURE.md"
 git -C "$PROJ" add ARCHITECTURE.md >/dev/null 2>&1
 git -C "$PROJ" commit -qm "prune: reconcile foundation" >/dev/null 2>&1
 "$FRAIM" status "$PROJ" >/dev/null 2>&1
-check "обновление карты сбрасывает счётчик → exit 0" "$?" "0"
+check "map update resets the counter → exit 0" "$?" "0"
 rm -f "$PROJ/ai/fraim.conf"
 
 # The board: an open card is information, never alarm. Nothing on a card can go stale or
@@ -269,26 +269,26 @@ printf -- '---\nkind: task\ncreated: 2026-01-01\n---\n# Сделать X\n\n## W
     > "$PROJ/ai/tasks/do-x.md"
 git -C "$PROJ" add -A >/dev/null 2>&1; git -C "$PROJ" commit -qm "task: do-x" >/dev/null 2>&1
 "$FRAIM" status "$PROJ" >/dev/null 2>&1
-check "открытая задача на доске → exit 0" "$?" "0"
+check "open task on the board → exit 0" "$?" "0"
 "$FRAIM" status "$PROJ" 2>/dev/null | grep -q '1 открытая задача на доске'
-check "доска названа в вердикте" "$?" "0"
+check "board named in the verdict" "$?" "0"
 "$FRAIM" status "$PROJ" --json 2>/dev/null | grep -q '"slug": "do-x", "kind": "task", "parent": ""'
-check "json: карточка с видом и родителем" "$?" "0"
+check "json: card with kind and parent" "$?" "0"
 printf 'y\n' >> "$PROJ/main.py"
 git -C "$PROJ" commit -aqm second
 "$FRAIM" status "$PROJ" --json 2>/dev/null | grep -qE '"id": "(stale-plan|plan-version|blocker|unsealed)"'
-check "у карточки нет протухания, блокеров и печатей" "$?" "1"
+check "a card has no staleness, blockers or seals" "$?" "1"
 
 # A task in the old format is somebody's intent too — the verdict sends it to upgrade.
 mkdir -p "$PROJ/ai/tasks/old-plan"
 printf '# Task\n' > "$PROJ/ai/tasks/old-plan/task.md"
 printf 'check_shape = on\n' > "$PROJ/ai/fraim.conf"
 "$FRAIM" status "$PROJ" 2>/dev/null | grep -q 'ai/tasks:старый-формат'
-check "задача старого формата — находка shape" "$?" "0"
+check "old-format task is a shape finding" "$?" "0"
 rm -rf "$PROJ/ai/tasks/old-plan" "$PROJ/ai/fraim.conf"
 
 python3 -c "import json,sys;json.load(sys.stdin)" < "$("$FRAIM" status "$PROJ" --json > "$SANDBOX/s.json" 2>/dev/null; echo "$SANDBOX/s.json")"
-check "--json — валидный JSON" "$?" "0"
+check "--json is valid JSON" "$?" "0"
 
 # Lessons that never came back: work saved while CONVENTIONS.md stays frozen. Same
 # arithmetic as the map check, one file over — and not a subset of it: the map here is
@@ -298,26 +298,26 @@ printf '# Conventions\n\n## Known Pitfalls / Lessons\n- None yet.\n' > "$PROJ/CO
 git -C "$PROJ" add CONVENTIONS.md >/dev/null 2>&1
 git -C "$PROJ" commit -qm "onboard: house rules" >/dev/null 2>&1
 "$FRAIM" status "$PROJ" 2>/dev/null | grep -q 'грабли никуда не записывались'
-check "свежий CONVENTIONS.md тревоги не поднимает" "$?" "1"
+check "fresh CONVENTIONS.md raises no alarm" "$?" "1"
 for i in 1 2 3 4; do
     printf 'l%s\n' "$i" >> "$PROJ/app.py"
     git -C "$PROJ" add app.py >/dev/null 2>&1
     git -C "$PROJ" commit -qm "fix: reactive change $i" >/dev/null 2>&1
 done
 "$FRAIM" status "$PROJ" 2>/dev/null | grep -q 'грабли никуда не записывались'
-check "работа без единого урока замечена" "$?" "0"
+check "work without a single lesson is noticed" "$?" "0"
 printf -- '- Retry on a 200 that carries an error body.\n' >> "$PROJ/CONVENTIONS.md"
 git -C "$PROJ" add CONVENTIONS.md >/dev/null 2>&1
 git -C "$PROJ" commit -qm "fix: lesson recorded" >/dev/null 2>&1
 "$FRAIM" status "$PROJ" 2>/dev/null | grep -q 'грабли никуда не записывались'
-check "записанный урок сбрасывает счётчик" "$?" "1"
+check "recorded lesson resets the counter" "$?" "1"
 "$FRAIM" config set --machine lessons_lag_commits 25 >/dev/null 2>&1
 
 # The watchman is read-only. Anything else and it could not be put on a cron.
 BEFORE=$(find "$PROJ" -newer "$PROJ/ARCHITECTURE.md" -type f | md5sum)
 "$FRAIM" status "$PROJ" >/dev/null 2>&1
 AFTER=$(find "$PROJ" -newer "$PROJ/ARCHITECTURE.md" -type f | md5sum)
-check "сторож ничего не пишет" "$BEFORE" "$AFTER"
+check "watchman writes nothing" "$BEFORE" "$AFTER"
 
 
 # ---------------------------------------------------------------- scaffold
@@ -331,7 +331,7 @@ printf 'x\n' > "$PROJ2/main.py"
 cd "$PROJ2" || exit 1
 
 "$FRAIM" scaffold >/dev/null 2>&1
-check "scaffold завершился успешно" "$?" "0"
+check "scaffold succeeded" "$?" "0"
 
 MISSING=""
 for f in README.md ARCHITECTURE.md CONVENTIONS.md DECISIONS.md .gitignore \
@@ -341,54 +341,54 @@ done
 for d in ai/tasks ai/archive ai/investigations; do
     [ -d "$PROJ2/$d" ] || MISSING="$MISSING $d/"
 done
-check "все файлы и папки скелета созданы" "${MISSING:-none}" "none"
+check "all scaffold files and folders created" "${MISSING:-none}" "none"
 
-check "имя проекта подставлено" "$(grep -c 'ARCHITECTURE — proj2' "$PROJ2/ARCHITECTURE.md")" "1"
+check "project name substituted" "$(grep -c 'ARCHITECTURE — proj2' "$PROJ2/ARCHITECTURE.md")" "1"
 
 # The repository has to describe itself to an agent that has never heard of fraim —
 # a cloud session, CI, a second machine. The pointer travels in git, not on the machine.
-check "AGENTS.md несёт инвариант" "$(grep -c 'golden rule' "$PROJ2/AGENTS.md")" "1"
-check "AGENTS.md работает без CLI" "$(grep -c 'If `fraim` is not installed' "$PROJ2/AGENTS.md")" "1"
-check "AGENTS.md начинает с brief" "$(grep -c 'Start every session with `fraim brief`' "$PROJ2/AGENTS.md")" "1"
-check "AGENTS.md переводит намерения человека в действия" "$(grep -c 'work on a specific task from the board' "$PROJ2/AGENTS.md")" "1"
-check "CLAUDE.md указывает на AGENTS.md" "$(grep -c '@AGENTS.md' "$PROJ2/CLAUDE.md")" "1"
-check "AGENTS.md закоммичен скелетом" \
+check "AGENTS.md carries the invariant" "$(grep -c 'golden rule' "$PROJ2/AGENTS.md")" "1"
+check "AGENTS.md works without the CLI" "$(grep -c 'If `fraim` is not installed' "$PROJ2/AGENTS.md")" "1"
+check "AGENTS.md starts with brief" "$(grep -c 'Start every session with `fraim brief`' "$PROJ2/AGENTS.md")" "1"
+check "AGENTS.md maps human intents to actions" "$(grep -c 'work on a specific task from the board' "$PROJ2/AGENTS.md")" "1"
+check "CLAUDE.md points to AGENTS.md" "$(grep -c '@AGENTS.md' "$PROJ2/CLAUDE.md")" "1"
+check "AGENTS.md committed by scaffold" \
     "$(git -C "$PROJ2" ls-files --error-unmatch AGENTS.md >/dev/null 2>&1 && echo yes || echo no)" "yes"
 
 
 # A scaffold must never masquerade as a filled foundation: that is worse than no
 # files at all, because the agent reads them, finds nothing, and goes back to guessing.
 "$FRAIM" status "$PROJ2" >/dev/null 2>&1
-check "незаполненный скелет → exit 1" "$?" "1"
+check "unfilled scaffold → exit 1" "$?" "1"
 "$FRAIM" status "$PROJ2" 2>/dev/null | grep -q 'не заполнен'
-check "сторож отличает скелет от фундамента" "$?" "0"
+check "watchman tells a scaffold from a foundation" "$?" "0"
 
 # Additive by construction: safe to run on a project that already has files.
 printf 'MINE\n' > "$PROJ2/ARCHITECTURE.md"
 "$FRAIM" scaffold >/dev/null 2>&1
-check "scaffold не перезаписывает существующее" "$(cat "$PROJ2/ARCHITECTURE.md")" "MINE"
+check "scaffold does not overwrite existing files" "$(cat "$PROJ2/ARCHITECTURE.md")" "MINE"
 
 for f in README.md ARCHITECTURE.md CONVENTIONS.md DECISIONS.md; do
     printf '# %s\nfilled\n' "$f" > "$PROJ2/$f"
 done
 git -C "$PROJ2" add -A >/dev/null; git -C "$PROJ2" commit -qm "bootstrap: foundation"
 "$FRAIM" status "$PROJ2" >/dev/null 2>&1
-check "заполненный фундамент → exit 0" "$?" "0"
+check "filled foundation → exit 0" "$?" "0"
 
-# ---------------------------------------------------------------- режим
-# Режимов больше нет (DECISIONS 2026-09-15): дирижёр — процедура по просьбе человека.
-# У проектов, переключённых во флот раньше, остались строка mode, дирижёрский блок в
-# AGENTS.md и хук SessionStart. `fraim mode` убирает ровно их, а оставшийся хук
-# (`fraim mode --hook`) обязан молча отвечать успехом — иначе он ломает старт сессии.
-printf '\nfraim mode (остатки режима флота)\n'
+# ---------------------------------------------------------------- mode
+# There are no modes anymore (DECISIONS 2026-09-15): the conductor is a procedure run at the human's request.
+# Projects switched to fleet earlier still have a mode line, a conductor block in
+# AGENTS.md and a SessionStart hook. `fraim mode` removes exactly those, and the remaining hook
+# (`fraim mode --hook`) must answer success silently — otherwise it breaks session start.
+printf '\nfraim mode (fleet mode leftovers)\n'
 
 cd "$PROJ2" || exit 1
-check "обычный проект не получает дирижёрского блока" \
+check "ordinary project gets no conductor block" \
       "$(grep -c 'Fleet mode is on' "$PROJ2/AGENTS.md")" "0"
 
 OUT=$("$FRAIM" mode --hook 2>&1)
-check "хук-остаток отвечает успехом" "$?" "0"
-check "хук-остаток молчит" "$OUT" ""
+check "leftover hook answers success" "$?" "0"
+check "leftover hook is silent" "$OUT" ""
 
 printf 'mode = parallel\nbuild_check = true\n' > "$PROJ2/ai/fraim.conf"
 printf '\n## Fleet mode is on in this project — read this before anything else\nold\n' > "$SANDBOX/fleetblk"
@@ -401,25 +401,25 @@ cat > "$PROJ2/.claude/settings.json" <<'JSON'
                             {"hooks": [{"type": "command", "command": "echo mine"}]}]}}
 JSON
 "$FRAIM" mode >/dev/null 2>&1
-check "fraim mode отвечает успехом" "$?" "0"
-check "строка mode убрана" "$(grep -c '^mode' "$PROJ2/ai/fraim.conf")" "0"
-check "чужие настройки проекта целы" "$(grep -c '^build_check = true' "$PROJ2/ai/fraim.conf")" "1"
-check "дирижёрский блок убран из AGENTS.md" "$(grep -c 'Fleet mode is on' "$PROJ2/AGENTS.md")" "0"
+check "fraim mode answers success" "$?" "0"
+check "mode line removed" "$(grep -c '^mode' "$PROJ2/ai/fraim.conf")" "0"
+check "other project settings intact" "$(grep -c '^build_check = true' "$PROJ2/ai/fraim.conf")" "1"
+check "conductor block removed from AGENTS.md" "$(grep -c 'Fleet mode is on' "$PROJ2/AGENTS.md")" "0"
 if command -v python3 >/dev/null 2>&1; then
-    check "наш хук убран" "$(grep -c 'fraim mode --hook' "$PROJ2/.claude/settings.json")" "0"
-    check "чужой хук цел" "$(grep -c 'echo mine' "$PROJ2/.claude/settings.json")" "1"
-    check "чужие разрешения целы" "$(grep -c 'Bash(ls)' "$PROJ2/.claude/settings.json")" "1"
+    check "our hook removed" "$(grep -c 'fraim mode --hook' "$PROJ2/.claude/settings.json")" "0"
+    check "foreign hook intact" "$(grep -c 'echo mine' "$PROJ2/.claude/settings.json")" "1"
+    check "foreign permissions intact" "$(grep -c 'Bash(ls)' "$PROJ2/.claude/settings.json")" "1"
 fi
-check "повторный запуск говорит, что убирать нечего" \
+check "rerun says there is nothing to remove" \
       "$("$FRAIM" mode 2>&1 | grep -c 'остатков старого режима здесь нет')" "1"
 rm -rf "$PROJ2/.claude"
 printf '' > "$PROJ2/ai/fraim.conf"
 cd "$SANDBOX" || exit 1
 
-# --- фундамент: считаем изменения, а не время ------------------------------
-# Раньше мерилось время между последним коммитом кода и последним коммитом карты.
-# В цикле задач это работало, а в реактивном режиме — самом частом — инвертировалось:
-# сто коммитов за две недели молчали, один коммит через две недели поднимал тревогу.
+# --- foundation: count changes, not time -----------------------------------
+# It used to measure the time between the last code commit and the last map commit.
+# In the task cycle that worked, but in reactive mode — the most frequent one — it inverted:
+# a hundred commits in two weeks stayed silent, one commit after two weeks raised the alarm.
 PROJ5="$SANDBOX/proj5"
 mkdir -p "$PROJ5/ai/tasks"
 git -C "$PROJ5" init -q
@@ -434,69 +434,69 @@ i=1; while [ $i -le 9 ]; do
     i=$((i+1))
 done
 "$FRAIM" status "$PROJ5" >/dev/null 2>&1
-check "9 коммитов кода — ниже порога" "$?" "0"
+check "9 code commits — below threshold" "$?" "0"
 
 printf 'l10\n' >> "$PROJ5/main.py"; git -C "$PROJ5" commit -qam "fix 10" >/dev/null
 "$FRAIM" status "$PROJ5" >/dev/null 2>&1
-check "10 коммитов кода без карты → exit 1" "$?" "1"
+check "10 code commits without the map → exit 1" "$?" "1"
 "$FRAIM" status "$PROJ5" 2>/dev/null | grep -q 'с последнего обновления ARCHITECTURE.md'
-check "вердикт называет отставание карты" "$?" "0"
+check "verdict names the map lag" "$?" "0"
 
-# Все десять уместились в один день — по старой метрике это было бы «отставание 0 дней».
+# All ten fit into one day — by the old metric this would have been «0 days behind».
 SPAN=$(git -C "$PROJ5" log -1 --format=%ct)
 FIRST=$(git -C "$PROJ5" log --format=%ct -- ARCHITECTURE.md | tail -1)
-check "и всё это в пределах одного дня" "$(( (SPAN - FIRST) / 86400 ))" "0"
+check "and all of it within one day" "$(( (SPAN - FIRST) / 86400 ))" "0"
 
 printf 'updated\n' >> "$PROJ5/ARCHITECTURE.md"
 git -C "$PROJ5" commit -qam "task: карта обновлена" >/dev/null
 "$FRAIM" status "$PROJ5" >/dev/null 2>&1
-check "обновление карты сбрасывает счётчик" "$?" "0"
+check "map update resets the counter" "$?" "0"
 
-# Прунинг, который честно ничего не изменил в карте, тоже обнуляет: иначе вердикт
-# просил бы сделать прополку, которая только что прошла.
+# A prune that honestly changed nothing in the map resets too: otherwise the verdict
+# would ask for a weeding that has just happened.
 i=1; while [ $i -le 10 ]; do
     printf 'r%s\n' "$i" >> "$PROJ5/main.py"
     git -C "$PROJ5" commit -qam "fix r$i" >/dev/null
     i=$((i+1))
 done
 "$FRAIM" status "$PROJ5" >/dev/null 2>&1
-check "снова накопилось → exit 1" "$?" "1"
+check "accumulated again → exit 1" "$?" "1"
 git -C "$PROJ5" add -A >/dev/null
 # --allow-empty: a prune that honestly changed nothing still has to leave the anchor,
 # which is exactly what `fraim prune-mark` does.
 git -C "$PROJ5" commit -q --allow-empty -m "prune: reconcile foundation" >/dev/null
 "$FRAIM" status "$PROJ5" >/dev/null 2>&1
-check "прошедший /prune сбрасывает счётчик" "$?" "0"
+check "a completed /prune resets the counter" "$?" "0"
 
-# --- git как данность -------------------------------------------------------
-# Каждая точка сохранения здесь — коммит, поэтому проект без репозитория это проект,
-# в котором ничего нельзя вернуть. Репозиторий — часть скелета, а не то, что пользователь
-# обязан завести сам.
+# --- git as a given ---------------------------------------------------------
+# Every save point here is a commit, so a project without a repository is a project
+# in which nothing can be undone. The repository is part of the scaffold, not something the user
+# has to set up themselves.
 PROJ3="$SANDBOX/proj3"
 mkdir -p "$PROJ3"
 "$FRAIM" scaffold "$PROJ3" >/dev/null 2>&1
-check "scaffold завёл репозиторий там, где его не было" \
+check "scaffold created a repository where there was none" \
     "$([ -d "$PROJ3/.git" ] && echo yes || echo no)" "yes"
-check "подпись коммитов настроена" \
+check "commit identity configured" \
     "$(git -C "$PROJ3" config user.email)" "fraim@localhost"
 
-# А внутри чужого репозитория — не заводит: вложенный репозиторий тихо отцепил бы
-# файлы человека от его же истории.
+# But inside someone else's repository it does not create one: a nested repository would silently detach
+# the human's files from their own history.
 mkdir -p "$PROJ3/sub"
 "$FRAIM" scaffold "$PROJ3/sub" >/dev/null 2>&1
-check "вложенный репозиторий не заводится" \
+check "nested repository is not created" \
     "$([ -d "$PROJ3/sub/.git" ] && echo yes || echo no)" "no"
 
 PROJ4="$SANDBOX/proj4"
 mkdir -p "$PROJ4/ai/tasks"
 printf '# Arch\n' > "$PROJ4/ARCHITECTURE.md"
 "$FRAIM" status "$PROJ4" 2>/dev/null | grep -q 'нет репозитория'
-check "сторож видит проект без репозитория" "$?" "0"
+check "watchman sees a project without a repository" "$?" "0"
 
-# ------------------------------------------------- существующий чужой репозиторий
+# ------------------------------------------------- existing foreign repository
 # The shape every real onboarding has: history, a remote, its own README and .gitignore.
 # Everything below used to be skipped silently on exactly this shape.
-printf '\nчужой репозиторий (онбординг)\n'
+printf '\nforeign repository (onboarding)\n'
 
 LEGACY="$SANDBOX/legacy"
 ORIGIN="$SANDBOX/origin.git"
@@ -514,17 +514,17 @@ git -C "$LEGACY" remote add origin "$ORIGIN" >/dev/null 2>&1
 
 cd "$LEGACY" || exit 1
 "$FRAIM" scaffold >/dev/null 2>&1
-check "scaffold отработал на чужом репозитории" "$?" "0"
-check "чужой README не тронут" "$(cat "$LEGACY/README.md")" "# Legacy"
-check "чужой .gitignore сохранён" "$(grep -c '^node_modules/$' "$LEGACY/.gitignore")" "1"
-check "секреты дописаны в чужой .gitignore" "$(grep -c '^\.env$' "$LEGACY/.gitignore")" "1"
-check ".env теперь игнорируется" \
+check "scaffold worked on a foreign repository" "$?" "0"
+check "foreign README untouched" "$(cat "$LEGACY/README.md")" "# Legacy"
+check "foreign .gitignore preserved" "$(grep -c '^node_modules/$' "$LEGACY/.gitignore")" "1"
+check "secrets appended to foreign .gitignore" "$(grep -c '^\.env$' "$LEGACY/.gitignore")" "1"
+check ".env is now ignored" \
     "$(git -C "$LEGACY" check-ignore -q .env && echo yes || echo no)" "yes"
-check "data/ в чужой проект не навязан" "$(grep -c '^data/$' "$LEGACY/.gitignore")" "0"
+check "data/ not imposed on a foreign project" "$(grep -c '^data/$' "$LEGACY/.gitignore")" "0"
 
 # Idempotent: a second pass must not append the same lines again.
 "$FRAIM" scaffold >/dev/null 2>&1
-check "повторный scaffold не дублирует строки" "$(grep -c '^\.env$' "$LEGACY/.gitignore")" "1"
+check "repeated scaffold does not duplicate lines" "$(grep -c '^\.env$' "$LEGACY/.gitignore")" "1"
 
 # A tracked .env is not fixed by ignoring it, and silence there would be the dangerous
 # outcome — the user would push believing the secret is covered.
@@ -532,38 +532,38 @@ printf 'SECRET=yyy\n' > "$LEGACY/.env2"
 git -C "$LEGACY" add -f .env >/dev/null 2>&1
 git -C "$LEGACY" commit -qm "oops" >/dev/null 2>&1
 "$FRAIM" scaffold 2>&1 | grep -q 'уже в истории git'
-check "отслеживаемый .env вызывает предупреждение" "$?" "0"
+check "tracked .env triggers a warning" "$?" "0"
 rm -f "$LEGACY/.env2"
 
 # Save points that never left this machine: detection only, never a reach for the network.
 #
-# Две разные величины, и мерить их одной было бы враньём (D5). Здесь адрес прописан, а
-# отправляли по нему ни разу — это незакрытая настройка, а не отставание копии, и на хосте
-# в этот момент обычно лежит пустой репозиторий, который снаружи выглядит существующим.
+# Two different quantities, and measuring them with one would be a lie (D5). Here the address is set, but
+# nothing has ever been pushed to it — that is unfinished setup, not a lagging copy, and the host
+# at that moment usually holds an empty repository that looks existing from outside.
 "$FRAIM" status "$LEGACY" 2>/dev/null | grep -q 'ни разу ничего не уезжало'
-check "сторож видит незаконченную настройку копии" "$?" "0"
+check "watchman sees unfinished remote setup" "$?" "0"
 
-# А вот это уже отставание: копия наполнена, и после неё легли новые точки.
+# And this is real lag: the copy is populated, and new points landed after it.
 git -C "$LEGACY" push -q origin HEAD >/dev/null 2>&1
 printf 'y\n' >> "$LEGACY/src/index.js"
 git -C "$LEGACY" commit -qam "fix: y" >/dev/null 2>&1
 printf 'z\n' >> "$LEGACY/src/index.js"
 git -C "$LEGACY" commit -qam "fix: z" >/dev/null 2>&1
 "$FRAIM" status "$LEGACY" 2>/dev/null | grep -q 'не уехали в удалённую копию'
-check "сторож видит неуехавшие точки сохранения" "$?" "0"
+check "watchman sees unpushed save points" "$?" "0"
 "$FRAIM" config set unpushed_threshold 1 >/dev/null 2>&1
 "$FRAIM" status "$LEGACY" >/dev/null 2>&1
-check "выше порога — это тревога" "$?" "1"
+check "above threshold is an alarm" "$?" "1"
 "$FRAIM" config set unpushed_threshold 99 >/dev/null 2>&1
 
 NOREMOTE="$SANDBOX/noremote"
 mkdir -p "$NOREMOTE"; cd "$NOREMOTE" || exit 1
 "$FRAIM" scaffold >/dev/null 2>&1
 "$FRAIM" status "$NOREMOTE" 2>/dev/null | grep -q 'нет удалённой копии'
-check "проект без remote назван честно" "$?" "0"
+check "project without a remote is named honestly" "$?" "0"
 "$FRAIM" config set check_remote off >/dev/null 2>&1
 "$FRAIM" status "$NOREMOTE" 2>/dev/null | grep -c 'удалённой копии' | grep -q '^0$'
-check "выключенная проверка remote молчит" "$?" "0"
+check "disabled remote check is silent" "$?" "0"
 "$FRAIM" config set check_remote on >/dev/null 2>&1
 
 # The blind spot that mattered once reactive work became the main mode: a foundation
@@ -573,21 +573,21 @@ git -C "$NOREMOTE" rm -q --cached AGENTS.md >/dev/null 2>&1
 git -C "$NOREMOTE" commit -qm "drop" >/dev/null 2>&1
 printf 'brand new\n' > "$NOREMOTE/AGENTS.md"
 "$FRAIM" status "$NOREMOTE" 2>/dev/null | grep -q 'после последней точки сохранения'
-check "неотслеживаемый файл фундамента замечен" "$?" "0"
+check "untracked foundation file noticed" "$?" "0"
 
 cd "$PROJ2" || exit 1
 
 # ---------------------------------------------------------------- config
 printf '\nfraim config\n'
 
-check "значение по умолчанию" "$("$FRAIM" config 2>/dev/null | grep foundation_lag_commits | awk '{print $2}')" "10"
+check "default value" "$("$FRAIM" config 2>/dev/null | grep foundation_lag_commits | awk '{print $2}')" "10"
 "$FRAIM" config set foundation_lag_commits 3 >/dev/null 2>&1
-check "проектная настройка записана" "$(grep -c 'foundation_lag_commits = 3' "$PROJ2/ai/fraim.conf")" "1"
-check "источник значения показан" "$("$FRAIM" config 2>/dev/null | grep foundation_lag_commits | grep -c 'ai/fraim.conf')" "1"
+check "project setting written" "$(grep -c 'foundation_lag_commits = 3' "$PROJ2/ai/fraim.conf")" "1"
+check "value source shown" "$("$FRAIM" config 2>/dev/null | grep foundation_lag_commits | grep -c 'ai/fraim.conf')" "1"
 "$FRAIM" config set --machine abandon_after_days 31 >/dev/null 2>&1
-check "машинная настройка записана" "$(grep -c 'abandon_after_days = 31' "$FRAIM_HOME/config")" "1"
+check "machine setting written" "$(grep -c 'abandon_after_days = 31' "$FRAIM_HOME/config")" "1"
 "$FRAIM" config set nonsense_key 1 >/dev/null 2>&1
-check "неизвестный ключ отвергнут" "$?" "2"
+check "unknown key rejected" "$?" "2"
 
 # A check turned off must actually stop firing.
 for i in 1 2 3; do
@@ -596,115 +596,115 @@ for i in 1 2 3; do
     git -C "$PROJ2" commit -qm "fix: drift $i" >/dev/null 2>&1
 done
 "$FRAIM" status "$PROJ2" >/dev/null 2>&1
-check "дрейф выше порога → exit 1" "$?" "1"
+check "drift above threshold → exit 1" "$?" "1"
 "$FRAIM" config set check_foundation off >/dev/null 2>&1
 "$FRAIM" status "$PROJ2" >/dev/null 2>&1
-check "выключенная проверка не срабатывает" "$?" "0"
+check "disabled check does not fire" "$?" "0"
 "$FRAIM" config set check_foundation on >/dev/null 2>&1
 "$FRAIM" config set foundation_lag_commits 10 >/dev/null 2>&1
 
 # ---------------------------------------------------------------- verbs
-printf '\nдетерминированные глаголы\n'
+printf '\ndeterministic verbs\n'
 
-# --- доска: карточки задач ------------------------------------------------
-card() { # title — тело карточки, как его присылает агент
+# --- board: task cards -------------------------------------------------------
+card() { # title — the card body, as the agent sends it
     printf '# %s\n\n## What and why\nНужно, потому что нужно.\n\n## Done when\nРаботает.\n' "$1"
 }
 card "Добавить вход" | "$FRAIM" task-new add-auth >/dev/null 2>&1
-check "task-new поставил карточку" "$([ -f "$PROJ2/ai/tasks/add-auth.md" ] && echo yes || echo no)" "yes"
-check "frontmatter: вид" "$(sed -n 's/^kind: //p' "$PROJ2/ai/tasks/add-auth.md")" "task"
-check "frontmatter: дата" "$(grep -c '^created: 20' "$PROJ2/ai/tasks/add-auth.md")" "1"
-check "карточка сохранена точкой" "$(git -C "$PROJ2" log --oneline -1 --format=%s)" "task: add-auth — added"
-# В карточке нет ничего, что могло бы протухнуть: ни провенанса, ни плана.
-check "в карточке нет провенанса" "$(grep -c 'Based on\|Plan provenance' "$PROJ2/ai/tasks/add-auth.md")" "0"
+check "task-new created a card" "$([ -f "$PROJ2/ai/tasks/add-auth.md" ] && echo yes || echo no)" "yes"
+check "frontmatter: kind" "$(sed -n 's/^kind: //p' "$PROJ2/ai/tasks/add-auth.md")" "task"
+check "frontmatter: date" "$(grep -c '^created: 20' "$PROJ2/ai/tasks/add-auth.md")" "1"
+check "card saved with a save point" "$(git -C "$PROJ2" log --oneline -1 --format=%s)" "task: add-auth — added"
+# A card holds nothing that could go stale: no provenance, no plan.
+check "card has no provenance" "$(grep -c 'Based on\|Plan provenance' "$PROJ2/ai/tasks/add-auth.md")" "0"
 card "x" | "$FRAIM" task-new add-auth >/dev/null 2>&1
-check "task-new не затирает существующую задачу" "$?" "2"
+check "task-new does not overwrite an existing task" "$?" "2"
 card "x" | "$FRAIM" task-new "Not Kebab" >/dev/null 2>&1
-check "task-new требует kebab-case" "$?" "2"
+check "task-new requires kebab-case" "$?" "2"
 "$FRAIM" task-new no-body </dev/null >/dev/null 2>&1
-check "без тела карточки — отказ" "$?" "2"
+check "no card body — refused" "$?" "2"
 printf '# Только заголовок\n' | "$FRAIM" task-new no-sections >/dev/null 2>&1
-check "без «What and why» и «Done when» — отказ" "$?" "2"
+check "no «What and why» and «Done when» — refused" "$?" "2"
 printf -- '---\nkind: master\n---\n# x\n' | "$FRAIM" task-new own-fm >/dev/null 2>&1
-check "frontmatter от агента — отказ" "$?" "2"
-check "отказы ничего не оставили" "$(ls "$PROJ2/ai/tasks" | grep -c 'no-body\|no-sections\|own-fm\|^\.')" "0"
+check "frontmatter from the agent — refused" "$?" "2"
+check "refusals left nothing behind" "$(ls "$PROJ2/ai/tasks" | grep -c 'no-body\|no-sections\|own-fm\|^\.')" "0"
 
-# Проект: мастер-задача и подзадачи, один уровень.
+# Project: a master task and subtasks, one level.
 card "Веб-версия" | "$FRAIM" task-new web --master >/dev/null 2>&1
-check "мастер-задача поставлена" "$(sed -n 's/^kind: //p' "$PROJ2/ai/tasks/web.md")" "master"
+check "master task created" "$(sed -n 's/^kind: //p' "$PROJ2/ai/tasks/web.md")" "master"
 card "Логин" | "$FRAIM" task-new web-login --parent web >/dev/null 2>&1
-check "подзадача знает проект" "$(sed -n 's/^parent: //p' "$PROJ2/ai/tasks/web-login.md")" "web"
+check "subtask knows its project" "$(sed -n 's/^parent: //p' "$PROJ2/ai/tasks/web-login.md")" "web"
 card "x" | "$FRAIM" task-new bad-child --parent add-auth >/dev/null 2>&1
-check "родитель — только мастер-задача" "$?" "2"
+check "parent must be a master task" "$?" "2"
 card "x" | "$FRAIM" task-new bad-master --master --parent web >/dev/null 2>&1
-check "у мастер-задачи нет родителя" "$?" "2"
+check "master task has no parent" "$?" "2"
 "$FRAIM" tasks 2>/dev/null | grep -q '◆ web — Веб-версия'
-check "доска показывает проект" "$?" "0"
+check "board shows the project" "$?" "0"
 "$FRAIM" tasks 2>/dev/null | grep -q '      · web-login — Логин'
-check "подзадача — под проектом" "$?" "0"
+check "subtask is under the project" "$?" "0"
 "$FRAIM" tasks 2>/dev/null | grep -q 'не начата, 0 из 1'
-check "прогресс проекта до первой закрытой" "$?" "0"
+check "project progress before the first closed one" "$?" "0"
 python3 -c "import json,sys;json.load(sys.stdin)" < "$("$FRAIM" tasks --json > "$SANDBOX/t.json" 2>/dev/null; echo "$SANDBOX/t.json")"
-check "tasks --json — валидный JSON" "$?" "0"
+check "tasks --json is valid JSON" "$?" "0"
 
-# Закрытие: карточка уезжает в архив со строкой итога.
+# Closing: the card moves to the archive with an outcome line.
 "$FRAIM" task-seal web "всё" >/dev/null 2>&1
-check "проект с открытыми подзадачами не закрыть" "$?" "2"
+check "project with open subtasks cannot be closed" "$?" "2"
 "$FRAIM" task-seal web-login >/dev/null 2>&1
-check "без строки итога — отказ" "$?" "2"
+check "no outcome line — refused" "$?" "2"
 "$FRAIM" task-seal web-login "вход работает" >/dev/null 2>&1
-check "подзадача закрыта" "$?" "0"
-check "карточка ушла с доски" "$([ -f "$PROJ2/ai/tasks/web-login.md" ] && echo yes || echo no)" "no"
+check "subtask closed" "$?" "0"
+check "card left the board" "$([ -f "$PROJ2/ai/tasks/web-login.md" ] && echo yes || echo no)" "no"
 ARCH=$(find "$PROJ2/ai/archive/tasks" -name '*_web-login.md')
-check "карточка в архиве" "$([ -n "$ARCH" ] && echo yes || echo no)" "yes"
-check "архив: исход" "$(sed -n 's/^outcome: //p' "$ARCH")" "done"
-check "архив: итог" "$(sed -n 's/^result: //p' "$ARCH")" '"вход работает"'
-check "закрытие сохранено точкой" "$(git -C "$PROJ2" log --oneline -1 --format=%s)" "archive: web-login — done"
+check "card in the archive" "$([ -n "$ARCH" ] && echo yes || echo no)" "yes"
+check "archive: outcome" "$(sed -n 's/^outcome: //p' "$ARCH")" "done"
+check "archive: result" "$(sed -n 's/^result: //p' "$ARCH")" '"вход работает"'
+check "closing saved with a save point" "$(git -C "$PROJ2" log --oneline -1 --format=%s)" "archive: web-login — done"
 "$FRAIM" tasks 2>/dev/null | grep -q 'в работе, 1 из 1'
-check "проект в работе — вычислено" "$?" "0"
+check "project in progress — computed" "$?" "0"
 "$FRAIM" task-seal add-auth --dropped "передумали" >/dev/null 2>&1
-check "отмена — тоже закрытие" "$(sed -n 's/^outcome: //p' "$(find "$PROJ2/ai/archive/tasks" -name '*_add-auth.md')")" "dropped"
+check "dropping is closing too" "$(sed -n 's/^outcome: //p' "$(find "$PROJ2/ai/archive/tasks" -name '*_add-auth.md')")" "dropped"
 "$FRAIM" task-seal web "веб-версия готова" >/dev/null 2>&1
-check "проект без открытых подзадач закрывается" "$?" "0"
+check "project without open subtasks closes" "$?" "0"
 
-# Обычная задача становится проектом только глаголом — по слову человека.
+# An ordinary task becomes a project only through a verb — at the human's word.
 card "Большое" | "$FRAIM" task-new big >/dev/null 2>&1
 "$FRAIM" task-master big >/dev/null 2>&1
-check "task-master делает проект" "$(sed -n 's/^kind: //p' "$PROJ2/ai/tasks/big.md")" "master"
+check "task-master makes a project" "$(sed -n 's/^kind: //p' "$PROJ2/ai/tasks/big.md")" "master"
 "$FRAIM" task-seal big "x" >/dev/null 2>&1
 
-# Удалённые глаголы отвечают словами, а не «неизвестной командой».
+# Removed verbs answer with words, not with «unknown command».
 "$FRAIM" plan-seal x 2>&1 | grep -q 'задача теперь карточка'
-check "удалённый глагол объясняет, куда делся" "$?" "0"
+check "removed verb explains where it went" "$?" "0"
 
 # The reactive save point is the record of unplanned work: an ordinary commit verb.
 mkdir -p "$PROJ2/src"; printf 'reactive\n' >> "$PROJ2/src/a.py"
 "$FRAIM" commit fix "off-by-one" src/a.py >/dev/null 2>&1
-check "реактивная точка сохранения закоммичена" "$(git -C "$PROJ2" log --oneline -1 --format=%s)" "fix: off-by-one"
-check "точка сохранения помечена трейлером" "$(git -C "$PROJ2" log -1 --format=%b | grep -c '^fraim: ')" "1"
+check "reactive save point committed" "$(git -C "$PROJ2" log --oneline -1 --format=%s)" "fix: off-by-one"
+check "save point marked with a trailer" "$(git -C "$PROJ2" log -1 --format=%b | grep -c '^fraim: ')" "1"
 
 "$FRAIM" stack-passport >/dev/null 2>&1
-check "stack-passport создал STACK.md" "$([ -f "$PROJ2/STACK.md" ] && echo yes || echo no)" "yes"
-check "имя проекта подставлено в паспорт" "$(grep -c 'STACK PASSPORT — proj2' "$PROJ2/STACK.md")" "1"
-check "паспорт помечен как незаполненный" "$(grep -c 'fraim:stub' "$PROJ2/STACK.md")" "1"
+check "stack-passport created STACK.md" "$([ -f "$PROJ2/STACK.md" ] && echo yes || echo no)" "yes"
+check "project name substituted into the passport" "$(grep -c 'STACK PASSPORT — proj2' "$PROJ2/STACK.md")" "1"
+check "passport marked as unfilled" "$(grep -c 'fraim:stub' "$PROJ2/STACK.md")" "1"
 "$FRAIM" stack-passport >/dev/null 2>&1
-check "stack-passport не перезаписывает" "$?" "2"
+check "stack-passport does not overwrite" "$?" "2"
 
 "$FRAIM" prune-mark >/dev/null 2>&1
-check "prune-mark оставил якорь-коммит" "$(git -C "$PROJ2" log --oneline -1 --format=%s | grep -c '^prune: reconcile foundation')" "1"
+check "prune-mark left an anchor commit" "$(git -C "$PROJ2" log --oneline -1 --format=%s | grep -c '^prune: reconcile foundation')" "1"
 "$FRAIM" status "$PROJ2" >/dev/null 2>&1
-check "маркер сбросил счётчик дрейфа" "$?" "0"
+check "marker reset the drift counter" "$?" "0"
 
 # --- investigate-new / investigate-seal -------------------------------------
 "$FRAIM" investigate-new selector-flicker >/dev/null 2>&1
-check "investigate-new завёл расследование" \
+check "investigate-new created an investigation" \
     "$([ -f "$PROJ2/ai/investigations/selector-flicker/findings.md" ] && echo yes || echo no)" "yes"
-check "провенанс расследования проставлен" \
+check "investigation provenance set" \
     "$(grep -c '^- Based on: HEAD ' "$PROJ2/ai/investigations/selector-flicker/findings.md")" "1"
-check "слаг подставлен" \
+check "slug substituted" \
     "$(grep -c 'INVESTIGATION — selector-flicker' "$PROJ2/ai/investigations/selector-flicker/findings.md")" "1"
 "$FRAIM" investigate-seal selector-flicker >/dev/null 2>&1
-check "гейт: заготовку расследования не архивирует" "$?" "2"
+check "gate: does not archive an investigation stub" "$?" "2"
 
 FIND="$PROJ2/ai/investigations/selector-flicker/findings.md"
 python3 - "$FIND" <<'PY2'
@@ -714,7 +714,7 @@ t = "\n".join(l for l in p.read_text().splitlines() if "fraim:stub" not in l)
 p.write_text(t + "\n")
 PY2
 "$FRAIM" investigate-seal selector-flicker >/dev/null 2>&1
-check "гейт: без исхода не архивирует" "$?" "2"
+check "gate: does not archive without an outcome" "$?" "2"
 
 python3 - "$FIND" <<'PY2'
 import pathlib, re, sys
@@ -724,7 +724,7 @@ t = t.replace("<root cause, plainly. Route: reactive fix (surgical or structural
 p.write_text(t)
 PY2
 "$FRAIM" investigate-seal selector-flicker >/dev/null 2>&1
-check "гейт: без отчёта об уборке не архивирует" "$?" "2"
+check "gate: does not archive without a cleanup report" "$?" "2"
 
 python3 - "$FIND" <<'PY2'
 import pathlib, sys
@@ -742,228 +742,228 @@ t = t.replace("- <what was run or instrumented, and what it showed>", "- instrum
 p.write_text(t)
 PY2
 "$FRAIM" investigate-seal selector-flicker >/dev/null 2>&1
-check "investigate-seal архивирует расследование с исходом" "$?" "0"
-check "расследование в архиве" \
+check "investigate-seal archives an investigation with an outcome" "$?" "0"
+check "investigation in the archive" \
     "$(find "$PROJ2/ai/archive" -maxdepth 1 -name '*_investigate_selector-flicker' | wc -l | tr -d ' ')" "1"
-check "архивация расследования закоммичена" \
+check "investigation archiving committed" \
     "$(git -C "$PROJ2" log --oneline -1 --format=%s)" "archive: investigate selector-flicker"
 
-# --- расследование в работе ------------------------------------------------
+# --- investigation in progress ----------------------------------------------
 "$FRAIM" investigate-new open-one >/dev/null 2>&1
 "$FRAIM" status "$PROJ2" >/dev/null 2>&1
-check "расследование в работе не поднимает тревогу" "$?" "0"
+check "investigation in progress raises no alarm" "$?" "0"
 rm -rf "$PROJ2/ai/investigations/open-one"
 
 # --- fraim commit -----------------------------------------------------------
 "$FRAIM" commit test "нет путей" >/dev/null 2>&1
-check "commit без путей отказывает" "$?" "2"
+check "commit without paths refuses" "$?" "2"
 "$FRAIM" commit BAD "вид не тот" README.md >/dev/null 2>&1
-check "commit проверяет вид" "$?" "2"
+check "commit checks the kind" "$?" "2"
 printf 'x\n' >> "$PROJ2/README.md"
 "$FRAIM" commit task "точка сохранения" README.md >/dev/null 2>&1
-check "commit ставит точку сохранения" "$(git -C "$PROJ2" log --oneline -1 --format=%s)" "task: точка сохранения"
+check "commit puts a save point" "$(git -C "$PROJ2" log --oneline -1 --format=%s)" "task: точка сохранения"
 
 # --- undo / restore ---------------------------------------------------------
-# Обещание «работай смело, точка сохранения есть» пустое, если вернуться к ней можно
-# только через git reset. Отмена — встречный коммит: историю не переписываем.
+# The promise «work boldly, there is a save point» is empty if getting back to it is possible
+# only via git reset. Undo is a reverting commit: we do not rewrite history.
 printf 'undo-me\n' >> "$PROJ2/README.md"
 "$FRAIM" commit task "правка, которую отменим" README.md >/dev/null 2>&1
 UNDO_REF=$(git -C "$PROJ2" rev-parse --short HEAD)
 "$FRAIM" undo >/dev/null 2>&1
-check "undo без аргумента показывает, а не делает" \
+check "undo without an argument shows, does not act" \
     "$(git -C "$PROJ2" rev-parse --short HEAD)" "$UNDO_REF"
-check "undo перечисляет наши точки" "$("$FRAIM" undo 2>/dev/null | grep -c "$UNDO_REF")" "1"
+check "undo lists our points" "$("$FRAIM" undo 2>/dev/null | grep -c "$UNDO_REF")" "1"
 
 "$FRAIM" undo "$UNDO_REF" >/dev/null 2>&1
-check "undo отменил правку" "$(grep -c 'undo-me' "$PROJ2/README.md")" "0"
-check "история не переписана — добавлен встречный коммит" \
+check "undo reverted the change" "$(grep -c 'undo-me' "$PROJ2/README.md")" "0"
+check "history not rewritten — a reverting commit added" \
     "$(git -C "$PROJ2" cat-file -e "$UNDO_REF^{commit}" 2>/dev/null; echo $?)" "0"
 
-# Чужой коммит не отменяем никогда — в чужом репозитории это разница между
-# инструментом и происшествием.
+# Someone else's commit is never undone — in a foreign repository that is the difference between
+# a tool and an incident.
 printf 'theirs\n' >> "$PROJ2/main.py"
 git -C "$PROJ2" commit -qam "их собственный коммит" >/dev/null 2>&1
 "$FRAIM" undo "$(git -C "$PROJ2" rev-parse --short HEAD)" >/dev/null 2>&1
-check "чужой коммит не отменяется" "$?" "2"
+check "foreign commit is not undone" "$?" "2"
 
-# Отказ, когда файлы самой точки сейчас правятся: отмену не с чем свести.
+# Refusal when the point's own files are being edited right now: there is nothing to merge the undo with.
 printf 'again\n' >> "$PROJ2/README.md"
 "$FRAIM" commit task "вторая правка" README.md >/dev/null 2>&1
 UNDO_REF2=$(git -C "$PROJ2" rev-parse --short HEAD)
 printf 'dirty\n' >> "$PROJ2/README.md"
 "$FRAIM" undo "$UNDO_REF2" >/dev/null 2>&1
-check "undo отказывается, если файлы точки сейчас изменены" "$?" "2"
+check "undo refuses if the point's files are currently modified" "$?" "2"
 git -C "$PROJ2" checkout -- README.md >/dev/null 2>&1
 "$FRAIM" undo "$UNDO_REF2" >/dev/null 2>&1
-check "после сохранения правок отмена проходит" "$?" "0"
+check "after saving the edits, undo goes through" "$?" "0"
 
-# restore — рабочее дерево, по именованным путям. `git restore .` унёс бы вместе с
-# нашим мусором незаконченную работу человека; именно поэтому /investigate раньше
-# требовал чистого дерева и перекладывал git-задачу на пользователя.
+# restore — the working tree, by named paths. `git restore .` would sweep away, along with
+# our debris, the human's unfinished work; that is exactly why /investigate used to
+# demand a clean tree and pushed the git chore onto the user.
 printf 'mine, unsaved\n' >> "$PROJ2/main.py"
 printf 'scratch\n' > "$PROJ2/scratch-probe.py"
 printf 'CHANGED\n' >> "$PROJ2/README.md"
 "$FRAIM" restore README.md scratch-probe.py >/dev/null 2>&1
-check "restore вернул отслеживаемый файл" "$(grep -c 'CHANGED' "$PROJ2/README.md")" "0"
-check "restore удалил созданное" "$([ -e "$PROJ2/scratch-probe.py" ] && echo yes || echo no)" "no"
-check "restore не тронул чужую незаконченную работу" "$(grep -c 'mine, unsaved' "$PROJ2/main.py")" "1"
+check "restore reverted a tracked file" "$(grep -c 'CHANGED' "$PROJ2/README.md")" "0"
+check "restore deleted what was created" "$([ -e "$PROJ2/scratch-probe.py" ] && echo yes || echo no)" "no"
+check "restore left the human's unfinished work alone" "$(grep -c 'mine, unsaved' "$PROJ2/main.py")" "1"
 git -C "$PROJ2" checkout -- main.py >/dev/null 2>&1
 
 "$FRAIM" restore >/dev/null 2>&1
-check "restore без путей отказывает" "$?" "2"
+check "restore without paths refuses" "$?" "2"
 "$FRAIM" restore . >/dev/null 2>&1
-check "restore «всё» отказывает" "$?" "2"
+check "restore «everything» refuses" "$?" "2"
 "$FRAIM" restore ../outside >/dev/null 2>&1
-check "restore за пределы проекта отказывает" "$?" "2"
+check "restore outside the project refuses" "$?" "2"
 
-# Сторож видит несохранённое — но только то, что глаголы сохраняют сами.
+# The watchman sees unsaved changes — but only what the verbs save themselves.
 printf 'edited by hand\n' >> "$PROJ2/ARCHITECTURE.md"
 "$FRAIM" status "$PROJ2" 2>/dev/null | grep -q 'после последней точки сохранения'
-check "сторож видит несохранённый фундамент" "$?" "0"
+check "watchman sees an unsaved foundation" "$?" "0"
 git -C "$PROJ2" checkout -- ARCHITECTURE.md >/dev/null 2>&1
 printf 'work in progress\n' >> "$PROJ2/main.py"
 "$FRAIM" status "$PROJ2" >/dev/null 2>&1
-check "незакоммиченный код человека тревогу не поднимает" "$?" "0"
+check "human's uncommitted code raises no alarm" "$?" "0"
 git -C "$PROJ2" checkout -- main.py >/dev/null 2>&1
 
 # commit_verbs = off must actually stop the commits.
 "$FRAIM" config set commit_verbs off >/dev/null 2>&1
 BEFORE_N=$(git -C "$PROJ2" rev-list --count HEAD)
 printf 'more\n' >> "$PROJ2/src/a.py"; "$FRAIM" commit fix "another" src/a.py >/dev/null 2>&1
-check "commit_verbs = off отключает коммит" "$(git -C "$PROJ2" rev-list --count HEAD)" "$BEFORE_N"
+check "commit_verbs = off disables the commit" "$(git -C "$PROJ2" rev-list --count HEAD)" "$BEFORE_N"
 "$FRAIM" config set commit_verbs on >/dev/null 2>&1
 
 cd "$REPO" || exit 1
 
-# --- decide / pitfall: запись в фундамент ------------------------------------
+# --- decide / pitfall: writing into the foundation --------------------------
 cd "$PROJ2" || exit 1
 
 printf 'Decision: sqlite in WAL mode.\n' | "$FRAIM" decide "storage engine" >/dev/null 2>&1
-check "decide дописал запись" "$(grep -c '^## 20.* — storage engine$' "$PROJ2/DECISIONS.md")" "1"
-check "decide снял маркер заглушки" "$(grep -c 'fraim:stub' "$PROJ2/DECISIONS.md")" "0"
+check "decide appended an entry" "$(grep -c '^## 20.* — storage engine$' "$PROJ2/DECISIONS.md")" "1"
+check "decide removed the stub marker" "$(grep -c 'fraim:stub' "$PROJ2/DECISIONS.md")" "0"
 
 printf 'Decision: retry with jitter.\n' | "$FRAIM" decide "retries" >/dev/null 2>&1
-check "новое решение легло сверху" \
+check "new decision landed on top" \
       "$(grep -m1 '^## 20' "$PROJ2/DECISIONS.md" | sed 's/.*— //')" "retries"
-check "старое решение осталось" "$(grep -c '— storage engine$' "$PROJ2/DECISIONS.md")" "1"
+check "old decision remained" "$(grep -c '— storage engine$' "$PROJ2/DECISIONS.md")" "1"
 
 printf 'Decision: postgres after all.\n' |
     "$FRAIM" decide "storage engine, take two" --supersedes "storage engine" >/dev/null 2>&1
-# Заменённая запись уезжает в архив целиком: в корне остаются только действующие решения,
-# а новая запись называет заменённую полным заголовком.
-check "supersede записан полным заголовком" "$(grep -c '^> Supersedes: 20.* — storage engine$' "$PROJ2/DECISIONS.md")" "1"
-check "заменённая запись ушла из корня" "$(grep -c '^## .*— storage engine$' "$PROJ2/DECISIONS.md")" "0"
-check "и легла в архив решений, не удалена" "$(grep -c '— storage engine$' "$PROJ2/ai/archive/decisions_log.md")" "1"
+# A superseded entry moves to the archive whole: only active decisions stay in the root,
+# and the new entry names the superseded one by its full heading.
+check "supersede recorded with the full heading" "$(grep -c '^> Supersedes: 20.* — storage engine$' "$PROJ2/DECISIONS.md")" "1"
+check "superseded entry left the root" "$(grep -c '^## .*— storage engine$' "$PROJ2/DECISIONS.md")" "0"
+check "and went to the decisions archive, not deleted" "$(grep -c '— storage engine$' "$PROJ2/ai/archive/decisions_log.md")" "1"
 printf 'Decision: x.\n' | "$FRAIM" decide "ambiguous" --supersedes "20" >/dev/null 2>&1
-check "неоднозначная замена — отказ" "$?" "2"
-check "и ничего не записано" "$(grep -c '— ambiguous$' "$PROJ2/DECISIONS.md")" "0"
+check "ambiguous supersede — refused" "$?" "2"
+check "and nothing written" "$(grep -c '— ambiguous$' "$PROJ2/DECISIONS.md")" "0"
 printf 'Decision: y.\n' | "$FRAIM" decide "free text" --supersedes "an idea from a chat" >/dev/null 2>&1
-check "ненайденная замена остаётся ссылкой" "$(grep -c '^> Supersedes: an idea from a chat$' "$PROJ2/DECISIONS.md")" "1"
-# Тело приходит как есть: обратные слэши awk -v раскрыл бы молча.
+check "unmatched supersede stays a reference" "$(grep -c '^> Supersedes: an idea from a chat$' "$PROJ2/DECISIONS.md")" "1"
+# The body arrives as is: awk -v would silently expand backslashes.
 printf 'Decision: path C:\\new\\table stays.\n' | "$FRAIM" decide "backslashes" >/dev/null 2>&1
-check "обратные слэши в теле не тронуты" "$(grep -c 'C:\\new\\table' "$PROJ2/DECISIONS.md")" "1"
+check "backslashes in the body untouched" "$(grep -c 'C:\\new\\table' "$PROJ2/DECISIONS.md")" "1"
 LONG="Decision: $(printf 'слово %.0s' $(seq 1 40))конец."
 printf '%s\n' "$LONG" | "$FRAIM" decide "long line" >/dev/null 2>&1
-check "длинная строка решения перенесена" \
+check "long decision line wrapped" \
       "$(awk '/— long line$/,/конец/' "$PROJ2/DECISIONS.md" | LC_ALL=C awk '{ t=$0; gsub(/[\200-\277]/,"",t); if (length(t) > 100) n++ } END { print n+0 }')" "0"
 
 "$FRAIM" decide "empty" </dev/null >/dev/null 2>&1
-check "decide отвергает пустое тело" "$?" "2"
-# Вход открыт, но ничего не идёт — так харнес или скрипт отдаёт команде унаследованный канал.
-# Глагол обязан отказать с подсказкой, а не ждать конца потока вечно.
+check "decide rejects an empty body" "$?" "2"
+# Input is open but nothing comes — that is how a harness or script hands a command an inherited channel.
+# The verb must refuse with a hint, not wait for end of stream forever.
 rm -f "$SANDBOX/openfifo"; mkfifo "$SANDBOX/openfifo"; exec 4<>"$SANDBOX/openfifo"
 OUTF=$(FRAIM_BODY_WAIT=5 "$FRAIM" decide "open but empty" < "$SANDBOX/openfifo" 2>&1)
-check "открытый пустой вход — отказ, а не зависание" "$?" "2"
-check "отказ показывает, как передать текст" "$(printf '%s' "$OUTF" | grep -c "<<'EOF'")" "1"
+check "open empty input — refusal, not a hang" "$?" "2"
+check "refusal shows how to pass the text" "$(printf '%s' "$OUTF" | grep -c "<<'EOF'")" "1"
 exec 4>&-
-check "decide не коммитит сам" \
+check "decide does not commit by itself" \
       "$(git -C "$PROJ2" log --oneline -1 --format=%s | grep -c '^decide')" "0"
 
-# Ранние тесты затёрли фундамент болванкой без разделов — сначала проверим, что
-# глагол на такой файл честно отказывается, а не дописывает в пустоту.
+# Earlier tests overwrote the foundation with a blank without sections — first check that
+# the verb honestly refuses on such a file rather than appending into the void.
 "$FRAIM" pitfall "nowhere to put this" >/dev/null 2>&1
-check "pitfall отказывается без раздела Known Pitfalls" "$?" "2"
+check "pitfall refuses without a Known Pitfalls section" "$?" "2"
 cp "$REPO/installer/templates/foundation/CONVENTIONS.md" "$PROJ2/CONVENTIONS.md"
 
 "$FRAIM" pitfall "S3 client truncates keys over 1024 bytes." >/dev/null 2>&1
-check "pitfall дописал строку в свой раздел" \
+check "pitfall appended a line to its section" \
       "$(sed -n '/^## Known Pitfalls/,$p' "$PROJ2/CONVENTIONS.md" | grep -c 'S3 client truncates')" "1"
-check "заглушка «None yet» убрана" "$(grep -c '^- None yet\.$' "$PROJ2/CONVENTIONS.md")" "0"
+check "«None yet» placeholder removed" "$(grep -c '^- None yet\.$' "$PROJ2/CONVENTIONS.md")" "0"
 "$FRAIM" pitfall "Tests fail unless TZ=UTC." >/dev/null 2>&1
-check "вторая строка легла следом" \
+check "second line landed next" \
       "$(sed -n '/^## Known Pitfalls/,$p' "$PROJ2/CONVENTIONS.md" | grep -c '^- ')" "2"
 "$FRAIM" pitfall "$(printf 'урок %.0s' $(seq 1 40))" >/dev/null 2>&1
-check "длинный урок перенесён под своим пунктом" \
+check "long lesson wrapped under its bullet" \
       "$([ "$(sed -n '/^## Known Pitfalls/,$p' "$PROJ2/CONVENTIONS.md" | grep -c '^  урок')" -ge 1 ] && echo yes)" "yes"
 
-# --- arch: раздел карты переписывается целиком -------------------------------
+# --- arch: a map section is rewritten whole ---------------------------------
 printf '# A\n\n## Stack\nold stack\n\n## Data flow\nflow stays\n' > "$PROJ2/ARCHITECTURE.md"
 printf 'new stack line\n' | "$FRAIM" arch "Stack" >/dev/null 2>&1
-check "arch заменил тело раздела" "$(grep -c '^new stack line$' "$PROJ2/ARCHITECTURE.md")$(grep -c '^old stack$' "$PROJ2/ARCHITECTURE.md")" "10"
-check "соседний раздел цел" "$(grep -c '^flow stays$' "$PROJ2/ARCHITECTURE.md")" "1"
+check "arch replaced the section body" "$(grep -c '^new stack line$' "$PROJ2/ARCHITECTURE.md")$(grep -c '^old stack$' "$PROJ2/ARCHITECTURE.md")" "10"
+check "neighbouring section intact" "$(grep -c '^flow stays$' "$PROJ2/ARCHITECTURE.md")" "1"
 printf 'x\n' | "$FRAIM" arch "Stak" >/dev/null 2>&1
-check "опечатка в разделе — отказ, а не новый раздел" "$?$(grep -c '^## Stak$' "$PROJ2/ARCHITECTURE.md")" "20"
+check "typo in section name — refusal, not a new section" "$?$(grep -c '^## Stak$' "$PROJ2/ARCHITECTURE.md")" "20"
 printf 'deploy notes\n' | "$FRAIM" arch "Deployment" --new >/dev/null 2>&1
-check "--new добавил раздел" "$(grep -c '^## Deployment$' "$PROJ2/ARCHITECTURE.md")" "1"
+check "--new added a section" "$(grep -c '^## Deployment$' "$PROJ2/ARCHITECTURE.md")" "1"
 printf '## Sneaky\nx\n' | "$FRAIM" arch "Stack" >/dev/null 2>&1
-check "заголовок в теле — отказ" "$?" "2"
+check "heading in the body — refused" "$?" "2"
 printf 'x\n' | "$FRAIM" arch "Anything" --in DECISIONS.md >/dev/null 2>&1
-check "DECISIONS.md через arch не правится" "$?" "2"
+check "DECISIONS.md is not editable via arch" "$?" "2"
 mkdir -p "$PROJ2/src/deep"
 (cd "$PROJ2/src/deep" && printf 'from below\n' | "$FRAIM" arch "Stack" >/dev/null 2>&1)
-check "глагол находит корень проекта из подкаталога" "$(grep -c '^from below$' "$PROJ2/ARCHITECTURE.md")" "1"
+check "verb finds the project root from a subdirectory" "$(grep -c '^from below$' "$PROJ2/ARCHITECTURE.md")" "1"
 
-# --- brief и find: фундамент целиком и запись целиком ------------------------
+# --- brief and find: the whole foundation and the whole entry ---------------
 B=$("$FRAIM" brief 2>/dev/null)
-check "brief кончается меткой полноты" "$(printf '%s\n' "$B" | tail -1 | grep -c 'nothing cut')" "1"
-check "brief открывается глаголами по ситуациям" "$(printf '%s\n' "$B" | grep -c '^- finished a coherent piece → `fraim commit')" "1"
-check "brief несёт карту" "$(printf '%s\n' "$B" | grep -c '^from below$')" "1"
-check "brief несёт решения в сжатом виде" "$(printf '%s\n' "$B" | grep -c '^Decision: retry with jitter.$')" "1"
-check "brief не даёт строк длиннее ширины" \
+check "brief ends with a completeness mark" "$(printf '%s\n' "$B" | tail -1 | grep -c 'nothing cut')" "1"
+check "brief opens with verbs by situation" "$(printf '%s\n' "$B" | grep -c '^- finished a coherent piece → `fraim commit')" "1"
+check "brief carries the map" "$(printf '%s\n' "$B" | grep -c '^from below$')" "1"
+check "brief carries decisions in compact form" "$(printf '%s\n' "$B" | grep -c '^Decision: retry with jitter.$')" "1"
+check "brief has no lines wider than the width" \
       "$(printf '%s\n' "$B" | LC_ALL=C awk '{ t=$0; gsub(/[\200-\277]/,"",t); if (length(t) > 100) n++ } END { print n+0 }')" "0"
 F=$("$FRAIM" find jitter ДЖИТТЕР 2>/dev/null)
-check "find возвращает запись решения целиком с заголовком" \
+check "find returns the whole decision entry with its heading" \
       "$(printf '%s\n' "$F" | grep -c 'DECISIONS.md › 20.* — retries')$(printf '%s\n' "$F" | grep -c 'retry with jitter')" "11"
 "$FRAIM" find nothing-like-this >/dev/null 2>&1
-check "find без совпадений — exit 1" "$?" "1"
+check "find with no matches — exit 1" "$?" "1"
 
-# --- бэклог: открытые вопросы ------------------------------------------------
+# --- backlog: open questions -------------------------------------------------
 printf '# Нужен ли кэш?\n\n## Question\nМедленно.\n\n## Why it matters\nХолодный старт.\n' |
     "$FRAIM" backlog-new cache-q --from сессия >/dev/null 2>&1
-check "вопрос записан в бэклог" "$(sed -n 's/^from: //p' "$PROJ2/ai/backlog/cache-q.md")" "сессия"
-check "вопрос сохранён точкой" "$(git -C "$PROJ2" log --oneline -1 --format=%s)" "backlog: cache-q — added"
+check "question written to the backlog" "$(sed -n 's/^from: //p' "$PROJ2/ai/backlog/cache-q.md")" "сессия"
+check "question saved with a save point" "$(git -C "$PROJ2" log --oneline -1 --format=%s)" "backlog: cache-q — added"
 printf '# x\n' | "$FRAIM" backlog-new bare-q >/dev/null 2>&1
-check "вопрос без «Question» и «Why it matters» — отказ" "$?" "2"
+check "question without «Question» and «Why it matters» — refused" "$?" "2"
 "$FRAIM" backlog 2>/dev/null | grep -q 'cache-q — Нужен ли кэш?'
-check "fraim backlog показывает вопрос" "$?" "0"
+check "fraim backlog shows the question" "$?" "0"
 "$FRAIM" find кэш 2>/dev/null | grep -q 'ai/backlog/cache-q.md'
-check "find ищет и в бэклоге" "$?" "0"
+check "find searches the backlog too" "$?" "0"
 printf '# Сделать кэш\n\n## What and why\nx\n\n## Done when\nx\n' | "$FRAIM" task-new add-cache --from cache-q >/dev/null 2>&1
-check "вопрос стал задачей" "$([ -f "$PROJ2/ai/tasks/add-cache.md" ] && [ ! -f "$PROJ2/ai/backlog/cache-q.md" ] && echo yes || echo no)" "yes"
-check "архив вопроса называет задачу" "$(grep -c 'became task add-cache' "$PROJ2"/ai/archive/backlog/*_cache-q.md)" "1"
-check "карточка ссылается на вопрос" "$(grep -c 'From the backlog: `ai/archive/backlog/' "$PROJ2/ai/tasks/add-cache.md")" "1"
+check "question became a task" "$([ -f "$PROJ2/ai/tasks/add-cache.md" ] && [ ! -f "$PROJ2/ai/backlog/cache-q.md" ] && echo yes || echo no)" "yes"
+check "question archive names the task" "$(grep -c 'became task add-cache' "$PROJ2"/ai/archive/backlog/*_cache-q.md)" "1"
+check "card references the question" "$(grep -c 'From the backlog: `ai/archive/backlog/' "$PROJ2/ai/tasks/add-cache.md")" "1"
 printf '# Q\n\n## Question\nq\n\n## Why it matters\nq\n' | "$FRAIM" backlog-new drop-q >/dev/null 2>&1
 "$FRAIM" backlog-drop drop-q "уже не важно" >/dev/null 2>&1
-check "снятый вопрос в архиве с причиной" "$(sed -n 's/^outcome: //p' "$PROJ2"/ai/archive/backlog/*_drop-q.md)" "dropped"
+check "dropped question archived with a reason" "$(sed -n 's/^outcome: //p' "$PROJ2"/ai/archive/backlog/*_drop-q.md)" "dropped"
 "$FRAIM" task-seal add-cache "x" >/dev/null 2>&1
 
 # ---------------------------------------------------------------- version
-printf '\nfraim version (что именно стоит)\n'
+printf '\nfraim version (what exactly is installed)\n'
 
-# Номер версии не отвечает на вопрос «приехало ли обновление»: между релизами ветка
-# уезжает на десяток коммитов, а номер стоит на месте. Поэтому команда обязана называть
-# ещё и источник — иначе после git pull остаётся только гадать.
+# The version number does not answer «has the update arrived»: between releases the branch
+# moves a dozen commits ahead while the number stays put. So the command must also name
+# the source — otherwise after git pull all that is left is guessing.
 VOUT=$("$FRAIM" version 2>&1)
-check "version печатает номер первой строкой" \
+check "version prints the number on the first line" \
       "$(printf '%s' "$VOUT" | head -1)" "$(cat "$REPO/installer/VERSION")"
-check "version называет ветку и коммит" "$(printf '%s' "$VOUT" | grep -c 'коммит')" "1"
-# fraim_version при этом остаётся однострочной: её вывод уезжает в штампы провенанса и
-# во фронтматтер скиллов, и лишняя строка там сломала бы обе проверки протухания.
+check "version names the branch and commit" "$(printf '%s' "$VOUT" | grep -c 'коммит')" "1"
+# fraim_version itself stays single-line: its output goes into provenance stamps and
+# skill frontmatter, and an extra line there would break both staleness checks.
 STAMP=$(sh -c '. "'"$REPO"'/installer/lib/core.sh"; fraim_version' 2>/dev/null)
-check "fraim_version осталась одной строкой" "$(printf '%s' "$STAMP" | wc -l | tr -d ' ')" "0"
+check "fraim_version stayed one line" "$(printf '%s' "$STAMP" | wc -l | tr -d ' ')" "0"
 
 # ---------------------------------------------------------------- clean
-printf '\nfraim clean (чистка)\n'
+printf '\nfraim clean (cleanup)\n'
 
 CL="$SANDBOX/cleanproj"
 mkdir -p "$CL/ai/tasks" "$CL/ai/investigations"
@@ -977,28 +977,28 @@ printf 'x\n' > "$CL/app.py"
 git -C "$CL" add -A >/dev/null; git -C "$CL" commit -qm base >/dev/null
 cd "$CL" || exit 1
 
-# задача старого формата: план в папке. Чистка переводит её в карточку через upgrade.
+# an old-format task: a plan in a folder. Clean converts it into a card via upgrade.
 mkdir -p "$CL/ai/tasks/old-plan"
 printf '# Task Context\n\n## Goal\nСделать Y.\n\n## Why\nНадо.\n' > "$CL/ai/tasks/old-plan/context.md"
 printf '# Task\n\n## Summary\nДобавить Y.\n\n## Acceptance Criteria\n- [ ] Y есть\n' > "$CL/ai/tasks/old-plan/task.md"
-# открытая карточка — доску чистка НЕ трогает
+# an open card — clean does NOT touch the board
 printf '# Открытая\n\n## What and why\nx\n\n## Done when\nx\n' | "$FRAIM" task-new open-card >/dev/null 2>&1
 for i in 1 2 3; do
     printf 'c%s\n' "$i" >> "$CL/app.py"
     git -C "$CL" add app.py >/dev/null; git -C "$CL" commit -qm "fix: c$i" >/dev/null
 done
-# брошенное расследование и доведённое до исхода
+# an abandoned investigation and one brought to an outcome
 "$FRAIM" investigate-new abandoned-one >/dev/null 2>&1
 touch -d '40 days ago' "$CL/ai/investigations/abandoned-one/findings.md" 2>/dev/null ||
     touch -t "$(date -v-40d +%Y%m%d0000 2>/dev/null || echo 202001010000)" \
         "$CL/ai/investigations/abandoned-one/findings.md"
-# папка расследования без findings.md — ни исхода, ни отчёта; была невидима обоим
+# an investigation folder without findings.md — no outcome, no report; it was invisible to both
 mkdir -p "$CL/ai/investigations/no-report"
 printf 'заметки на коленке\n' > "$CL/ai/investigations/no-report/notes.md"
 touch -d '40 days ago' "$CL/ai/investigations/no-report/notes.md" "$CL/ai/investigations/no-report" 2>/dev/null ||
     touch -t "$(date -v-40d +%Y%m%d0000 2>/dev/null || echo 202001010000)" \
         "$CL/ai/investigations/no-report/notes.md" "$CL/ai/investigations/no-report"
-# и такая же папка, но свежая: её трогать нельзя — это работа, которая идёт
+# and the same kind of folder, but fresh: it must not be touched — that is work in progress
 mkdir -p "$CL/ai/investigations/fresh-no-report"
 printf 'начали сегодня\n' > "$CL/ai/investigations/fresh-no-report/notes.md"
 "$FRAIM" investigate-new solved-one >/dev/null 2>&1
@@ -1015,59 +1015,59 @@ t = '\n'.join(l for l in t.splitlines() if 'fraim:stub' not in l)
 p.write_text(t + '\n')
 PYSOLVE
 
-# Под пайпом без --yes чистка обязана только показать план: «сама всё сделает» не значит
-# «без спроса», а ратификация не исчезает оттого, что действий стало много (B5).
+# Under a pipe without --yes, clean must only show the plan: «does it all itself» does not mean
+# «without asking», and ratification does not disappear because there are many actions (B5).
 PLAN=$("$FRAIM" clean </dev/null 2>&1)
-check "clean без --yes ничего не делает" "$([ -d "$CL/ai/investigations/abandoned-one" ] && echo yes || echo no)" "yes"
-check "clean показывает план" "$(printf '%s' "$PLAN" | grep -c 'Чистка сделает')" "1"
-check "план включает фундамент" "$(printf '%s' "$PLAN" | grep -c 'до стандарта')" "1"
-check "план включает брошенное расследование" "$(printf '%s' "$PLAN" | grep -c 'abandoned-one')" "1"
-check "план включает доведённое расследование" "$(printf '%s' "$PLAN" | grep -c 'solved-one')" "1"
-# Папка без findings.md переживала любое число чисток молча: обход шёл по файлу, а не
-# по папке. Теперь её видит и сторож, и чистка — но только когда она действительно
-# перестала двигаться, иначе чистка уносила бы в архив работу, которая идёт.
-check "план включает папку без findings.md" "$(printf '%s' "$PLAN" | grep -c 'no-report')" "1"
-check "план НЕ трогает свежую папку без findings.md" \
+check "clean without --yes does nothing" "$([ -d "$CL/ai/investigations/abandoned-one" ] && echo yes || echo no)" "yes"
+check "clean shows the plan" "$(printf '%s' "$PLAN" | grep -c 'Чистка сделает')" "1"
+check "plan includes the foundation" "$(printf '%s' "$PLAN" | grep -c 'до стандарта')" "1"
+check "plan includes the abandoned investigation" "$(printf '%s' "$PLAN" | grep -c 'abandoned-one')" "1"
+check "plan includes the finished investigation" "$(printf '%s' "$PLAN" | grep -c 'solved-one')" "1"
+# A folder without findings.md survived any number of cleans silently: the walk went by file, not
+# by folder. Now both the watchman and clean see it — but only when it has really
+# stopped moving, otherwise clean would carry work in progress off to the archive.
+check "plan includes the folder without findings.md" "$(printf '%s' "$PLAN" | grep -c 'no-report')" "1"
+check "plan does NOT touch the fresh folder without findings.md" \
       "$(printf '%s' "$PLAN" | grep -c 'fresh-no-report')" "0"
-check "сторож называет папку без findings.md" \
+check "watchman names the folder without findings.md" \
       "$("$FRAIM" status "$CL" 2>/dev/null | grep -c 'без findings.md')" "2"
-check "план НЕ трогает доску" "$(printf '%s' "$PLAN" | grep -c 'open-card')" "0"
+check "plan does NOT touch the board" "$(printf '%s' "$PLAN" | grep -c 'open-card')" "0"
 
 OUT=$("$FRAIM" clean --yes </dev/null 2>&1)
-check "clean --yes отработал" "$(printf '%s' "$OUT" | grep -c 'сделано:')" "1"
-check "фундамент доведён до стандарта" "$(grep -c '^## Known Pitfalls / Lessons$' "$CL/CONVENTIONS.md")" "1"
-check "доведённое расследование заархивировано" \
+check "clean --yes ran" "$(printf '%s' "$OUT" | grep -c 'сделано:')" "1"
+check "foundation brought up to standard" "$(grep -c '^## Known Pitfalls / Lessons$' "$CL/CONVENTIONS.md")" "1"
+check "finished investigation archived" \
       "$(find "$CL/ai/archive" -maxdepth 1 -name '*investigate_solved-one' | wc -l | tr -d ' ')" "1"
-check "брошенное расследование заархивировано" \
+check "abandoned investigation archived" \
       "$(find "$CL/ai/archive" -maxdepth 1 -name '*investigate_abandoned-one' | wc -l | tr -d ' ')" "1"
-# Архив обязан говорить правду: не «сделано», а «брошено, исхода нет, уборка не проверялась».
-check "в архиве записано, что расследование брошено" \
+# The archive must tell the truth: not «done», but «abandoned, no outcome, cleanup never checked».
+check "archive records that the investigation was abandoned" \
       "$(cat "$CL"/ai/archive/*investigate_abandoned-one/findings.md | grep -c '^## Abandoned$')" "1"
-check "и что уборка не проверялась" \
+check "and that cleanup was never checked" \
       "$(cat "$CL"/ai/archive/*investigate_abandoned-one/findings.md | grep -c 'Cleanup was never checked')" "1"
-check "задача старого формата стала карточкой" "$(sed -n 's/^kind: //p' "$CL/ai/tasks/old-plan.md" 2>/dev/null)" "task"
-check "в карточку перенесено намерение" "$(grep -c '^Сделать Y.$' "$CL/ai/tasks/old-plan.md" 2>/dev/null)" "1"
-check "старый план сохранён в архиве" "$([ -f "$CL/ai/archive/legacy-plans/old-plan/task.md" ] && echo yes || echo no)" "yes"
-check "открытая карточка не тронута" "$([ -f "$CL/ai/tasks/open-card.md" ] && echo yes || echo no)" "yes"
-check "папка без findings.md заархивирована" \
+check "old-format task became a card" "$(sed -n 's/^kind: //p' "$CL/ai/tasks/old-plan.md" 2>/dev/null)" "task"
+check "intent carried over into the card" "$(grep -c '^Сделать Y.$' "$CL/ai/tasks/old-plan.md" 2>/dev/null)" "1"
+check "old plan kept in the archive" "$([ -f "$CL/ai/archive/legacy-plans/old-plan/task.md" ] && echo yes || echo no)" "yes"
+check "open card untouched" "$([ -f "$CL/ai/tasks/open-card.md" ] && echo yes || echo no)" "yes"
+check "folder without findings.md archived" \
       "$(find "$CL/ai/archive" -maxdepth 1 -name '*investigate_no-report' | wc -l | tr -d ' ')" "1"
-check "и получила отчёт, а не уехала в архив молча" \
+check "and got a report rather than going to the archive silently" \
       "$(cat "$CL"/ai/archive/*investigate_no-report/findings.md 2>/dev/null | grep -c '^## Abandoned$')" "1"
-check "свежая папка без findings.md не тронута" \
+check "fresh folder without findings.md untouched" \
       "$([ -d "$CL/ai/investigations/fresh-no-report" ] && echo yes || echo no)" "yes"
-check "чистке нечего было отказывать" "$(printf '%s' "$OUT" | grep -c 'Осталось требующего тебя')" "0"
+check "clean had nothing to refuse" "$(printf '%s' "$OUT" | grep -c 'Осталось требующего тебя')" "0"
 
-# Повторный заход не должен находить работу там, где её уже нет.
+# A second pass must not find work where there is none left.
 PLAN2=$("$FRAIM" clean </dev/null 2>&1)
-check "повторная чистка не предлагает сделанное" "$(printf '%s' "$PLAN2" | grep -c 'solved-one')" "0"
+check "repeated clean does not offer what is done" "$(printf '%s' "$PLAN2" | grep -c 'solved-one')" "0"
 cd "$SANDBOX" || exit 1
 
-# ------------------------------------------------- стандарт фундамента и upgrade
-printf '\nсоответствие стандарту (shape) и fraim upgrade\n'
+# ------------------------------------------------- foundation standard and upgrade
+printf '\nstandard conformance (shape) and fraim upgrade\n'
 
-# Проект «старой версии»: фундамент есть, но заведён до AGENTS.md/CLAUDE.md, до
-# ai/fraim.conf и до раздела Known Pitfalls. Ни одна прежняя проверка на нём не
-# срабатывала — сторож говорил «всё чисто», а fraim pitfall при этом отказывался.
+# An «old version» project: the foundation exists, but was set up before AGENTS.md/CLAUDE.md, before
+# ai/fraim.conf and before the Known Pitfalls section. None of the previous checks fired
+# on it — the watchman said «all clean» while fraim pitfall refused.
 OLD="$SANDBOX/oldproj"
 mkdir -p "$OLD/ai/tasks"
 git -C "$OLD" init -q
@@ -1080,45 +1080,45 @@ printf 'check_shape = on\n'       > "$OLD/ai/fraim.conf"
 git -C "$OLD" add -A >/dev/null 2>&1; git -C "$OLD" commit -qm base >/dev/null 2>&1
 
 OUT=$("$FRAIM" status "$OLD" 2>/dev/null)
-check "сторож видит отставание от стандарта" "$(printf '%s' "$OUT" | grep -c 'отстал от стандарта')" "1"
-check "названы AGENTS.md и CLAUDE.md" \
+check "watchman sees lag behind the standard" "$(printf '%s' "$OUT" | grep -c 'отстал от стандарта')" "1"
+check "AGENTS.md and CLAUDE.md named" \
       "$(printf '%s' "$OUT" | grep -c 'AGENTS.md')$(printf '%s' "$OUT" | grep -c 'CLAUDE.md')" "11"
-check "назван недостающий раздел" "$(printf '%s' "$OUT" | grep -c 'Known-Pitfalls')" "1"
+check "missing section named" "$(printf '%s' "$OUT" | grep -c 'Known-Pitfalls')" "1"
 
 cd "$OLD" || exit 1
 "$FRAIM" pitfall "verb has nowhere to write" >/dev/null 2>&1
-check "до upgrade глагол pitfall отказывает" "$?" "2"
+check "before upgrade the pitfall verb refuses" "$?" "2"
 
 "$FRAIM" upgrade >/dev/null 2>&1
-check "upgrade завершился успешно" "$?" "0"
-check "upgrade завёл AGENTS.md с блоком" "$(grep -c 'fraim:begin' "$OLD/AGENTS.md")" "1"
-check "upgrade завёл CLAUDE.md с указателем" "$(grep -c 'AGENTS.md' "$OLD/CLAUDE.md")" "2"
-check "upgrade дописал раздел Known Pitfalls" "$(grep -c '^## Known Pitfalls / Lessons$' "$OLD/CONVENTIONS.md")" "1"
-check "содержимое старого файла не тронуто" "$(grep -c '^rules$' "$OLD/CONVENTIONS.md")" "1"
+check "upgrade succeeded" "$?" "0"
+check "upgrade created AGENTS.md with the block" "$(grep -c 'fraim:begin' "$OLD/AGENTS.md")" "1"
+check "upgrade created CLAUDE.md with the pointer" "$(grep -c 'AGENTS.md' "$OLD/CLAUDE.md")" "2"
+check "upgrade appended the Known Pitfalls section" "$(grep -c '^## Known Pitfalls / Lessons$' "$OLD/CONVENTIONS.md")" "1"
+check "old file contents untouched" "$(grep -c '^rules$' "$OLD/CONVENTIONS.md")" "1"
 "$FRAIM" pitfall "now it lands" >/dev/null 2>&1
-check "после upgrade глагол pitfall работает" "$?" "0"
+check "after upgrade the pitfall verb works" "$?" "0"
 "$FRAIM" status "$OLD" >/dev/null 2>&1
-check "после upgrade проверка стандарта молчит" "$("$FRAIM" status "$OLD" 2>/dev/null | grep -c 'отстал от стандарта')" "0"
+check "after upgrade the standard check is silent" "$("$FRAIM" status "$OLD" 2>/dev/null | grep -c 'отстал от стандарта')" "0"
 "$FRAIM" upgrade >/dev/null 2>&1
-check "upgrade идемпотентен" "$("$FRAIM" status "$OLD" 2>/dev/null | grep -c 'отстал от стандарта')" "0"
-# Суждение upgrade не делает, а ставит на доску: карта без разделов — пункт задачи миграции.
-check "карта без разделов — задача миграции" "$(grep -c 'ARCHITECTURE.md has no' "$OLD/ai/tasks/fraim-migration.md" 2>/dev/null)" "1"
-check "повторный upgrade пункт не дублирует" "$(grep -c 'ARCHITECTURE.md has no' "$OLD/ai/tasks/fraim-migration.md" 2>/dev/null)" "1"
-check "upgrade завёл бэклог" "$([ -d "$OLD/ai/backlog" ] && echo yes || echo no)" "yes"
+check "upgrade is idempotent" "$("$FRAIM" status "$OLD" 2>/dev/null | grep -c 'отстал от стандарта')" "0"
+# upgrade makes no judgement calls, it puts them on the board: a map without sections is an item of the migration task.
+check "map without sections — a migration task" "$(grep -c 'ARCHITECTURE.md has no' "$OLD/ai/tasks/fraim-migration.md" 2>/dev/null)" "1"
+check "repeated upgrade does not duplicate the item" "$(grep -c 'ARCHITECTURE.md has no' "$OLD/ai/tasks/fraim-migration.md" 2>/dev/null)" "1"
+check "upgrade created the backlog" "$([ -d "$OLD/ai/backlog" ] && echo yes || echo no)" "yes"
 mkdir -p "$OLD/ai/tasks/empty-plan"; printf '# Task\n' > "$OLD/ai/tasks/empty-plan/task.md"
 "$FRAIM" upgrade >/dev/null 2>&1
-check "неразобранная задача — второй пункт той же карточки" \
+check "unsorted task — a second item on the same card" \
       "$(grep -c '^- ' "$OLD/ai/tasks/fraim-migration.md")$(grep -c 'empty-plan' "$OLD/ai/tasks/fraim-migration.md")" "21"
-check "пункты стоят в «What and why», а не после «Done when»" \
+check "items sit in «What and why», not after «Done when»" \
       "$(sed -n '/^## Done when/,$p' "$OLD/ai/tasks/fraim-migration.md" | grep -c '^- ')" "0"
-check "старый план сохранён" "$([ -f "$OLD/ai/archive/legacy-plans/empty-plan/task.md" ] && echo yes || echo no)" "yes"
+check "old plan kept" "$([ -f "$OLD/ai/archive/legacy-plans/empty-plan/task.md" ] && echo yes || echo no)" "yes"
 # Cards from before the English format: their headings are renamed in place, the body kept.
 printf -- '---\nkind: task\ncreated: 2026-10-01\n---\n# Старая\n\n## Что и зачем\nтело\n\n## Готово, когда\nготово\n' > "$OLD/ai/tasks/ru-card.md"
 "$FRAIM" upgrade >/dev/null 2>&1
-check "старые заголовки карточки переименованы" \
+check "old card headings renamed" \
       "$(grep -c '^## What and why$' "$OLD/ai/tasks/ru-card.md")$(grep -c '^## Done when$' "$OLD/ai/tasks/ru-card.md")$(grep -c '^тело$' "$OLD/ai/tasks/ru-card.md")" "111"
 
-# --- очередь и фундамент как данные -----------------------------------------
+# --- the queue and the foundation as data ------------------------------------
 QP="$SANDBOX/queueproj"
 mkdir -p "$QP"
 git -C "$QP" init -q; git -C "$QP" config user.email t@t; git -C "$QP" config user.name t
@@ -1127,37 +1127,37 @@ cd "$QP" || exit 1
 printf '# Проект\n\n## What and why\nx\n\n## Done when\nx\n' | "$FRAIM" task-new proj-one --master >/dev/null 2>&1
 printf '# Часть\n\n## What and why\nx\n\n## Done when\nx\n' | "$FRAIM" task-new part-one --parent proj-one >/dev/null 2>&1
 J=$("$FRAIM" status --json 2>/dev/null)
-check "json: вид и родитель каждой карточки" \
+check "json: kind and parent of every card" \
       "$(printf '%s' "$J" | grep -c '"slug": "proj-one", "kind": "master", "parent": ""')$(printf '%s' "$J" | grep -c '"slug": "part-one", "kind": "task", "parent": "proj-one"')" "11"
-check "счётчик считает карточки на доске" \
+check "counter counts cards on the board" \
       "$(printf '%s' "$J" | grep -c '2 открытые задачи на доске')" "1"
-check "json: заглушка отличима от заполненного" \
+check "json: a stub is distinguishable from filled" \
       "$(printf '%s' "$J" | grep -c '"ARCHITECTURE.md": "stub"')" "1"
-check "json: отсутствующий файл виден как missing" \
+check "json: a missing file shows as missing" \
       "$(printf '%s' "$J" | grep -c '"STACK.md": "missing"')" "1"
 
-# Пустое состояние не должно ронять сторожа: grep -c на нуле совпадений возвращает 1,
-# и под set -e это тихо убивало весь прогон.
+# An empty state must not crash the watchman: grep -c on zero matches returns 1,
+# and under set -e that silently killed the whole run.
 EMPTY="$SANDBOX/emptyq"
 mkdir -p "$EMPTY"; cd "$EMPTY" || exit 1
 "$FRAIM" scaffold >/dev/null 2>&1
-check "сторож не умирает на пустой очереди" "$("$FRAIM" status "$EMPTY" 2>/dev/null | grep -c 'скелет развёрнут')" "1"
+check "watchman does not die on an empty queue" "$("$FRAIM" status "$EMPTY" 2>/dev/null | grep -c 'скелет развёрнут')" "1"
 
 cd "$PROJ2" || exit 1
 
 # ---------------------------------------------------------------- publish
-printf '\nfraim publish (копия вне машины)\n'
+printf '\nfraim publish (off-machine copy)\n'
 
-# Ветки, которые спрашивают человека, тестируются вызовом самой ветки: вопрос задаётся
-# только на терминале, а pty в POSIX sh не завести.
+# Branches that ask the human are tested by calling the branch itself: the question is asked
+# only on a terminal, and a pty cannot be set up in POSIX sh.
 PUBLIB_CANCEL='. "'"$REPO"'/installer/lib/core.sh"; . "'"$REPO"'/installer/lib/config.sh"
     . "'"$REPO"'/installer/lib/registry.sh"; . "'"$REPO"'/installer/lib/context.sh"
     . "'"$REPO"'/installer/lib/scaffold.sh"; . "'"$REPO"'/installer/lib/verbs.sh"; . "'"$REPO"'/installer/lib/tasks.sh"; . "'"$REPO"'/installer/lib/foundation.sh"; . "'"$REPO"'/installer/lib/verbtable.sh"
     . "'"$REPO"'/installer/lib/ade.sh"; . "'"$REPO"'/installer/lib/watchman.sh"; . "'"$REPO"'/installer/lib/update.sh"; . "'"$REPO"'/installer/lib/publish.sh"'
 
-# Всё здесь работает без сети и без gh: «хостом» служит локальный bare-репозиторий.
-# Это не упрощение ради теста — это тот же путь, которым идёт --url, то есть пол,
-# на который падает любой провайдер, когда его CLI нет или он повёл себя не так.
+# Everything here works without network and without gh: a local bare repository serves as the «host».
+# This is not a simplification for the test — it is the same path --url takes, i.e. the floor
+# any provider falls back to when its CLI is missing or misbehaves.
 PUB="$SANDBOX/pub"
 mkdir -p "$PUB"
 cd "$PUB" || exit 1
@@ -1166,40 +1166,40 @@ printf 'print(1)\n' > app.py
 git -C "$PUB" add app.py >/dev/null; git -C "$PUB" commit -qm "feat: app" >/dev/null
 
 OUT=$("$FRAIM" publish --check 2>&1); RC=$?
-check "check на чистом проекте проходит" "$RC" "0"
-check "check говорит, что копии нет" "$(printf '%s' "$OUT" | grep -c 'Копии вне этой машины нет')" "1"
-check "check перечисляет, чем можно опубликовать" \
+check "check passes on a clean project" "$RC" "0"
+check "check says there is no copy" "$(printf '%s' "$OUT" | grep -c 'Копии вне этой машины нет')" "1"
+check "check lists what can publish" \
       "$(printf '%s' "$OUT" | grep -c 'Чем можно опубликовать')" "1"
-check "отсутствующий CLI объясняется, а не просто отмечается" \
+check "missing CLI is explained, not just flagged" \
       "$(printf '%s' "$OUT" | grep -c 'gh auth login')" "1"
 
-# Ратификация. Под пайпом без --yes команда обязана напечатать план и НЕ ТРОНУТЬ ничего:
-# это тот же контракт, что у `fraim clean`, и проверяется он по состоянию, а не по тексту.
+# Ratification. Under a pipe without --yes the command must print the plan and TOUCH nothing:
+# this is the same contract as `fraim clean`, and it is checked by state, not by text.
 git init -q --bare "$SANDBOX/pub-remote.git"
 OUT=$("$FRAIM" publish --url "$SANDBOX/pub-remote.git" 2>&1)
-check "план без --yes ничего не отправляет" "$(git -C "$PUB" remote | wc -l | tr -d ' ')" "0"
-check "план называет, что уедет" "$(printf '%s' "$OUT" | grep -c 'что едет')" "1"
+check "plan without --yes sends nothing" "$(git -C "$PUB" remote | wc -l | tr -d ' ')" "0"
+check "plan names what will be sent" "$(printf '%s' "$OUT" | grep -c 'что едет')" "1"
 
 OUT=$("$FRAIM" publish --url "$SANDBOX/pub-remote.git" --yes 2>&1); RC=$?
-check "публикация с --yes проходит" "$RC" "0"
-check "ремоут прописан" "$(git -C "$PUB" remote get-url origin)" "$SANDBOX/pub-remote.git"
-check "сверка с хостом сошлась" "$(printf '%s' "$OUT" | grep -c 'на хосте лежит ровно то')" "1"
-check "на хосте та же точка" \
+check "publishing with --yes passes" "$RC" "0"
+check "remote configured" "$(git -C "$PUB" remote get-url origin)" "$SANDBOX/pub-remote.git"
+check "reconciliation with the host matched" "$(printf '%s' "$OUT" | grep -c 'на хосте лежит ровно то')" "1"
+check "the host has the same point" \
       "$(git -C "$SANDBOX/pub-remote.git" rev-parse HEAD)" "$(git -C "$PUB" rev-parse HEAD)"
 
 OUT=$("$FRAIM" publish 2>&1)
-check "повторный запуск ничего не делает" \
+check "rerun does nothing" \
       "$(printf '%s' "$OUT" | grep -c 'совпадает с этой машиной')" "1"
 
 printf 'print(2)\n' >> app.py
 git -C "$PUB" commit -qam "fix: more" >/dev/null
 "$FRAIM" publish --yes >/dev/null 2>&1
-check "следующая точка уезжает той же командой" \
+check "next point leaves with the same command" \
       "$(git -C "$SANDBOX/pub-remote.git" rev-parse HEAD)" "$(git -C "$PUB" rev-parse HEAD)"
 
-# --- проверка безопасности --------------------------------------------------
-# Главное свойство: она смотрит на то, что УЕДЕТ, а не на то, что лежит в папке.
-# Файл, удалённый из дерева, остаётся в паке и уезжает с первым же push.
+# --- safety check ------------------------------------------------------------
+# The key property: it looks at what WILL BE SENT, not at what lies in the folder.
+# A file removed from the tree stays in the pack and leaves with the very first push.
 PUBS="$SANDBOX/pubsec"
 mkdir -p "$PUBS"
 cd "$PUBS" || exit 1
@@ -1209,33 +1209,33 @@ git -C "$PUBS" add -f .env >/dev/null; git -C "$PUBS" commit -qm "oops" >/dev/nu
 git -C "$PUBS" rm -q --cached .env >/dev/null; git -C "$PUBS" commit -qm "убрал" >/dev/null
 
 OUT=$("$FRAIM" publish --check 2>&1); RC=$?
-check "секрет, стёртый из дерева, но живой в истории — найден" \
+check "secret erased from the tree but alive in history — found" \
       "$(printf '%s' "$OUT" | grep -c '\.env')" "1"
-check "находка в истории роняет код возврата" "$RC" "1"
+check "finding in history fails the exit code" "$RC" "1"
 
 OUT=$("$FRAIM" publish --url "$SANDBOX/pub-remote2.git" --yes 2>&1); RC=$?
-check "гейт останавливает публикацию" "$RC" "2"
-check "ремоут при отказе не прописан" "$(git -C "$PUBS" remote | wc -l | tr -d ' ')" "0"
-check "отказ называет обход" "$(printf '%s' "$OUT" | grep -c 'находка ложная')" "1"
-# Отказ отдаёт готовое задание, а не совет: «убери файл из истории» — это просьба об
-# экспертизе, которой у пользователя может не быть.
-check "отказ печатает задание агенту" \
+check "gate stops publishing" "$RC" "2"
+check "remote not configured on refusal" "$(git -C "$PUBS" remote | wc -l | tr -d ' ')" "0"
+check "refusal names the override" "$(printf '%s' "$OUT" | grep -c 'находка ложная')" "1"
+# The refusal hands over a ready task, not advice: «remove the file from history» is a request for
+# expertise the user may not have.
+check "refusal prints a task for the agent" \
       "$(printf '%s' "$OUT" | grep -c 'Отдай это агенту')" "1"
-check "задание самодостаточно: в нём путь проекта" \
+check "task is self-contained: it has the project path" \
       "$(printf '%s' "$OUT" | grep -c "Project: $PUBS")" "1"
-check "задание называет найденное поимённо" "$(printf '%s' "$OUT" | grep -c '  - \.env')" "1"
-check "задание ставит границы агенту" "$(printf '%s' "$OUT" | grep -c 'Limits:')" "1"
-check "задание не советует переписывать историю молча" \
+check "task names what was found one by one" "$(printf '%s' "$OUT" | grep -c '  - \.env')" "1"
+check "task sets limits for the agent" "$(printf '%s' "$OUT" | grep -c 'Limits:')" "1"
+check "task does not advise rewriting history silently" \
       "$(printf '%s' "$OUT" | grep -c 'Do not run it without my yes')" "1"
 
 git init -q --bare "$SANDBOX/pub-remote2.git"
 OUT=$("$FRAIM" publish --url "$SANDBOX/pub-remote2.git" --yes --force 2>&1); RC=$?
-check "--force проходит и говорит, что делает" "$RC" "0"
-check "--force называет необратимость" "$(printf '%s' "$OUT" | grep -c 'необратимо')" "1"
+check "--force passes and says what it does" "$RC" "0"
+check "--force names the irreversibility" "$(printf '%s' "$OUT" | grep -c 'необратимо')" "1"
 
-# --- находка решается не сама по себе, а тем, кто её прочитает ------------------
-# Своя фикстура: предыдущему проекту ремоут уже прописан, а вопрос «кто это прочитает»
-# встаёт ровно до того, как копия появилась.
+# --- a finding is resolved not on its own, but by who will read it ----------------------
+# Its own fixture: the previous project already has a remote, while the question «who will read this»
+# arises exactly before the copy exists.
 PUBV="$SANDBOX/pubvis"
 mkdir -p "$PUBV"
 cd "$PUBV" || exit 1
@@ -1243,81 +1243,81 @@ cd "$PUBV" || exit 1
 printf 'API = "ghp_abcdefghijklmnopqrstuvwxyz0123456789"\n' > conf.py
 git -C "$PUBV" add conf.py >/dev/null; git -C "$PUBV" commit -qm "feat: conf" >/dev/null
 
-# Одинаковый ответ на публичный и приватный репозиторий неверен в обе стороны: для
-# публичного «стоп» единственно верен, для приватного он превращается в стену на ровном
-# месте — человек знает, что копию видит только он, и переписывание истории не защищает
-# его ни от чего. Поэтому приватный получает ратификацию, публичный остаётся стопом.
+# The same answer for a public and a private repository is wrong both ways: for a
+# public one «stop» is the only correct answer, for a private one it becomes a wall out of
+# nowhere — the human knows only they see the copy, and rewriting history protects
+# them from nothing. So private gets ratification, public stays a stop.
 OUT=$("$FRAIM" publish --provider github --public --yes 2>&1); RC=$?
-check "публичный репозиторий: стоп остаётся стопом" "$RC" "2"
-check "стоп объясняет, что дело в видимости" \
+check "public repository: stop stays a stop" "$RC" "2"
+check "stop explains it is about visibility" \
       "$(printf '%s' "$OUT" | grep -c 'Репозиторий публичный')" "1"
-check "публичному не предлагается «приму риск»" \
+check "public is not offered «accept the risk»" \
       "$(printf '%s' "$OUT" | grep -c 'нет варианта')" "1"
 
-# Под пайпом без утверждения о приватности — тоже стоп, но с выходом, а не в стену.
+# Under a pipe without a privacy assertion — also a stop, but with a way out, not a wall.
 OUT=$("$FRAIM" publish --url "$SANDBOX/pub-remote3.git" --yes 2>&1); RC=$?
-check "неизвестная видимость: не додумываем за человека" "$RC" "2"
-check "отказ называет, чем разблокировать" \
+check "unknown visibility: do not assume for the human" "$RC" "2"
+check "refusal names how to unblock" \
       "$(printf '%s' "$OUT" | grep -c 'publish --private')" "1"
 
-# Приватная копия: находки уезжают, но названы поимённо и приняты явно.
+# Private copy: the findings leave, but are named one by one and accepted explicitly.
 git init -q --bare "$SANDBOX/pub-priv.git"
 OUT=$("$FRAIM" publish --url "$SANDBOX/pub-priv.git" --private --yes 2>&1); RC=$?
 OUTPRIV=$OUT
-check "приватная копия: работа не встаёт" "$RC" "0"
-check "принятие риска сказано вслух" "$(printf '%s' "$OUT" | grep -c 'принято')" "1"
-check "сказано, откуда известно про приватность" \
+check "private copy: work does not stall" "$RC" "0"
+check "risk acceptance is said out loud" "$(printf '%s' "$OUT" | grep -c 'принято')" "1"
+check "says how privacy is known" \
       "$(printf '%s' "$OUT" | grep -c 'с твоих слов')" "1"
-# Обещать «в приватном ничего не страшно» продукт не имеет права: приватный репозиторий
-# переключается в публичный одной кнопкой, и история едет вместе с ним.
-check "принятие не обещает, чего не гарантирует" \
+# The product has no right to promise «nothing to fear in a private repo»: a private repository
+# is switched to public with one button, and the history goes along with it.
+check "acceptance does not promise what it cannot guarantee" \
       "$(printf '%s' "$OUT" | grep -c 'станет публичным')" "1"
-check "находки действительно уехали" \
+check "findings really were pushed" \
       "$(git -C "$SANDBOX/pub-priv.git" rev-parse HEAD)" "$(git -C "$PUBV" rev-parse HEAD)"
 
-# Задание на чистку не привязано к отказу: приняв риск однажды, чистку заказывают позже.
+# The cleanup task is not tied to a refusal: having accepted the risk once, cleanup is ordered later.
 OUT=$("$FRAIM" publish --brief 2>&1); RC=$?
-check "--brief печатает задание по требованию" "$RC" "0"
-check "--brief даёт тот же самодостаточный блок" \
+check "--brief prints the task on demand" "$RC" "0"
+check "--brief gives the same self-contained block" \
       "$(printf '%s' "$OUT" | grep -c 'Отдай это агенту')" "1"
 OUT=$(cd "$PUB" && "$FRAIM" publish --brief 2>&1)
-check "--brief на чистом проекте не выдумывает работу" \
+check "--brief on a clean project does not invent work" \
       "$(printf '%s' "$OUT" | grep -c 'нечего вычищать')" "1"
 
-# «Нет» на вопросе о находках — это «хочу, но чистым», а не «передумал публиковать».
-# Раньше человек получал одно слово «отменено» и оставался ровно с тем, с чего начал.
-# Вопрос задаётся только на терминале, поэтому рельс зовёт саму ветку отказа, а
-# отдельная проверка стережёт то, что диспетчер по-прежнему в неё заходит.
+# «No» to the findings question means «I want it, but clean», not «changed my mind about publishing».
+# Previously the human got a single word «cancelled» and was left exactly where they started.
+# The question is asked only on a terminal, so the rail calls the refusal branch itself, and
+# a separate check guards that the dispatcher still enters it.
 CANC=$(cd "$PUBV" && sh -c "$PUBLIB_CANCEL"'
     publish_scan "$(pwd -P)"
     publish_cancel_findings "$(pwd -P)"' 2>&1)
-check "отказ от риска отдаёт задание агенту" \
+check "declining the risk hands a task to the agent" \
       "$(printf '%s' "$CANC" | grep -c 'Отдай это агенту')" "1"
-check "задание называет находки поимённо" \
+check "task names the findings one by one" \
       "$(printf '%s' "$CANC" | grep -c 'conf.py')" "1"
-check "отказ не кончается словом «отменено»" \
+check "refusal does not end with the word «cancelled»" \
       "$(printf '%s' "$CANC" | grep -c 'публикуем после чистки')" "1"
-check "сказано, чем проверить результат чистки" \
+check "says how to check the cleanup result" \
       "$(printf '%s' "$CANC" | grep -c 'проверь сам: fraim publish --check')" "1"
-check "и что публикация после этого продолжится" \
+check "and that publishing will continue afterwards" \
       "$(printf '%s' "$CANC" | grep -c 'без находок')" "1"
-# Границы задания те же, что и при отказе системы: агент чистит, но не публикует.
-check "задание по-прежнему запрещает публиковать" \
+# The task's limits are the same as for a system refusal: the agent cleans, but does not publish.
+check "task still forbids publishing" \
       "$(printf '%s' "$CANC" | grep -c 'publish nothing and push nothing')" "1"
 
-# Класс, а не случай: если ветку отказа однажды упростят обратно до say «отменено»,
-# задание исчезнет молча — на терминале, куда тесты не заходят.
+# The class, not the case: if the refusal branch is ever simplified back to say «отменено»,
+# the task will vanish silently — on a terminal, where tests do not go.
 CANCWIRED=$(awk '/read -r _ans \|\| _ans=/,/^        else$/' "$REPO/installer/bin/fraim" |
             grep -c 'publish_cancel_findings' || true)
-check "диспетчер зовёт эту ветку, а не печатает «отменено»" "$CANCWIRED" "1"
+check "dispatcher calls this branch, does not print «cancelled»" "$CANCWIRED" "1"
 
-# И сам вопрос называет, что означает «нет»: решение читается там, где принимается.
-check "принятие риска называет «нет» как выход" \
+# And the question itself names what «no» means: the decision is read where it is made.
+check "risk acceptance names «no» as a way out" \
       "$(printf '%s' "$OUTPRIV" | grep -c 'ответь «нет»')" "1"
 
 
-# Значение ключа не должно попасть в вывод: он уедет в скроллбек, в лог сессии агента
-# и в чужой чат. Сканер печатает файл и строку, и на этом останавливается.
+# The key's value must not reach the output: it would go to the scrollback, the agent's session log
+# and someone else's chat. The scanner prints the file and line, and stops there.
 PUBT="$SANDBOX/pubtok"
 mkdir -p "$PUBT"
 cd "$PUBT" || exit 1
@@ -1327,18 +1327,18 @@ head -c 6000000 /dev/urandom > big.bin 2>/dev/null
 mkdir -p node_modules/pkg; printf '1\n' > node_modules/pkg/index.js
 git -C "$PUBT" add -A -f >/dev/null; git -C "$PUBT" commit -qm "feat: conf" >/dev/null
 OUT=$("$FRAIM" publish --check 2>&1)
-check "токен в файле найден по форме" "$(printf '%s' "$OUT" | grep -c 'conf.py:1')" "1"
-check "само значение ключа не печатается" \
+check "token in a file found by its shape" "$(printf '%s' "$OUT" | grep -c 'conf.py:1')" "1"
+check "the key value itself is not printed" \
       "$(printf '%s' "$OUT" | grep -c 'ghp_abcdefghijklmnopqrstuvwxyz')" "0"
-check "тяжёлый файл — предупреждение, а не отказ" "$(printf '%s' "$OUT" | grep -c 'МБ в истории')" "1"
-check "зависимости в истории свёрнуты в один каталог" \
+check "heavy file — a warning, not a refusal" "$(printf '%s' "$OUT" | grep -c 'МБ в истории')" "1"
+check "dependencies in history collapsed into one directory" \
       "$(printf '%s' "$OUT" | grep -c 'node_modules/ ')" "1"
 
-# --- рассинхрон с хостом ----------------------------------------------------
-# Локальная бухгалтерия («уехало / не уехало») — это память ЭТОЙ машины о прошлых
-# отправках. Она врёт ровно там, где ошибка дороже всего: репозиторий создан и пуст,
-# ветку на хосте снесли, историю туда положили из другого места. Поэтому publish
-# спрашивает хост, а не свои refs — три случая ниже проверяют каждую из этих форм.
+# --- desync with the host -----------------------------------------------------
+# Local bookkeeping («pushed / not pushed») is THIS machine's memory of past
+# pushes. It lies exactly where a mistake costs the most: the repository is created and empty,
+# the branch on the host was deleted, history was put there from somewhere else. So publish
+# asks the host, not its own refs — the three cases below check each of these forms.
 PUBH="$SANDBOX/pubhost"
 mkdir -p "$PUBH"
 cd "$PUBH" || exit 1
@@ -1346,39 +1346,39 @@ cd "$PUBH" || exit 1
 printf 'print(1)\n' > app.py
 git -C "$PUBH" add app.py >/dev/null; git -C "$PUBH" commit -qm "feat: app" >/dev/null
 
-# 1. Создан, но пуст: адрес прописан руками, история туда не доехала. Снаружи копия
-#    выглядит существующей — это худшее из состояний, и молчать о нём нельзя.
+# 1. Created but empty: the address was set by hand, history never got there. From outside the copy
+#    looks existing — this is the worst of the states, and staying silent about it is not allowed.
 git init -q --bare "$SANDBOX/pub-host.git"
 git -C "$PUBH" remote add origin "$SANDBOX/pub-host.git"
 "$FRAIM" status "$PUBH" 2>/dev/null | grep -q 'ни разу ничего не уезжало'
-check "сторож видит недоведённую настройку без сети" "$?" "0"
+check "watchman sees unfinished setup without network" "$?" "0"
 
 OUT=$("$FRAIM" publish 2>&1)
-check "publish называет пустой репозиторий на хосте" \
+check "publish names the empty repository on the host" \
       "$(printf '%s' "$OUT" | grep -c 'ПУСТ')" "1"
-# Состояние хоста живёт в плане одной строкой и больше нигде: второй раз то же самое
-# сверху — шум, а шум учат пролистывать.
-check "состояние хоста сказано ровно один раз" \
+# The host state lives in the plan as one line and nowhere else: the same thing a second time
+# on top is noise, and people learn to scroll past noise.
+check "host state stated exactly once" \
       "$(printf '%s' "$OUT" | grep -c 'история туда не доехала')" "1"
 "$FRAIM" publish --yes >/dev/null 2>&1
-check "та же команда доводит работу до конца" \
+check "the same command finishes the job" \
       "$(git -C "$SANDBOX/pub-host.git" rev-parse HEAD)" "$(git -C "$PUBH" rev-parse HEAD)"
 
-# 2. Ветку на хосте снесли, а refs/remotes здесь остались. По записям этой машины «всё
-#    уехало» — и это ровно то враньё, ради которого сверка и существует.
+# 2. The branch on the host was deleted, but refs/remotes remain here. By this machine's records «everything
+#    was pushed» — and that is exactly the lie the reconciliation exists for.
 BR=$(git -C "$PUBH" rev-parse --abbrev-ref HEAD)
 git -C "$SANDBOX/pub-host.git" update-ref -d "refs/heads/$BR"
-check "локальные записи всё ещё говорят «уехало»" \
+check "local records still say «pushed»" \
       "$(git -C "$PUBH" rev-list --count HEAD --not --remotes)" "0"
 OUT=$("$FRAIM" publish 2>&1)
-check "publish не верит своим записям против хоста" \
+check "publish does not trust its records over the host" \
       "$(printf '%s' "$OUT" | grep -c 'совпадает с этой машиной')" "0"
 "$FRAIM" publish --yes >/dev/null 2>&1
-check "копия восстановлена" \
+check "copy restored" \
       "$(git -C "$SANDBOX/pub-host.git" rev-parse HEAD)" "$(git -C "$PUBH" rev-parse HEAD)"
 
-# 3. На хосте появилась работа, которой здесь нет. Единственный способ «свести одной
-#    кнопкой» — затереть чужое, поэтому команда обязана остановиться и отдать задание.
+# 3. Work appeared on the host that is not here. The only way to «reconcile with one
+#    button» is to overwrite someone else's work, so the command must stop and hand over a task.
 OTHER="$SANDBOX/pubother"
 git clone -q "$SANDBOX/pub-host.git" "$OTHER"
 git -C "$OTHER" config user.email t@t; git -C "$OTHER" config user.name t
@@ -1389,48 +1389,48 @@ printf 'print(2)\n' >> "$PUBH/app.py"
 git -C "$PUBH" commit -qam "fix: local" >/dev/null
 
 OUT=$("$FRAIM" publish --yes 2>&1); RC=$?
-check "расхождение останавливает отправку" "$RC" "2"
-check "на хосте ничего не затёрто" \
+check "divergence stops the push" "$RC" "2"
+check "nothing overwritten on the host" \
       "$(git -C "$SANDBOX/pub-host.git" log --oneline | grep -c 'feat: other')" "1"
-check "расхождение объяснено, а не названо ошибкой" \
+check "divergence explained, not called an error" \
       "$(printf '%s' "$OUT" | grep -c 'работа, которой нет здесь')" "1"
-check "расхождение отдаёт задание агенту" \
+check "divergence hands a task to the agent" \
       "$(printf '%s' "$OUT" | grep -c 'reconcile the divergence')" "1"
-check "задание запрещает force-push" "$(printf '%s' "$OUT" | grep -c 'Never suggest a force-push')" "1"
+check "task forbids force-push" "$(printf '%s' "$OUT" | grep -c 'Never suggest a force-push')" "1"
 
-# Провайдер, которого нет, отвечает инструкцией и полом — а не «нельзя». Проект здесь
-# чистый нарочно: иначе до провайдера дело не дойдёт, его остановит гейт безопасности.
+# A provider that is absent answers with instructions and the floor — not with «can't». The project here
+# is clean on purpose: otherwise it would never reach the provider, the safety gate would stop it.
 PUBP="$SANDBOX/pubprov"
 mkdir -p "$PUBP"
 cd "$PUBP" || exit 1
 "$FRAIM" scaffold >/dev/null 2>&1
 OUT=$("$FRAIM" publish --provider github --yes 2>&1); RC=$?
 if command -v gh >/dev/null 2>&1; then
-    check "github без gh: пропущено (gh установлен)" "skip" "skip"
+    check "github without gh: skipped (gh installed)" "skip" "skip"
 else
-    check "github без gh отказывает, не отправляя" "$(git -C "$PUBP" remote | wc -l | tr -d ' ')" "0"
-    check "отказ показывает, как поставить gh" \
+    check "github without gh refuses without pushing" "$(git -C "$PUBP" remote | wc -l | tr -d ' ')" "0"
+    check "refusal shows how to install gh" \
           "$(printf '%s' "$OUT" | grep -cE 'cli.github.com|install gh')" "1"
-    check "отказ показывает пол: создать руками и дать ссылку" \
+    check "refusal shows the floor: create by hand and give the URL" \
           "$(printf '%s' "$OUT" | grep -c 'publish --url')" "1"
 fi
 OUT=$("$FRAIM" publish --provider нетакого 2>&1); RC=$?
-check "неизвестный провайдер отвергается" "$RC" "2"
+check "unknown provider rejected" "$RC" "2"
 
 cd "$SANDBOX" || exit 1
 
-# ------------------------------------------------- транспорт: ключ против логина
-# Находка эксплуатации. Адрес был ssh, ssh-ключа на машине не было, gh был авторизован
-# по https. Отправка падала с `Permission denied (publickey)`, подсказка советовала
-# `gh auth login` — команду, которая при протоколе https ставит credential helper и НЕ
-# ставит ssh-ключ. Человек выполнял её, ничего не менялось, цикл замыкался.
-printf '\nfraim publish (транспорт)\n'
+# ------------------------------------------------- transport: key versus login
+# A finding from real use. The address was ssh, there was no ssh key on the machine, gh was authorized
+# over https. Pushing failed with `Permission denied (publickey)`, the hint suggested
+# `gh auth login` — a command that with the https protocol installs a credential helper and does NOT
+# install an ssh key. The human ran it, nothing changed, the loop closed.
+printf '\nfraim publish (transport)\n'
 
-# Окружение вокруг тестов может само переписывать ssh-адреса GitHub в https своими
-# url.insteadOf — так делает, например, прокси в облачной сессии. Рельсы ниже проверяют
-# НАШЕ решение, а не чужую подстановку, поэтому на время блока внешняя конфигурация git
-# выключается: иначе `git remote add git@github.com:…` молча становится https-адресом и
-# проверять оказывается нечего.
+# The environment around the tests may itself rewrite GitHub ssh addresses into https with its own
+# url.insteadOf — a proxy in a cloud session does this, for example. The rails below check
+# OUR decision, not someone else's substitution, so for the duration of the block the external git config
+# is turned off: otherwise `git remote add git@github.com:…` silently becomes an https address and
+# there is nothing left to check.
 GITCFG_SAVED=${GIT_CONFIG_COUNT:-}
 GIT_CONFIG_COUNT=0; export GIT_CONFIG_COUNT
 
@@ -1443,11 +1443,11 @@ CONV=$(sh -c "$PUBLIB"'
     for u in git@github.com:me/proj.git ssh://git@gitlab.com/g/p.git https://github.com/a/b.git; do
         printf "%s " "$(publish_ssh_to_https "$u" || printf -- -)"
     done')
-check "ssh-адрес переводится в https без потери хоста" "$CONV" \
+check "ssh address converts to https without losing the host" "$CONV" \
       "https://github.com/me/proj.git https://gitlab.com/g/p.git - "
 
-# Отказ по ключу — это ответ хоста, а не молчание сети: их чинят разными руками, и
-# только одно из двух чиним мы. Фальшивый ssh даёт ровно ту строку, что и настоящий.
+# A key refusal is the host's answer, not network silence: they are fixed by different hands, and
+# only one of the two is fixed by us. The fake ssh gives exactly the same line as the real one.
 FAKESSH="$SANDBOX/fake-ssh"
 printf '#!/bin/sh\nprintf "git@github.com: Permission denied (publickey).\\n" >&2\nexit 255\n' > "$FAKESSH"
 chmod +x "$FAKESSH"
@@ -1459,19 +1459,19 @@ git -C "$PUBT" remote add origin git@github.com:modehustle/crypto_trade.git
 
 HOSTST=$(GIT_SSH_COMMAND="$FAKESSH" sh -c "$PUBLIB"'
     publish_host_state "'"$PUBT"'" master; printf "%s\n" "$PUB_HOST"')
-check "отказ по ключу — это denied, а не unreachable" "$HOSTST" "denied"
+check "key refusal is denied, not unreachable" "$HOSTST" "denied"
 
-# Без gh транспорт не переключается и ремоут не трогается: подменять чужой адрес там,
-# где вход всё равно неоткуда взять, значит менять один тупик на другой.
+# Without gh the transport is not switched and the remote is not touched: replacing someone's address where
+# there is nowhere to get a login anyway means trading one dead end for another.
 mkdir -p "$SANDBOX/nobin"
 NOGH=$(PATH="$SANDBOX/nobin:/usr/bin:/bin" sh -c "$PUBLIB"'
     publish_transport_https "'"$PUBT"'" >/dev/null 2>&1 && printf yes || printf no')
-check "без gh транспорт не подменяется" "$NOGH" "no"
-check "и адрес остался тем, что дал человек" \
+check "without gh the transport is not swapped" "$NOGH" "no"
+check "and the address stayed what the human gave" \
       "$(git -C "$PUBT" remote get-url origin)" "git@github.com:modehustle/crypto_trade.git"
 
-# С авторизованным gh и настроенным логином к https адрес переключается — тот же
-# репозиторий, другой транспорт.
+# With an authorized gh and a login configured for https the address switches — same
+# repository, different transport.
 STUB="$SANDBOX/stubbin"
 mkdir -p "$STUB"
 cat > "$STUB/gh" <<'GHSTUB'
@@ -1488,29 +1488,29 @@ chmod +x "$STUB/gh"
 git config --global credential."https://github.com".helper "!gh auth git-credential"
 SWITCHED=$(PATH="$STUB:$PATH" sh -c "$PUBLIB"'
     publish_transport_https "'"$PUBT"'" >/dev/null 2>&1 && printf yes || printf no')
-check "с gh и логином к https транспорт переключается" "$SWITCHED" "yes"
-check "адрес стал https того же репозитория" \
+check "with gh and an https login the transport switches" "$SWITCHED" "yes"
+check "address became https of the same repository" \
       "$(git -C "$PUBT" remote get-url origin)" "https://github.com/modehustle/crypto_trade.git"
 
-# Подсказка обязана называть действие, которое работает. `gh auth login` ssh-ключа не
-# ставит — этой строки здесь больше нет и быть не должно.
+# The hint must name an action that works. `gh auth login` does not install an ssh
+# key — that line is no longer here and must not be.
 HINT=$(sh -c "$PUBLIB"'
     publish_push_hint "git@github.com: Permission denied (publickey)." \
         "git@github.com:me/proj.git" 2>&1')
-check "подсказка даёт готовый https-адрес" \
+check "hint gives a ready https address" \
       "$(printf '%s' "$HINT" | grep -c 'publish --url https://github.com/me/proj.git')" "1"
-check "подсказка даёт и второй выход — ключ на хост" \
+check "hint gives a second way out too — a key on the host" \
       "$(printf '%s' "$HINT" | grep -c 'ssh-keygen')" "1"
-# Строка ищется среди КОДА, а не среди комментариев: в комментарии рядом с починкой
-# старый текст цитируется нарочно — иначе через полгода никто не вспомнит, почему здесь
-# стоит рельс.
+# The string is searched for among CODE, not comments: in the comment next to the fix
+# the old text is quoted on purpose — otherwise in half a year nobody will remember why the rail
+# is here.
 BADHINT=$(grep -vE '^[[:space:]]*#' "$REPO/installer/lib/publish.sh" | grep -cF 'это чинит' || true)
-check "подсказка больше не лечит ssh через gh auth login" "$BADHINT" "0"
+check "hint no longer treats ssh with gh auth login" "$BADHINT" "0"
 
-# И весь путь целиком, ровно как у владельца: адрес ssh, ключа нет, gh авторизован по
-# https. Фальшивый ssh отказывает так же, как настоящий; «хост» — локальный голый
-# репозиторий, подставленный под https-адрес через url.insteadOf. Отправка обязана
-# доехать сама, без второго захода человека.
+# And the whole path end to end, exactly as the owner had it: ssh address, no key, gh authorized over
+# https. The fake ssh refuses just like the real one; the «host» is a local bare
+# repository substituted for the https address via url.insteadOf. The push must
+# get through by itself, without a second attempt by the human.
 PUBE="$SANDBOX/pube2e"
 mkdir -p "$PUBE"
 git init -q --bare "$SANDBOX/pube2e-host.git"
@@ -1519,38 +1519,38 @@ cd "$PUBE" || exit 1
 "$FRAIM" scaffold >/dev/null 2>&1
 git -C "$PUBE" remote add origin git@github.com:me/e2e.git
 OUT=$(PATH="$STUB:$PATH" GIT_SSH_COMMAND="$FAKESSH" "$FRAIM" publish --yes 2>&1); RC=$?
-check "отказ по ключу не останавливает публикацию" "$RC" "0"
-check "переключение названо вслух, а не сделано молча" \
+check "key refusal does not stop publishing" "$RC" "0"
+check "switch is announced, not done silently" \
       "$(printf '%s' "$OUT" | grep -c 'адрес переключён на https')" "1"
-check "история доехала до хоста" \
+check "history reached the host" \
       "$(git -C "$SANDBOX/pube2e-host.git" log --oneline 2>/dev/null | wc -l | tr -d ' ')" "1"
-check "и сверка с хостом сошлась" \
+check "and reconciliation with the host matched" \
       "$(printf '%s' "$OUT" | grep -c 'на хосте лежит ровно то, что здесь')" "1"
 git config --global --unset url."$SANDBOX/pube2e-host.git".insteadOf
 
 if [ -n "$GITCFG_SAVED" ]; then GIT_CONFIG_COUNT=$GITCFG_SAVED; else unset GIT_CONFIG_COUNT; fi
 cd "$SANDBOX" || exit 1
 
-# Рельс: publish отправляет то, что уже сохранено, и ничего не сохраняет сам. Стоит
-# появиться `git add` в этом модуле — и глагол начнёт решать, что забрать в историю,
-# то есть ровно то, чего в системе не делает ни один глагол (B6).
+# Rail: publish sends what is already saved, and saves nothing itself. Should
+# `git add` appear in this module — the verb would start deciding what to take into history,
+# which is exactly what no verb in the system does (B6).
 ADDS=$(grep -vE '^[[:space:]]*#' "$REPO/installer/lib/publish.sh" |
        grep -cE 'git (-C [^ ]+ )?(add|commit)' || true)
-check "publish ничего не коммитит сам" "$ADDS" "0"
+check "publish commits nothing itself" "$ADDS" "0"
 
-# Сторож называет команду, а не голый git: пользователю обещано, что ни одна процедура
-# не попросит его выполнить git-команду.
-check "сторож зовёт fraim publish, а не git push" \
+# The watchman names the command, not bare git: the user was promised that no procedure
+# will ask them to run a git command.
+check "watchman calls fraim publish, not git push" \
       "$(grep -c 'wm_add remote .*git push' "$REPO/installer/lib/watchman.sh" || true)" "0"
 
 # ---------------------------------------------------------------- install.sh
-printf '\ninstall.sh (обновление и смена ветки)\n'
+printf '\ninstall.sh (update and branch switch)\n'
 
-# Клон делается с --depth 1 --branch, а это подразумевает --single-branch: refspec
-# упоминает только main. Поэтому документированный способ проверить неслитую ветку —
-# FRAIM_BRANCH=… sh install.sh — фетчил коммиты в FETCH_HEAD и падал на checkout
-# «pathspec did not match» на каждой машине, где fraim уже стоял. Рельс держит именно
-# этот путь: он документирован в README, значит он обязан работать.
+# The clone is made with --depth 1 --branch, which implies --single-branch: the refspec
+# mentions only main. So the documented way to try an unmerged branch —
+# FRAIM_BRANCH=… sh install.sh — fetched commits into FETCH_HEAD and failed on checkout
+# «pathspec did not match» on every machine where fraim was already installed. The rail holds exactly
+# this path: it is documented in README, so it must work.
 IREPO="$SANDBOX/origin.git"
 IWORK="$SANDBOX/iwork"
 git init -q --bare "$IREPO"
@@ -1566,26 +1566,26 @@ IHOME="$SANDBOX/ihome"
 mkdir -p "$IHOME"
 FRAIM_HOME="$IHOME" FRAIM_REPO="file://$IREPO" FRAIM_BRANCH=main FRAIM_BIN_DIR="$IHOME/bin" \
     sh "$REPO/installer/install.sh" >/dev/null 2>&1
-check "install: первый клон встал на main" "$(sh "$IHOME/src/installer/bin/fraim")" "main"
+check "install: first clone landed on main" "$(sh "$IHOME/src/installer/bin/fraim")" "main"
 
 FRAIM_HOME="$IHOME" FRAIM_REPO="file://$IREPO" FRAIM_BRANCH=try/unmerged FRAIM_BIN_DIR="$IHOME/bin" \
     sh "$REPO/installer/install.sh" >/dev/null 2>&1
-check "install: переход на неслитую ветку" "$(sh "$IHOME/src/installer/bin/fraim")" "unmerged"
+check "install: switch to an unmerged branch" "$(sh "$IHOME/src/installer/bin/fraim")" "unmerged"
 
 FRAIM_HOME="$IHOME" FRAIM_REPO="file://$IREPO" FRAIM_BRANCH=main FRAIM_BIN_DIR="$IHOME/bin" \
     sh "$REPO/installer/install.sh" >/dev/null 2>&1
-check "install: возврат на main" "$(sh "$IHOME/src/installer/bin/fraim")" "main"
+check "install: back to main" "$(sh "$IHOME/src/installer/bin/fraim")" "main"
 
 cd "$PROJ2" || exit 1
 
 # ---------------------------------------------------------------- registry
-printf '\nfraim projects (реестр)\n'
+printf '\nfraim projects (registry)\n'
 
 "$FRAIM" projects add "$PROJ" >/dev/null 2>&1
 "$FRAIM" projects add "$PROJ" >/dev/null 2>&1
-check "add идемпотентен" "$("$FRAIM" projects 2>/dev/null | grep -cx "  $PROJ")" "1"
+check "add is idempotent" "$("$FRAIM" projects 2>/dev/null | grep -cx "  $PROJ")" "1"
 "$FRAIM" projects rm "$PROJ" >/dev/null 2>&1
-check "rm убирает запись" "$("$FRAIM" projects 2>/dev/null | grep -cx "  $PROJ")" "0"
+check "rm removes the entry" "$("$FRAIM" projects 2>/dev/null | grep -cx "  $PROJ")" "0"
 
 # ---------------------------------------------------------------- init
 printf '\nfraim init\n'
@@ -1594,25 +1594,25 @@ mkdir -p "$HOME/.codex" "$HOME/.claude"     # pretend two harnesses are installe
 # Antigravity is detected by ~/.gemini/config, not by ~/.gemini: the bare directory
 # belongs to Gemini CLI, which is a different product sharing the same home.
 mkdir -p "$HOME/.gemini"
-# PATH урезан до системных: agy/orca-ide/pi/devin с машины разработчика не должны
-# влиять на то, какие харнесы детектируются в песочнице — детект здесь по каталогам.
+# PATH is trimmed to system dirs: agy/orca-ide/pi/devin from the developer's machine must not
+# affect which harnesses are detected in the sandbox — detection here is by directories.
 SANDBOX_PATH="/usr/bin:/bin"
 cd "$PROJ" || exit 1
 env PATH="$SANDBOX_PATH" "$FRAIM" init >/dev/null 2>&1
-check "голый ~/.gemini — это не Antigravity" \
+check "bare ~/.gemini is not Antigravity" \
     "$([ -d "$HOME/.gemini/config/skills" ] && echo yes || echo no)" "no"
 mkdir -p "$HOME/.gemini/config"
 env PATH="$SANDBOX_PATH" "$FRAIM" init >/dev/null 2>&1
-check "init завершился успешно" "$?" "0"
-check "Codex: 12 скиллов" "$(find "$HOME/.codex/skills" -name SKILL.md 2>/dev/null | wc -l | tr -d ' ')" "12"
-check "Claude Code: 12 скиллов" "$(find "$HOME/.claude/skills" -name SKILL.md 2>/dev/null | wc -l | tr -d ' ')" "12"
-check "Antigravity: 12 скиллов" "$(find "$HOME/.gemini/config/skills" -name SKILL.md 2>/dev/null | wc -l | tr -d ' ')" "12"
-check "контекстный блок в ~/.codex/AGENTS.md" "$(grep -c 'fraim:begin' "$HOME/.codex/AGENTS.md" 2>/dev/null)" "1"
-check "контекстный блок в ~/.gemini/AGENTS.md" "$(grep -c 'fraim:begin' "$HOME/.gemini/AGENTS.md" 2>/dev/null)" "1"
-check "GEMINI.md чужой — мы в него не пишем" \
+check "init succeeded" "$?" "0"
+check "Codex: 12 skills" "$(find "$HOME/.codex/skills" -name SKILL.md 2>/dev/null | wc -l | tr -d ' ')" "12"
+check "Claude Code: 12 skills" "$(find "$HOME/.claude/skills" -name SKILL.md 2>/dev/null | wc -l | tr -d ' ')" "12"
+check "Antigravity: 12 skills" "$(find "$HOME/.gemini/config/skills" -name SKILL.md 2>/dev/null | wc -l | tr -d ' ')" "12"
+check "context block in ~/.codex/AGENTS.md" "$(grep -c 'fraim:begin' "$HOME/.codex/AGENTS.md" 2>/dev/null)" "1"
+check "context block in ~/.gemini/AGENTS.md" "$(grep -c 'fraim:begin' "$HOME/.gemini/AGENTS.md" 2>/dev/null)" "1"
+check "GEMINI.md is not ours — we do not write to it" \
     "$([ -f "$HOME/.gemini/GEMINI.md" ] && echo yes || echo no)" "no"
-check "проект зарегистрирован" "$("$FRAIM" projects 2>/dev/null | grep -cx "  $PROJ")" "1"
-check "разрешение Bash(fraim:*) прописано" "$(grep -c 'Bash(fraim' "$HOME/.claude/settings.json" 2>/dev/null)" "1"
+check "project registered" "$("$FRAIM" projects 2>/dev/null | grep -cx "  $PROJ")" "1"
+check "Bash(fraim:*) permission configured" "$(grep -c 'Bash(fraim' "$HOME/.claude/settings.json" 2>/dev/null)" "1"
 
 # Idempotence is the whole update story: init is also update.
 H1=$(find "$HOME/.codex/skills" -type f | sort | xargs md5sum | md5sum)
@@ -1620,26 +1620,26 @@ A1=$(md5sum < "$HOME/.codex/AGENTS.md")
 "$FRAIM" init >/dev/null 2>&1
 H2=$(find "$HOME/.codex/skills" -type f | sort | xargs md5sum | md5sum)
 A2=$(md5sum < "$HOME/.codex/AGENTS.md")
-check "повторный init не меняет скиллы" "$H1" "$H2"
-check "повторный init не дублирует блок" "$A1" "$A2"
+check "repeated init does not change skills" "$H1" "$H2"
+check "repeated init does not duplicate the block" "$A1" "$A2"
 
 # A skill we own that vanished upstream must be swept; the user's own must not.
 mkdir -p "$HOME/.codex/skills/obsolete" "$HOME/.codex/skills/mine"
 printf -- '---\nname: obsolete\ndescription: "x"\nmetadata:\n  source: fraim\n---\n' > "$HOME/.codex/skills/obsolete/SKILL.md"
 printf -- '---\nname: mine\ndescription: "x"\n---\n' > "$HOME/.codex/skills/mine/SKILL.md"
 "$FRAIM" init >/dev/null 2>&1
-check "устаревший наш скилл удалён" "$([ -d "$HOME/.codex/skills/obsolete" ] && echo yes || echo no)" "no"
-check "чужой скилл не тронут" "$([ -d "$HOME/.codex/skills/mine" ] && echo yes || echo no)" "yes"
+check "our obsolete skill removed" "$([ -d "$HOME/.codex/skills/obsolete" ] && echo yes || echo no)" "no"
+check "foreign skill untouched" "$([ -d "$HOME/.codex/skills/mine" ] && echo yes || echo no)" "yes"
 
 "$FRAIM" doctor >/dev/null 2>&1
-check "doctor завершился успешно" "$?" "0"
+check "doctor succeeded" "$?" "0"
 "$FRAIM" show orient 2>/dev/null | head -1 | grep -q -- '---'
-check "show печатает процедуру" "$?" "0"
+check "show prints a procedure" "$?" "0"
 
-# ---------------------------------------------------------------- обновление
-printf '\nfraim update (обновление)\n'
+# ---------------------------------------------------------------- update
+printf '\nfraim update (update)\n'
 
-# «Хостом» служит локальный bare-репозиторий: сети здесь нет и не должно быть.
+# A local bare repository serves as the «host»: there is no network here and there must not be.
 UPHOST="$SANDBOX/uphost.git"
 UPSRC="$SANDBOX/upsrc"
 git init -q --bare "$UPHOST"
@@ -1652,99 +1652,99 @@ git -C "$SANDBOX/upseed" add -A >/dev/null 2>&1
 git -C "$SANDBOX/upseed" commit -qm init >/dev/null 2>&1
 git -C "$SANDBOX/upseed" branch -M main >/dev/null 2>&1
 git -C "$SANDBOX/upseed" push -q "$UPHOST" main >/dev/null 2>&1
-# `git init --bare` ставит HEAD на master; без этого клон приезжает без рабочей копии
-# и без HEAD — и тогда мы проверяли бы не то, что думаем.
+# `git init --bare` sets HEAD to master; without this the clone arrives without a working copy
+# and without HEAD — and then we would be testing something other than what we think.
 git -C "$UPHOST" symbolic-ref HEAD refs/heads/main
 git clone -q "$UPHOST" "$UPSRC" >/dev/null 2>&1
 
 UPLIB='. "'"$REPO"'/installer/lib/core.sh"; . "'"$REPO"'/installer/lib/config.sh"
     . "'"$REPO"'/installer/lib/update.sh"; . "'"$REPO"'/installer/lib/ade.sh"; . "'"$REPO"'/installer/lib/watchman.sh"'
 
-# Проверка ходит в сеть и записывает вердикт в кэш.
+# The check goes to the network and writes the verdict to the cache.
 sh -c "FRAIM_ROOT='$UPSRC' $UPLIB"'; update_probe' >/dev/null 2>&1
-check "проверка удалась → в кэше состояние" "$(awk '{print $4}' "$FRAIM_HOME/update-check")" "current"
+check "check succeeded → state in the cache" "$(awk '{print $4}' "$FRAIM_HOME/update-check")" "current"
 
 printf 'more\n' >> "$SANDBOX/upseed/procedures/orient.md"
 git -C "$SANDBOX/upseed" commit -aqm second >/dev/null 2>&1
 git -C "$SANDBOX/upseed" push -q "$UPHOST" main >/dev/null 2>&1
 sh -c "FRAIM_ROOT='$UPSRC' $UPLIB"'; update_probe' >/dev/null 2>&1
-check "хост ушёл вперёд → behind" "$(awk '{print $4}' "$FRAIM_HOME/update-check")" "behind"
+check "host moved ahead → behind" "$(awk '{print $4}' "$FRAIM_HOME/update-check")" "behind"
 sh -c "FRAIM_ROOT='$UPSRC' $UPLIB"'; update_line' | grep -q 'fraim update'
-check "строка называет команду, которой чинить" "$?" "0"
+check "the line names the command that fixes it" "$?" "0"
 
-# Копия впереди хоста — это не отставание. У того, кто правит систему у себя, sha не
-# совпадает с хостовым постоянно, и звать его обновляться значило бы врать.
+# A copy ahead of the host is not lag. For someone who edits the system locally the sha
+# constantly differs from the host's, and telling them to update would be lying.
 git -C "$UPSRC" config user.email t@t; git -C "$UPSRC" config user.name t
 git -C "$UPSRC" pull -q origin main >/dev/null 2>&1
 printf 'mine\n' >> "$UPSRC/procedures/orient.md"
 git -C "$UPSRC" commit -aqm "своя правка" >/dev/null 2>&1
 sh -c "FRAIM_ROOT='$UPSRC' $UPLIB"'; update_probe' >/dev/null 2>&1
-check "локальная копия впереди → ahead, а не behind" "$(awk '{print $4}' "$FRAIM_HOME/update-check")" "ahead"
+check "local copy ahead → ahead, not behind" "$(awk '{print $4}' "$FRAIM_HOME/update-check")" "ahead"
 UPF=$(sh -c "$UPLIB"'; WM_FINDINGS=; wm_check_update; printf "%s" "$WM_FINDINGS"')
-check "и сторож про неё молчит" "${UPF:-empty}" "empty"
+check "and the watchman is silent about it" "${UPF:-empty}" "empty"
 git -C "$UPSRC" reset -q --hard origin/main >/dev/null 2>&1
 
-# Обновление правит `~/.fraim/src`, и только его. Запуск из dev-копии обязан сказать
-# это вслух, а не обновить молча чужой каталог.
+# Update edits `~/.fraim/src`, and only that. Running from a dev copy must say
+# so out loud, not silently update someone else's directory.
 sh -c "FRAIM_ROOT='$UPSRC' $UPLIB"'; update_apply' >/dev/null 2>&1
-check "запуск не из ~/.fraim/src обновлять отказывается" "$?" "1"
+check "running not from ~/.fraim/src refuses to update" "$?" "1"
 sh -c "FRAIM_ROOT='$UPSRC' $UPLIB"'; update_apply' 2>&1 | grep -q "$FRAIM_HOME/src"
-check "и называет каталог, который обновляется" "$?" "0"
+check "and names the directory being updated" "$?" "0"
 
-# Недоступный хост — это «неизвестно», а не «всё хорошо»: молчание сети не должно
-# выглядеть как здоровье (D1).
+# An unreachable host is «unknown», not «all good»: network silence must not
+# look like health (D1).
 git -C "$UPSRC" remote set-url origin "$SANDBOX/нет-такого.git"
 sh -c "FRAIM_ROOT='$UPSRC' $UPLIB"'; update_probe' >/dev/null 2>&1
-check "хост не ответил → unknown, а не current" "$(awk '{print $4}' "$FRAIM_HOME/update-check")" "unknown"
+check "host did not answer → unknown, not current" "$(awk '{print $4}' "$FRAIM_HOME/update-check")" "unknown"
 git -C "$UPSRC" remote set-url origin "$UPHOST"
 
-# Сторож читает КЭШ и не ходит в сеть: это его контракт (SCHEDULING.md, слой 1).
+# The watchman reads the CACHE and does not go to the network: that is its contract (SCHEDULING.md, layer 1).
 NETCALL=$(sed -n '/^wm_check_update() {/,/^}/p' "$REPO/installer/lib/watchman.sh" | grep -c 'git \|curl\|ls-remote' || true)
-check "сторож про обновления в сеть не ходит" "$NETCALL" "0"
+check "watchman does not go to the network for updates" "$NETCALL" "0"
 
 printf '%s %s %s behind\n' "$(date +%s)" aaaaaaa bbbbbbb > "$FRAIM_HOME/update-check"
 UPF=$(sh -c "$UPLIB"'; WM_FINDINGS=; wm_check_update; printf "%s" "$WM_FINDINGS"')
 printf '%s' "$UPF" | grep -q '^system-update	info'
-check "отставшая версия — находка, и она info" "$?" "0"
+check "outdated version is a finding, and it is info" "$?" "0"
 printf '%s %s %s current\n' "$(date +%s)" aaaaaaa aaaaaaa > "$FRAIM_HOME/update-check"
 UPF=$(sh -c "$UPLIB"'; WM_FINDINGS=; wm_check_update; printf "%s" "$WM_FINDINGS"')
-check "свежая версия — молчание" "${UPF:-empty}" "empty"
+check "fresh version — silence" "${UPF:-empty}" "empty"
 
-# Находка машинная, а не проектная: она не может испортить вердикт по проекту.
+# The finding is a machine one, not a project one: it cannot spoil the project verdict.
 printf '%s %s %s behind\n' "$(date +%s)" aaaaaaa bbbbbbb > "$FRAIM_HOME/update-check"
 "$FRAIM" status "$SANDBOX/proj" >/dev/null 2>&1
 UPRC=$?
 "$FRAIM" status "$SANDBOX/proj" --json 2>/dev/null | grep -q '"id": "system-update"'
-check "обновление видно в вердикте проекта" "$?" "0"
-check "и не поднимает его severity" "$UPRC" "$(printf '%s %s %s current\n' "$(date +%s)" a a > "$FRAIM_HOME/update-check"; "$FRAIM" status "$SANDBOX/proj" >/dev/null 2>&1; echo $?)"
+check "update visible in the project verdict" "$?" "0"
+check "and does not raise its severity" "$UPRC" "$(printf '%s %s %s current\n' "$(date +%s)" a a > "$FRAIM_HOME/update-check"; "$FRAIM" status "$SANDBOX/proj" >/dev/null 2>&1; echo $?)"
 
-# Выключаемо, как всякая проверка сторожа.
+# Can be turned off, like any watchman check.
 printf '%s %s %s behind\n' "$(date +%s)" aaaaaaa bbbbbbb > "$FRAIM_HOME/update-check"
 "$FRAIM" config set --machine check_update off >/dev/null 2>&1
 "$FRAIM" status "$SANDBOX/proj" --json 2>/dev/null | grep -q '"id": "system-update"'
-check "check_update off — находки нет" "$?" "1"
+check "check_update off — no finding" "$?" "1"
 "$FRAIM" config set --machine check_update on >/dev/null 2>&1
 
-# Кэш протухает по настройке, а не по вкусу.
+# The cache goes stale by a setting, not by taste.
 printf '%s %s %s current\n' "$(( $(date +%s) - 100 ))" a a > "$FRAIM_HOME/update-check"
 sh -c "$UPLIB"'; update_cache_stale'
-check "свежий кэш не протух" "$?" "1"
+check "fresh cache not stale" "$?" "1"
 printf '%s %s %s current\n' "$(( $(date +%s) - 200000 ))" a a > "$FRAIM_HOME/update-check"
 sh -c "$UPLIB"'; update_cache_stale'
-check "кэш старше update_check_days протух" "$?" "0"
+check "cache older than update_check_days is stale" "$?" "0"
 
-# Копия, разложенная руками, обновлению не подлежит — и говорит об этом, а не молчит.
+# A copy laid out by hand is not subject to update — and says so rather than staying silent.
 mkdir -p "$SANDBOX/handmade/procedures"
 sh -c "FRAIM_ROOT='$SANDBOX/handmade' $UPLIB"'; update_src_is_clone'
-check "не git-клон источником обновления не считается" "$?" "1"
+check "a non-git clone is not an update source" "$?" "1"
 
 rm -f "$FRAIM_HOME/update-check"
 
-# ---------------------------------------------------------------- флот
-printf '\nфлот: чекауты и среда исполнения\n'
+# ---------------------------------------------------------------- fleet
+printf '\nfleet: checkouts and execution environment\n'
 
-# Проект с двумя чекаутами: в основном одна карточка на доске, в соседнем — две. До этого
-# модуля сторож второго чекаута не видел вовсе.
+# A project with two checkouts: one card on the board in the main one, two in the sibling. Before this
+# module the watchman did not see the second checkout at all.
 FLEET="$SANDBOX/fleetproj"
 mkdir -p "$FLEET/ai/tasks"
 git -C "$FLEET" init -q
@@ -1757,20 +1757,20 @@ printf -- '---\nkind: task\ncreated: 2026-01-01\n---\n# R\n' > "$SANDBOX/wt-rate
 
 FJ=$("$FRAIM" status "$FLEET" --json 2>/dev/null || true)
 printf '%s' "$FJ" | grep -q '"id": "worktree"'
-check "параллельный чекаут виден в вердикте" "$?" "0"
+check "parallel checkout visible in the verdict" "$?" "0"
 
-# Реестр чекаутов ведёт git, а не среда: ответ тот же, когда среды на машине нет вовсе.
-# PATH урезан до системных: на машине разработчика может стоять настоящий orca-ide,
-# и унаследованный PATH подсунет его проверке «среды нет».
+# The checkout registry is kept by git, not by the environment: the answer is the same when there is no environment on the machine at all.
+# PATH is trimmed to system dirs: the developer's machine may have a real orca-ide,
+# and an inherited PATH would slip it into the «no environment» check.
 FLJ=$(env PATH="/usr/bin:/bin" "$FRAIM" fleet "$FLEET" --json 2>/dev/null || true)
-check "fleet перечисляет оба чекаута" "$(printf '%s' "$FLJ" | grep -c '"path"')" "2"
+check "fleet lists both checkouts" "$(printf '%s' "$FLJ" | grep -c '"path"')" "2"
 printf '%s' "$FLJ" | grep -q '"path": ".*wt-rate-limit", "current": false, "open_tasks": 2'
-check "и считает доску каждого" "$?" "0"
-check "без среды раздел про неё пуст" "$(printf '%s' "$FLJ" | grep -c '"key": "orca"')" "0"
+check "and counts each one's board" "$?" "0"
+check "without an environment its section is empty" "$(printf '%s' "$FLJ" | grep -c '"key": "orca"')" "0"
 
-# --- среда исполнения -------------------------------------------------------
-# Стаб вместо Orca: у нас её нет и в CI не будет, а зависим мы не от установленной
-# программы, а от ФОРМЫ её ответа. Сломается контракт — упадёт тест, а не пользователь.
+# --- execution environment ---------------------------------------------------
+# A stub instead of Orca: we do not have it and CI never will, and we depend not on the installed
+# program but on the SHAPE of its answer. If the contract breaks, the test fails, not the user.
 ADEBIN="$SANDBOX/adebin"; mkdir -p "$ADEBIN"
 cat > "$ADEBIN/orca-ide" <<'STUB'
 #!/bin/sh
@@ -1785,26 +1785,26 @@ chmod +x "$ADEBIN/orca-ide"
 ADEENV="PATH=$ADEBIN:$PATH STUB_REPO=$FLEET"
 AJ=$(env PATH="$ADEBIN:$PATH" STUB_REPO="$FLEET" "$FRAIM" status "$FLEET" --json 2>/dev/null || true)
 printf '%s' "$AJ" | grep -q '"id": "ade-automation"'
-check "свободный промпт по расписанию — находка" "$?" "0"
+check "free-form scheduled prompt is a finding" "$?" "0"
 printf '%s' "$AJ" | grep -q '"id": "ade-automation", "severity": "info"'
-check "и она info: это чужая среда, мы её не запрещаем" "$?" "0"
+check "and it is info: a foreign environment, we do not forbid it" "$?" "0"
 
-# Сторож по расписанию — это слой 2 SCHEDULING.md, а не находка.
+# A scheduled watchman is layer 2 of SCHEDULING.md, not a finding.
 AJ2=$(env PATH="$ADEBIN:$PATH" STUB_REPO="$FLEET" STUB_PROMPT="fraim status" \
         "$FRAIM" status "$FLEET" --json 2>/dev/null || true)
-check "запланированный сторож находкой не становится" "$(printf '%s' "$AJ2" | grep -c 'ade-automation')" "0"
+check "scheduled watchman does not become a finding" "$(printf '%s' "$AJ2" | grep -c 'ade-automation')" "0"
 
-# Рантайм не отвечает — молчание: запущен он или нет, решает человек (C1).
+# The runtime does not answer — silence: whether it is running or not is the human's call (C1).
 AJ3=$(env PATH="$ADEBIN:$PATH" STUB_REPO="$FLEET" STUB_DEAD=1 \
         "$FRAIM" status "$FLEET" --json 2>/dev/null || true)
-check "закрытый рантайм не порождает находок" "$(printf '%s' "$AJ3" | grep -c 'ade-automation')" "0"
+check "closed runtime produces no findings" "$(printf '%s' "$AJ3" | grep -c 'ade-automation')" "0"
 FLJ2=$(env PATH="$ADEBIN:$PATH" STUB_REPO="$FLEET" STUB_DEAD=1 "$FRAIM" fleet "$FLEET" --json 2>/dev/null || true)
 printf '%s' "$FLJ2" | grep -q '"alive": false'
-check "но fleet честно говорит, что он не отвечает" "$?" "0"
+check "but fleet honestly says it does not answer" "$?" "0"
 
-# Ловушка имени: на Linux голый `orca` — это программа чтения с экрана GNOME, и её
-# запуск включает синтез речи на машине человека. Проверяем не «мы выбрали другое имя»,
-# а «мы её не позвали»: подсадной orca оставляет след, которого быть не должно.
+# Name trap: on Linux a bare `orca` is the GNOME screen reader, and
+# launching it turns on speech synthesis on the human's machine. We check not «we picked another name»,
+# but «we did not call it»: a decoy orca leaves a trace that must not be there.
 cat > "$ADEBIN/orca" <<STUB
 #!/bin/sh
 printf 'spoke\n' > "$SANDBOX/screen-reader-ran"
@@ -1812,46 +1812,46 @@ STUB
 chmod +x "$ADEBIN/orca"
 rm -f "$SANDBOX/screen-reader-ran"
 env PATH="$ADEBIN:$PATH" STUB_REPO="$FLEET" "$FRAIM" fleet "$FLEET" >/dev/null 2>&1 || true
-check "голый orca на Linux не запускается" "$([ -f "$SANDBOX/screen-reader-ran" ] && echo ran || echo silent)" "silent"
+check "bare orca on Linux is not launched" "$([ -f "$SANDBOX/screen-reader-ran" ] && echo ran || echo silent)" "silent"
 
-# И проверка живости выбирает безопасное имя, а не первое попавшееся.
+# And the liveness check picks the safe name, not the first one that comes along.
 rm -f "$ADEBIN/orca-ide"
-# PATH урезан так же, как выше: настоящий orca-ide с машины разработчика не считается.
+# PATH is trimmed the same as above: a real orca-ide from the developer's machine does not count.
 env PATH="$ADEBIN:/usr/bin:/bin" "$FRAIM" fleet "$FLEET" --json 2>/dev/null | grep -q '"key": "orca"'
-check "без orca-ide среда на Linux не считается найденной" "$?" "1"
-check "и подсадной orca всё ещё молчит" "$([ -f "$SANDBOX/screen-reader-ran" ] && echo ran || echo silent)" "silent"
+check "without orca-ide the environment on Linux is not considered found" "$?" "1"
+check "and the decoy orca is still silent" "$([ -f "$SANDBOX/screen-reader-ran" ] && echo ran || echo silent)" "silent"
 rm -f "$ADEBIN/orca"
 
-# Обе проверки выключаемы, как всякая проверка сторожа.
+# Both checks can be turned off, like any watchman check.
 "$FRAIM" config set --machine check_worktrees off >/dev/null 2>&1
 "$FRAIM" status "$FLEET" --json 2>/dev/null | grep -q '"id": "worktree'
-check "check_worktrees off — находок про чекауты нет" "$?" "1"
+check "check_worktrees off — no checkout findings" "$?" "1"
 "$FRAIM" config set --machine check_worktrees on >/dev/null 2>&1
 "$FRAIM" config set --machine check_ade off >/dev/null 2>&1
 env PATH="$ADEBIN:$PATH" STUB_REPO="$FLEET" "$FRAIM" status "$FLEET" --json 2>/dev/null | grep -q 'ade-automation'
-check "check_ade off — находок про среду нет" "$?" "1"
+check "check_ade off — no environment findings" "$?" "1"
 "$FRAIM" config set --machine check_ade on >/dev/null 2>&1
 
-# Контракт сторожа: ни сети, ни модели. Спрашиваем локальный рантайм и читаем git.
+# The watchman's contract: no network, no model. We ask the local runtime and read git.
 NETADE=$(grep -c 'curl\|wget\|https\?://' "$REPO/installer/lib/ade.sh" || true)
-check "модуль среды в сеть не ходит" "$NETADE" "0"
+check "environment module does not go to the network" "$NETADE" "0"
 
-# Рельс: библиотека, положенная в lib/ и не подключённая в bin/fraim, ломается не сразу
-# и не там. Так уже вышло с ade.sh — упал тест меню, а не тот, что её добавил.
+# Rail: a library put in lib/ and not sourced in bin/fraim breaks not right away
+# and not there. That already happened with ade.sh — the menu test failed, not the one that added it.
 UNWIRED=""
 for _l in "$REPO"/installer/lib/*.sh; do
     _n=$(basename "$_l")
     grep -q "_libdir/$_n" "$REPO/installer/bin/fraim" || UNWIRED="$UNWIRED $_n"
 done
-check "каждая библиотека подключена в диспетчере" "${UNWIRED:-clean}" "clean"
+check "every library is sourced in the dispatcher" "${UNWIRED:-clean}" "clean"
 
-# ------------------------------------------------- запуск воркера флота
-printf '\nфлот: жизненный цикл запуска с подтверждённой готовностью\n'
+# ------------------------------------------------- fleet worker launch
+printf '\nfleet: launch lifecycle with confirmed readiness\n'
 
-# Стаб Orca с журналом вызовов: каждый тест читает ЖУРНАЛ вызовов, а не человеческий
-# вывод — проверяется форма контракта (какие подкоманды, с какими флагами), а не текст.
-# Поведение переключается переменными STUB_*: так одна секция покрывает и счастливый
-# путь, и таймаут готовности, и отказ на каждом этапе.
+# An Orca stub with a call log: each test reads the call LOG, not human
+# output — the shape of the contract is checked (which subcommands, with which flags), not the text.
+# Behaviour is switched with STUB_* variables: that way one section covers the happy
+# path, the readiness timeout, and a failure at every stage.
 FLHOME="$SANDBOX/fraim-home"; mkdir -p "$FLHOME"; export FLHOME
 FLPROJ="$SANDBOX/flproj"; mkdir -p "$FLPROJ"; export FLPROJ
 git -C "$FLPROJ" init -q; git -C "$FLPROJ" config user.email t@t; git -C "$FLPROJ" config user.name t
@@ -1896,127 +1896,127 @@ chmod +x "$ADEBIN/orca-ide"
 FLLIB='. "'"$REPO"'/installer/lib/core.sh"; . "'"$REPO"'/installer/lib/config.sh"
     . "'"$REPO"'/installer/lib/ade.sh"; . "'"$REPO"'/installer/lib/fleet.sh"'
 
-# 1. Команда запуска: встроенный шаблон devin подставляет модель; неизвестному агенту
-# команды нет — её не выдумываем; launchcmd_<agent> из конфига решает всё.
+# 1. Launch command: the built-in devin template substitutes the model; an unknown agent
+# has no command — we do not invent one; launchcmd_<agent> from config decides everything.
 DLC=$(FRAIM_HOME="$FLHOME" PATH="$ADEBIN:/usr:/bin" sh -c "$FLLIB"'; fleet_launch_command devin glm-5-2')
-check "devin: встроенная команда запуска с моделью" "$DLC" "devin --permission-mode bypass --model glm-5-2"
+check "devin: built-in launch command with model" "$DLC" "devin --permission-mode bypass --model glm-5-2"
 DLC=$(FRAIM_HOME="$FLHOME" PATH="$ADEBIN:/usr:/bin" sh -c "$FLLIB"'; fleet_launch_command no-such glm-5-2; printf rc=%s "$?"' 2>/dev/null)
-check "неизвестному агенту команду не выдумываем" "$DLC" "rc=1"
+check "we do not invent a command for an unknown agent" "$DLC" "rc=1"
 printf 'launchcmd_grok = grok --model %%s --yolo\n' > "$FLPROJ/ai/fraim.conf" 2>/dev/null || {
     mkdir -p "$FLPROJ/ai"; printf 'launchcmd_grok = grok --model %%s --yolo\n' > "$FLPROJ/ai/fraim.conf"; }
 DLC=$(FRAIM_HOME="$FLHOME" PATH="$ADEBIN:/usr:/bin" sh -c "$FLLIB"'; fleet_launch_command grok glm-9 "$FLPROJ"')
-check "launchcmd_<agent> из конфига подставляет модель" "$DLC" "grok --model glm-9 --yolo"
+check "launchcmd_<agent> from config substitutes the model" "$DLC" "grok --model glm-9 --yolo"
 : > "$FLPROJ/ai/fraim.conf"
 
-# 2. Полный жизненный цикл devin с моделью: worktree → терминал с моделью в argv →
-# tui-idle → worker-start --terminal, и ни одного --model в orchestration.
+# 2. Full devin lifecycle with a model: worktree → terminal with the model in argv →
+# tui-idle → worker-start --terminal, and not a single --model in orchestration.
 STUB_LOG="$SANDBOX/fleet-calls.log"; STUB_WT="$SANDBOX/stub-wt"; : > "$STUB_LOG"
 FLD=$(STUB_LOG="$STUB_LOG" STUB_WT="$STUB_WT" FRAIM_HOME="$FLHOME" PATH="$ADEBIN:/usr:/bin" \
       sh -c "$FLLIB"'; fleet_worker_start task_1a05eb1321c1 devin glm-5-2 high b1-t1 "$FLPROJ" main' 2>/dev/null)
-check "devin: воркер поднят, возвращён ctx_… идентификатор" "$FLD" "ctx_1234abcd5678"
+check "devin: worker up, ctx_… id returned" "$FLD" "ctx_1234abcd5678"
 grep -q 'worktree create' "$STUB_LOG" && grep -q 'terminal create' "$STUB_LOG" && \
   grep -q 'terminal wait' "$STUB_LOG" && grep -q 'worker-start' "$STUB_LOG"
-check "devin: последовательность create → terminal → wait → worker-start" "$?" "0"
+check "devin: sequence create → terminal → wait → worker-start" "$?" "0"
 grep -q -- '--model glm-5-2' "$STUB_LOG" && grep -q 'devin --permission-mode bypass --model glm-5-2' "$STUB_LOG"
-check "devin: модель поехала в команде запуска терминала" "$?" "0"
+check "devin: model went into the terminal launch command" "$?" "0"
 grep 'worker-start' "$STUB_LOG" | grep -q -- '--model'
-check "devin: orchestration worker-start без --model" "$?" "1"
+check "devin: orchestration worker-start without --model" "$?" "1"
 grep 'worker-start' "$STUB_LOG" | grep -q -- '--terminal term_aabf0418'
-check "devin: dispatch привязан к готовому терминалу" "$?" "0"
+check "devin: dispatch bound to the ready terminal" "$?" "0"
 
-# 3. Агент, принимающий модель нативно, идёт старым путём — и без лишних шагов.
+# 3. An agent that accepts the model natively takes the old path — and without extra steps.
 : > "$STUB_LOG"
 FLD=$(STUB_LOG="$STUB_LOG" STUB_WT="$STUB_WT" FRAIM_HOME="$FLHOME" PATH="$ADEBIN:/usr:/bin" \
       sh -c "$FLLIB"'; fleet_worker_start task_1a05eb1321c1 claude opus high b1-t2 "$PWD" main' 2>/dev/null)
-check "claude: воркер поднят нативно" "$FLD" "ctx_1234abcd5678"
+check "claude: worker up natively" "$FLD" "ctx_1234abcd5678"
 grep -q 'worktree create\|terminal create\|terminal wait' "$STUB_LOG"
-check "claude: без явного жизненного цикла — Orca сам создаёт чекаут" "$?" "1"
+check "claude: no explicit lifecycle — Orca creates the checkout itself" "$?" "1"
 grep 'worker-start' "$STUB_LOG" | grep -q -- '--model opus --effort high'
-check "claude: модель и усилие переданы Orca" "$?" "0"
+check "claude: model and effort passed to Orca" "$?" "0"
 
-# 4. Таймаут готовности: задания нет, Dispatch нет, ресурсы убраны, вина названа.
+# 4. Readiness timeout: no task, no Dispatch, resources cleaned up, the culprit named.
 : > "$STUB_LOG"
 STUB_WAIT_FAIL=1 STUB_LOG="$STUB_LOG" STUB_WT="$STUB_WT" FRAIM_HOME="$FLHOME" PATH="$ADEBIN:/usr:/bin" \
     sh -c "$FLLIB"'; fleet_worker_start task_1a05eb1321c1 devin glm-5-2 high b1-t3 "$PWD" main' >/dev/null 2>"$SANDBOX/wait-err"
-check "таймаут tui-idle валит запуск" "$?" "1"
+check "tui-idle timeout fails the launch" "$?" "1"
 grep -q 'tui-idle' "$SANDBOX/wait-err"
-check "ошибка называет состояние готовности" "$?" "0"
+check "error names the readiness state" "$?" "0"
 grep -c 'worker-start' "$STUB_LOG" | grep -q '^0$'
-check "после таймаута Dispatch не создавался" "$?" "0"
+check "no Dispatch created after the timeout" "$?" "0"
 grep -q 'terminal stop' "$STUB_LOG" && grep -q 'worktree rm' "$STUB_LOG"
-check "и частичные ресурсы убраны" "$?" "0"
+check "and partial resources cleaned up" "$?" "0"
 
-# 5. Отказ до создания Dispatch: worker-release звать нечего.
+# 5. Failure before Dispatch is created: there is nothing to call worker-release on.
 : > "$STUB_LOG"
 STUB_TC_FAIL=1 STUB_LOG="$STUB_LOG" STUB_WT="$STUB_WT" FRAIM_HOME="$FLHOME" PATH="$ADEBIN:/usr:/bin" \
     sh -c "$FLLIB"'; fleet_worker_start task_x devin glm-5-2 high b1-t4 "$PWD" main' >/dev/null 2>&1
-check "отказ terminal create валит запуск" "$?" "1"
+check "terminal create failure fails the launch" "$?" "1"
 grep -q 'worker-release' "$STUB_LOG"
-check "без Dispatch worker-release не зовётся" "$?" "1"
+check "without Dispatch worker-release is not called" "$?" "1"
 grep -q 'terminal stop' "$STUB_LOG" && grep -q 'worktree rm' "$STUB_LOG"
-check "терминал и worktree убраны" "$?" "0"
+check "terminal and worktree cleaned up" "$?" "0"
 
-# 6. Отказ после создания Dispatch: сначала release, потом терминал, потом worktree.
+# 6. Failure after Dispatch is created: release first, then the terminal, then the worktree.
 : > "$STUB_LOG"
 STUB_WS_FAIL=1 STUB_LOG="$STUB_LOG" STUB_WT="$STUB_WT" FRAIM_HOME="$FLHOME" PATH="$ADEBIN:/usr:/bin" \
     sh -c "$FLLIB"'; fleet_worker_start task_x devin glm-5-2 high b1-t5 "$PWD" main' >/dev/null 2>&1
-check "отказ привязки Dispatch валит запуск" "$?" "1"
+check "Dispatch binding failure fails the launch" "$?" "1"
 grep -q 'worker-release' "$STUB_LOG"
-check "созданный Dispatch освобождён" "$?" "0"
+check "created Dispatch released" "$?" "0"
 grep -q 'terminal stop' "$STUB_LOG" && grep -q 'worktree rm' "$STUB_LOG"
-check "терминал и worktree убраны" "$?" "0"
+check "terminal and worktree cleaned up" "$?" "0"
 
-# 7. Повторная попытка: каждый заход создаёт свежий чекаут и не переиспользует
-# мёртвый терминал — дублей активных воркеров не появляется.
+# 7. Retry: each attempt creates a fresh checkout and does not reuse
+# a dead terminal — no duplicate active workers appear.
 : > "$STUB_LOG"
 FLD1=$(STUB_LOG="$STUB_LOG" STUB_WT="$STUB_WT" FRAIM_HOME="$FLHOME" PATH="$ADEBIN:/usr:/bin" \
        sh -c "$FLLIB"'; fleet_worker_start task_r devin glm-5-2 high b1-t5 "$PWD" main' 2>/dev/null)
 FLD2=$(STUB_LOG="$STUB_LOG" STUB_WT="$STUB_WT" FRAIM_HOME="$FLHOME" PATH="$ADEBIN:/usr:/bin" \
        sh -c "$FLLIB"'; fleet_worker_start task_r devin glm-5-2 high b1-t5 "$PWD" main' 2>/dev/null)
-check "повтор запуска снова возвращает воркера" "$(printf '%s' "$FLD2" | grep -c ctx_)" "1"
-check "и создаёт ровно один новый чекаут на попытку" \
+check "launch retry returns a worker again" "$(printf '%s' "$FLD2" | grep -c ctx_)" "1"
+check "and creates exactly one new checkout per attempt" \
       "$(grep -c 'worktree create' "$STUB_LOG")" "2"
 
-# 8. Таймаут готовности читается из конфига, а не зашит.
+# 8. The readiness timeout is read from config, not hardcoded.
 FLRT=$(FRAIM_HOME="$FLHOME" PATH="$ADEBIN:/usr:/bin" sh -c "$FLLIB"'; fleet_ready_timeout_ms')
-check "таймаут готовности по умолчанию 120000" "$FLRT" "120000"
+check "readiness timeout defaults to 120000" "$FLRT" "120000"
 printf 'fleet_ready_timeout_ms = 5000\n' >> "$FLPROJ/ai/fraim.conf"
 FLRT=$(FRAIM_HOME="$FLHOME" PATH="$ADEBIN:/usr:/bin" sh -c "$FLLIB"'; fleet_ready_timeout_ms "$FLPROJ"')
-check "и переопределяется из проекта" "$FLRT" "5000"
+check "and is overridden from the project" "$FLRT" "5000"
 rm -f "$FLPROJ/ai/fraim.conf"
 
-# 9. Способностей-кэш и отчёт: no-launch-model больше не означает «модель потеряна».
+# 9. Capabilities cache and report: no-launch-model no longer means «model lost».
 FRAIM_HOME="$FLHOME" PATH="$ADEBIN:/usr:/bin" sh -c "$FLLIB"'; fleet_caps_note devin no-launch-model' >/dev/null 2>&1
 : > "$STUB_LOG"
 STUB_LOG="$STUB_LOG" STUB_WT="$STUB_WT" FRAIM_HOME="$FLHOME" PATH="$ADEBIN:/usr:/bin" \
     sh -c "$FLLIB"'; fleet_worker_start task_c devin glm-5-2 high b1-t6 "$PWD" main' >/dev/null 2>&1
 grep -q -- '--model glm-5-2' "$STUB_LOG"
-check "известный отказ не теряет модель: она в команде запуска" "$?" "0"
+check "known refusal does not lose the model: it is in the launch command" "$?" "0"
 
-# 10. Под set -eu — как в настоящем диспетчере: неинициализированная переменная в
-# пути запуска убивает прогон сборки, а не один воркер.
+# 10. Under set -eu — as in the real dispatcher: an uninitialized variable in
+# the launch path kills the build run, not one worker.
 : > "$STUB_LOG"
 FLD=$(STUB_LOG="$STUB_LOG" STUB_WT="$STUB_WT" FRAIM_HOME="$FLHOME" PATH="$ADEBIN:/usr:/bin" \
       sh -eu -c "$FLLIB"'; fleet_worker_start task_e devin glm-5-2 high b1-t7 "$PWD" main' 2>/dev/null)
-check "запуск живёт под set -eu (без unset-переменных)" "$FLD" "ctx_1234abcd5678"
+check "launch survives set -eu (no unset variables)" "$FLD" "ctx_1234abcd5678"
 
-# 11. Переиспользованный чекаут (остаток прошлой попытки) cleanup не удаляет.
+# 11. A reused checkout (left over from a previous attempt) is not deleted by cleanup.
 : > "$STUB_LOG"
 STUB_WT_CREATED_AT=$(( $(date +%s) * 1000 - 3600000 )) STUB_WS_FAIL=1 \
     STUB_LOG="$STUB_LOG" STUB_WT="$STUB_WT" FRAIM_HOME="$FLHOME" PATH="$ADEBIN:/usr:/bin" \
     sh -c "$FLLIB"'; fleet_worker_start task_x devin glm-5-2 high b1-t8 "$PWD" main' >/dev/null 2>&1
 grep -q 'worktree rm' "$STUB_LOG"
-check "чужой (переиспользованный) worktree не удаляется" "$?" "1"
+check "foreign (reused) worktree not deleted" "$?" "1"
 grep -q 'terminal stop' "$STUB_LOG"
-check "но его терминал останавливается" "$?" "0"
+check "but its terminal is stopped" "$?" "0"
 rm -f "$ADEBIN/orca-ide"
 
-# ------------------------------------------------- discovery моделей для ролей
-printf '\nroles: discovery моделей\n'
+# ------------------------------------------------- model discovery for roles
+printf '\nroles: model discovery\n'
 
-# Парсеры проверяются на сохранённых фикстурах — реальном выводе источников, —
-# без установленных агентов (парсер отделён от вызова и принимает текст на stdin).
-# Каждый вызов — свой sh -c, чтобы секции не зависели от порядка и сбоя соседа.
+# Parsers are checked against saved fixtures — real output of the sources —
+# without installed agents (the parser is separate from the call and takes text on stdin).
+# Each call is its own sh -c, so sections do not depend on order or a neighbour's failure.
 roles_parse_out() {
     sh -c '
         . "'"$REPO"'/installer/lib/roles.sh"
@@ -2026,7 +2026,7 @@ EOF2
 ' sh "$1" 2>&1
 }
 
-check "парсер devin: только id, без заголовков и aliases" \
+check "devin parser: ids only, no headers or aliases" \
       "$(roles_parse_out roles_parse_devin_models 'Claude Opus 5 (claude-opus-5)
   aliases: opus
   claude-opus-5-medium                   Claude Opus 5 Medium  [1M context, $5]
@@ -2034,7 +2034,7 @@ check "парсер devin: только id, без заголовков и alias
       "claude-opus-5-high
 claude-opus-5-medium"
 
-check "парсер cursor-agent: id до дефиса, без заголовка" \
+check "cursor-agent parser: id up to the dash, no header" \
       "$(roles_parse_out roles_parse_cursor_models 'Available models
 
 auto - Auto (current, default)
@@ -2044,14 +2044,14 @@ gpt-5.3-codex-high - Codex 5.3 High')" \
 gpt-5.3-codex-high
 gpt-5.3-codex-low"
 
-check "парсер pi: поле модели, без заголовка и тильды" \
+check "pi parser: model field, no header or tilde" \
       "$(roles_parse_out roles_parse_pi_models 'provider    model                          context  thinking
 openrouter  ~anthropic/claude-haiku-latest 200K     yes
 openai      gpt-5                          1M       yes')" \
       "anthropic/claude-haiku-latest
 gpt-5"
 
-check "парсер codex: slug из JSON-кэша (pretty и одной строкой)" \
+check "codex parser: slug from the JSON cache (pretty and single-line)" \
       "$(roles_parse_out roles_parse_codex_models '{
   "models": [ { "slug": "gpt-5.6-sol" }, { "slug": "gpt-5.4-mini" } ]
 }
@@ -2060,35 +2060,35 @@ check "парсер codex: slug из JSON-кэша (pretty и одной стр�
 gpt-5.4-mini
 gpt-5.6-sol"
 
-check "парсер claude: id из embedded-каталога бинарника" \
+check "claude parser: id from the binary's embedded catalogue" \
       "$(roles_parse_out roles_parse_claude_models 'noise {id:"claude-opus-5",family:"opus",display_name:"Opus 5"} noise
 { id: "claude-haiku-4-5", family: "haiku" } tail')" \
       "claude-haiku-4-5
 claude-opus-5"
 
-# Пустой и битый вход — легальный пустой ответ с кодом 0: обновление агента,
-# сломавшее парсер, деградирует в «ввести своё», а не в ошибку.
+# Empty and broken input is a legal empty answer with exit code 0: an agent update
+# that broke the parser degrades into «enter your own», not into an error.
 for _p in roles_parse_devin_models roles_parse_cursor_models roles_parse_pi_models roles_parse_codex_models roles_parse_claude_models; do
     _out=$(roles_parse_out "$_p" '' 2>/dev/null; roles_parse_out "$_p" 'garbage !! ##' 2>/dev/null)
-    check "парсер $_p: пустой/битый вход — пусто, код 0" "$_out|" "|"
+    check "parser $_p: empty/broken input — empty, exit code 0" "$_out|" "|"
 done
 
-# roles_models_of: неизвестный агент — пусто, код 0 (источник не спрашивается).
+# roles_models_of: unknown agent — empty, exit code 0 (the source is not queried).
 UNK=$(sh -c '. "'"$REPO"'/installer/lib/roles.sh"; roles_models_of no-such-agent; printf rc=%s "$?"' 2>&1)
-check "roles_models_of неизвестного агента пуст и без ошибки" "$UNK" "rc=0"
+check "roles_models_of for an unknown agent is empty and error-free" "$UNK" "rc=0"
 
-# roles_agents_available: список агентов из harness_detect, не из Orca.
-# Проверяем что вывод — это ключи харнесов (по одному на строку), без орка-провайдеров
-# (kimi, grok, minimax) и без меток "(недоступен: …)".
+# roles_agents_available: the agent list comes from harness_detect, not from Orca.
+# Check that the output is harness keys (one per line), without orca providers
+# (kimi, grok, minimax) and without "(недоступен: …)" labels.
 _AGENTS=$(sh -c '. "'"$REPO"'/installer/lib/harness.sh"; . "'"$REPO"'/installer/lib/roles.sh"; roles_agents_available' 2>/dev/null)
-check "roles_agents_available: есть вывод (харнесы детектированы)" "$_AGENTS" "$_AGENTS"
-[ -n "$_AGENTS" ] && check "roles_agents_available: нет орка-провайдеров (kimi/grok/minimax)" \
+check "roles_agents_available: has output (harnesses detected)" "$_AGENTS" "$_AGENTS"
+[ -n "$_AGENTS" ] && check "roles_agents_available: no orca providers (kimi/grok/minimax)" \
     "$(printf '%s\n' "$_AGENTS" | grep -E 'kimi|grok|minimax' || true)" ""
-[ -n "$_AGENTS" ] && check "roles_agents_available: нет меток недоступности" \
+[ -n "$_AGENTS" ] && check "roles_agents_available: no unavailability labels" \
     "$(printf '%s\n' "$_AGENTS" | grep 'недоступен' || true)" ""
 
-# ---------------------------------------------------- план сборки: волны и арифметика
-printf '\nдиспетчер: волны и арифметика сборки\n'
+# ---------------------------------------------------- build plan: waves and arithmetic
+printf '\ndispatcher: build waves and arithmetic\n'
 
 DLIB='. "'"$REPO"'/installer/lib/core.sh"; . "'"$REPO"'/installer/lib/config.sh"
     . "'"$REPO"'/installer/lib/harness.sh"; . "'"$REPO"'/installer/lib/ade.sh"
@@ -2096,7 +2096,7 @@ DLIB='. "'"$REPO"'/installer/lib/core.sh"; . "'"$REPO"'/installer/lib/config.sh"
     . "'"$REPO"'/installer/lib/dispatch.sh"'
 PLANS="$SANDBOX/plans"; mkdir -p "$PLANS"; export PLANS
 
-# План без порядка — одна волна, поведение старых планов не меняется ни на байт.
+# A plan without order is one wave; the behaviour of old plans does not change by a single byte.
 cat > "$PLANS/flat.md" <<'PLAN'
 ## Subtask: a
 **Role**: run-task
@@ -2118,10 +2118,10 @@ cat > "$PLANS/flat.md" <<'PLAN'
 ### `b2.py`
 - почему
 PLAN
-check "план без After — одна волна" \
+check "plan without After — one wave" \
       "$(sh -c "$DLIB"'; dispatch_wave_count "$PLANS/flat.md"')" "1"
 
-# План с порядком: contract → backend + frontend, и волна 2 делит файл с волной 1.
+# A plan with order: contract → backend + frontend, and wave 2 shares a file with wave 1.
 cat > "$PLANS/waves.md" <<'PLAN'
 ## Subtask: contract
 **Role**: run-task
@@ -2155,14 +2155,14 @@ cat > "$PLANS/waves.md" <<'PLAN'
 ### `web/style.css`
 - вид
 PLAN
-check "волны выводятся из After" \
+check "waves derived from After" \
       "$(sh -c "$DLIB"'; dispatch_waves "$PLANS/waves.md"' | tr '\t' ':' | tr '\n' ' ')" \
       "contract:1 backend:2 frontend:2 "
-check "подзадачи волны 2" \
+check "wave 2 subtasks" \
       "$(sh -c "$DLIB"'; dispatch_wave_ids "$PLANS/waves.md" 2' | tr '\n' ' ')" "backend frontend "
 
-# After в никуда и цикл — отказ, а не молчаливое выравнивание: и то и другое стоит
-# N запусков, если обнаружится после раздачи.
+# After pointing nowhere and a cycle — refusal, not silent levelling: either one costs
+# N launches if discovered after handing out.
 cat > "$PLANS/ghost.md" <<'PLAN'
 ## Subtask: a
 **Role**: run-task
@@ -2173,8 +2173,8 @@ cat > "$PLANS/ghost.md" <<'PLAN'
 - почему
 PLAN
 sh -c "$DLIB"'; dispatch_waves "$PLANS/ghost.md"' >/dev/null 2>&1
-check "After в несуществующую подзадачу — отказ" "$?" "1"
-check "отказ называет подзадачу" \
+check "After pointing to a nonexistent subtask — refused" "$?" "1"
+check "refusal names the subtask" \
       "$(sh -c "$DLIB"'; dispatch_waves "$PLANS/ghost.md"' 2>&1 >/dev/null | grep -c 'nosuch')" "1"
 
 cat > "$PLANS/cycle.md" <<'PLAN'
@@ -2195,12 +2195,12 @@ cat > "$PLANS/cycle.md" <<'PLAN'
 - почему
 PLAN
 sh -c "$DLIB"'; dispatch_waves "$PLANS/cycle.md"' >/dev/null 2>&1
-check "цикл зависимостей — отказ" "$?" "1"
-check "отказ называет цикл" \
+check "dependency cycle — refused" "$?" "1"
+check "refusal names the cycle" \
       "$(sh -c "$DLIB"'; dispatch_waves "$PLANS/cycle.md"' 2>&1 >/dev/null | grep -c 'цикл')" "1"
 
-# Арифметика: предупреждения печатаются, но НИКОГДА не меняют код возврата — иначе
-# метрика, которая не измеряет работу, начнёт ронять планы.
+# Arithmetic: warnings are printed but NEVER change the exit code — otherwise
+# a metric that does not measure work would start failing plans.
 cat > "$PLANS/big.md" <<'PLAN'
 ## Subtask: a
 **Role**: run-task
@@ -2251,33 +2251,33 @@ cat > "$PLANS/big.md" <<'PLAN'
 ### `g1.py`
 - x
 PLAN
-check "7 подзадач — предупреждение о потолке приёмки" \
+check "7 subtasks — acceptance ceiling warning" \
       "$(sh -c "$DLIB"'; dispatch_size_notes "$PLANS/big.md"' 2>&1 >/dev/null | grep -c 'потолок 6')" "1"
-check "широкая волна — предупреждение" \
+check "wide wave — warning" \
       "$(sh -c "$DLIB"'; dispatch_size_notes "$PLANS/big.md"' 2>&1 >/dev/null | grep -c 'одновременно')" "1"
-# Нижних порогов нет: одна подзадача с одним путём на одного дешёвого воркера — законная
-# сборка (DECISIONS 2026-09-15). Потолки остаются.
-check "подзадача с одним путём — не предупреждение" \
+# There are no lower thresholds: one subtask with one path for one cheap worker is a legitimate
+# build (DECISIONS 2026-09-15). The ceilings remain.
+check "subtask with one path — not a warning" \
       "$(sh -c "$DLIB"'; dispatch_size_notes "$PLANS/big.md"' 2>&1 >/dev/null | grep -c 'мельче цены раздачи')" "0"
-check "маленькая плоская сборка не предупреждает ни о чём" \
+check "small flat build warns about nothing" \
       "$(sh -c "$DLIB"'; dispatch_size_notes "$PLANS/flat.md"' 2>&1 >/dev/null)" ""
 sh -c "$DLIB"'; dispatch_size_notes "$PLANS/big.md"' >/dev/null 2>&1
-check "предупреждения не меняют код возврата" "$?" "0"
-check "чистый план не предупреждает ни о чём" \
+check "warnings do not change the exit code" "$?" "0"
+check "clean plan warns about nothing" \
       "$(sh -c "$DLIB"'; dispatch_size_notes "$PLANS/waves.md"' 2>&1 >/dev/null)" ""
 
-# Строка состава: что эта сборка стоит, до единого запуска.
-check "строка состава считает подзадачи, волны и ширину" \
+# The composition line: what this build costs, before a single launch.
+check "composition line counts subtasks, waves and width" \
       "$(sh -c "$DLIB"'; dispatch_cost_line "$PLANS/waves.md"')" \
       "состав: 3 подзадачи, 2 волны, 2 воркера одновременно"
-check "строка состава на плоском плане" \
+check "composition line on a flat plan" \
       "$(sh -c "$DLIB"'; dispatch_cost_line "$PLANS/flat.md"')" \
       "состав: 2 подзадачи, 1 волна, 2 воркера одновременно"
 
-# ---------------------------------------------------- поволновая проверка плана
-printf '\nдиспетчер: проверка плана по волнам\n'
+# ---------------------------------------------------- per-wave plan check
+printf '\ndispatcher: per-wave plan check\n'
 
-# Один файл у двух подзадач ОДНОЙ волны — отказ, как и был.
+# One file shared by two subtasks of the SAME wave — refusal, as before.
 cat > "$PLANS/clash.md" <<'PLAN'
 ## Subtask: a
 **Role**: run-task
@@ -2300,30 +2300,30 @@ cat > "$PLANS/clash.md" <<'PLAN'
 - почему
 PLAN
 sh -c "$DLIB"'; dispatch_check "$PLANS/clash.md"' >/dev/null 2>&1
-check "пересечение внутри волны — отказ" "$?" "1"
+check "overlap within a wave — refused" "$?" "1"
 CLASH=$(sh -c "$DLIB"'; dispatch_check "$PLANS/clash.md"' 2>&1 >/dev/null)
-check "отказ называет волну" "$(printf '%s' "$CLASH" | grep -c 'волна 1')" "1"
-check "отказ показывает лестницу выходов" "$(printf '%s' "$CLASH" | grep -c 'After')" "1"
+check "refusal names the wave" "$(printf '%s' "$CLASH" | grep -c 'волна 1')" "1"
+check "refusal shows the ladder of ways out" "$(printf '%s' "$CLASH" | grep -c 'After')" "1"
 
-# Тот же файл, но подзадачи разведены по волнам — проходит. Это и есть выход №3.
+# The same file, but the subtasks are split across waves — passes. That is exit #3.
 sh -c "$DLIB"'; dispatch_check "$PLANS/waves.md"' >/dev/null 2>&1
-check "пересечение между волнами — проходит" "$?" "0"
+check "overlap across waves — passes" "$?" "0"
 
-# Порядок, который не разбирается, роняет проверку целиком.
+# An order that cannot be parsed fails the whole check.
 sh -c "$DLIB"'; dispatch_check "$PLANS/cycle.md"' >/dev/null 2>&1
-check "цикл роняет dispatch-check" "$?" "1"
+check "cycle fails dispatch-check" "$?" "1"
 sh -c "$DLIB"'; dispatch_check "$PLANS/ghost.md"' >/dev/null 2>&1
-check "After в никуда роняет dispatch-check" "$?" "1"
+check "After pointing nowhere fails dispatch-check" "$?" "1"
 
-# Отчёт показывает волну каждой подзадачи — до раздачи, а не после.
-check "отчёт называет волну подзадачи" \
+# The report shows each subtask's wave — before handing out, not after.
+check "report names the subtask's wave" \
       "$(sh -c "$DLIB"'; dispatch_report "$PLANS/waves.md"' | awk 'NR>1 { printf "%s%s", $1, $2 }' | tr -d ' ')" \
       "1contract2backend2frontend"
 
-# ---------------------------------------------------- сбор волны в ветку сборки
-# Настоящие worktree и настоящие коммиты, без стаба среды: реестр чекаутов ведёт git, и
-# сбор обязан работать одинаково, кто бы чекаут ни создал — Orca или руки.
-printf '\nдиспетчер: сбор волны\n'
+# ---------------------------------------------------- collecting a wave into the build branch
+# Real worktrees and real commits, no environment stub: the checkout registry is kept by git, and
+# collecting must work the same no matter who created the checkout — Orca or a human.
+printf '\ndispatcher: wave collection\n'
 
 CB="$SANDBOX/collect"; mkdir -p "$CB"; export CB
 git -C "$CB" init -q; git -C "$CB" config user.email t@t; git -C "$CB" config user.name t
@@ -2350,11 +2350,11 @@ PLAN
 BID=build-test; export BID
 BDIR="$CB/ai/builds/$BID"
 sh -c "$DLIB"'; build_seal "$CB" "$BID" "$CB/plan.md"' >/dev/null 2>&1
-check "сборка завела ветку fraim/build-test" \
+check "build created branch fraim/build-test" \
       "$(git -C "$CB" rev-parse --verify --quiet refs/heads/fraim/build-test >/dev/null 2>&1 && echo yes || echo no)" "yes"
 
-# Два воркера: свои чекауты от ветки сборки, свои коммиты в своих путях. Имя чекаута —
-# «сборка-подзадача», как его строит dispatch_launch: по нему dispatch_worker_tree и ищет.
+# Two workers: their own checkouts off the build branch, their own commits in their own paths. The checkout name is
+# «build-subtask», as dispatch_launch builds it: dispatch_worker_tree looks it up by that name.
 git -C "$CB" worktree add -q -b w-one "$SANDBOX/$BID-one" fraim/build-test
 git -C "$CB" worktree add -q -b w-two "$SANDBOX/$BID-two" fraim/build-test
 printf 'one\n' >> "$SANDBOX/$BID-one/one.py"
@@ -2363,24 +2363,24 @@ printf 'two\n' >> "$SANDBOX/$BID-two/two.py"
 git -C "$SANDBOX/$BID-two" commit -qam "two" >/dev/null
 
 OUT=$(sh -c "$DLIB"'; dispatch_collect "$CB" "'"$BID"'"' 2>&1)
-check "сбор прошёл" "$?" "0"
-check "обе подзадачи слиты" "$(printf '%s' "$OUT" | grep -c 'слита')" "2"
-check "печатается объединённый дифф волны" "$(printf '%s' "$OUT" | grep -c 'изменила целиком')" "1"
-check "ветка сборки несёт обе правки" \
+check "collection passed" "$?" "0"
+check "both subtasks merged" "$(printf '%s' "$OUT" | grep -c 'слита')" "2"
+check "combined wave diff is printed" "$(printf '%s' "$OUT" | grep -c 'изменила целиком')" "1"
+check "build branch carries both edits" \
       "$(git -C "$CB" show fraim/build-test:one.py | tail -1)$(git -C "$CB" show fraim/build-test:two.py | tail -1)" \
       "onetwo"
-check "рабочее дерево дирижёра не тронуто" \
+check "conductor's working tree untouched" \
       "$(git -C "$CB" rev-parse --abbrev-ref HEAD)" "master"
-check "временных чекаутов не осталось" \
+check "no temporary checkouts left" \
       "$(git -C "$CB" worktree list --porcelain | grep -c 'fraim-collect')" "0"
-check "журнал получил запись о сборе" "$(grep -c 'Wave 1 collected' "$BDIR/journal.md")" "1"
-check "collected.tsv помнит, что вернулось" "$(grep -c "	one	" "$BDIR/collected.tsv")" "1"
+check "journal got a collection entry" "$(grep -c 'Wave 1 collected' "$BDIR/journal.md")" "1"
+check "collected.tsv remembers what came back" "$(grep -c "	one	" "$BDIR/collected.tsv")" "1"
 
-# Повтор: собранное не собирается дважды.
+# Repeat: what is collected is not collected twice.
 OUT=$(sh -c "$DLIB"'; dispatch_collect "$CB" "'"$BID"'" 1' 2>&1)
-check "повторный сбор ничего не сливает" "$(printf '%s' "$OUT" | grep -c 'уже собрана')" "2"
+check "repeated collection merges nothing" "$(printf '%s' "$OUT" | grep -c 'уже собрана')" "2"
 
-# Отказ 1: незакоммиченная работа. Слить можно только коммит.
+# Refusal 1: uncommitted work. Only a commit can be merged.
 cat > "$CB/plan2.md" <<'PLAN'
 ## Subtask: three
 **Role**: run-task
@@ -2394,25 +2394,25 @@ sh -c "$DLIB"'; build_seal "$CB" "'"$BID2"'" "$CB/plan2.md"' >/dev/null 2>&1
 git -C "$CB" worktree add -q -b w-three "$SANDBOX/$BID2-three" fraim/build-dirty 2>/dev/null
 printf 'three\n' >> "$SANDBOX/$BID2-three/three.py"
 OUT=$(sh -c "$DLIB"'; dispatch_collect "$CB" "'"$BID2"'"' 2>&1)
-check "незакоммиченная работа — отказ" "$?" "1"
-check "отказ называет незакоммиченное" "$(printf '%s' "$OUT" | grep -c 'незакоммиченное')" "1"
-check "ветка сборки при отказе не двинулась" \
+check "uncommitted work — refused" "$?" "1"
+check "refusal names the uncommitted work" "$(printf '%s' "$OUT" | grep -c 'незакоммиченное')" "1"
+check "build branch did not move on refusal" \
       "$(git -C "$CB" show fraim/build-dirty:three.py | tail -1)" "base"
 
-# Отказ 2: правка вне объявленных путей. Ровно ради этой строки существует сверка с деревом.
+# Refusal 2: an edit outside the declared paths. The reconciliation with the tree exists precisely for this line.
 git -C "$SANDBOX/$BID2-three" commit -qam "three" >/dev/null
 printf 'stray\n' >> "$SANDBOX/$BID2-three/one.py"
 git -C "$SANDBOX/$BID2-three" commit -qam "stray" >/dev/null
 OUT=$(sh -c "$DLIB"'; dispatch_collect "$CB" "'"$BID2"'"' 2>&1)
-check "правка вне своих путей — отказ" "$?" "1"
-check "отказ называет чужой файл" "$(printf '%s' "$OUT" | grep -c 'one.py')" "1"
-check "ветка сборки не приняла чужую правку" \
+check "edit outside its paths — refused" "$?" "1"
+check "refusal names the foreign file" "$(printf '%s' "$OUT" | grep -c 'one.py')" "1"
+check "build branch did not accept the foreign edit" \
       "$(git -C "$CB" show fraim/build-dirty:three.py | tail -1)" "base"
 
-# ------------------------------------------------- барьер: какая волна поднимется
-# Пока волна не собрана, следующая не поднимается — это и есть барьер, и он держится не
-# на сигнале среды, а на записи о сборе в git.
-printf '\nдиспетчер: барьер между волнами\n'
+# ------------------------------------------------- barrier: which wave goes up
+# Until a wave is collected, the next one does not go up — that is the barrier, and it rests not
+# on an environment signal but on the collection record in git.
+printf '\ndispatcher: barrier between waves\n'
 
 WB="$SANDBOX/waves-build"; mkdir -p "$WB/ai/builds"; export WB
 git -C "$WB" init -q 2>/dev/null; git -C "$WB" config user.email t@t; git -C "$WB" config user.name t
@@ -2421,24 +2421,24 @@ cp "$PLANS/waves.md" "$WB/plan.md"
 WBID=build-waves; export WBID
 sh -c "$DLIB"'; build_seal "$WB" "$WBID" "$WB/plan.md"' >/dev/null 2>&1
 
-check "первая несобранная волна — первая" \
+check "first uncollected wave — the first one" \
       "$(sh -c "$DLIB"'; build_next_wave "$WB" "$WBID"')" "1"
 printf '1\tcontract\tabc123\t2026-09-09T00:00:00Z\n' > "$WB/ai/builds/$WBID/collected.tsv"
-check "волна 1 собрана — следующая вторая" \
+check "wave 1 collected — next is the second" \
       "$(sh -c "$DLIB"'; build_next_wave "$WB" "$WBID"')" "2"
 printf '2\tbackend\tdef456\t2026-09-09T00:00:00Z\n' >> "$WB/ai/builds/$WBID/collected.tsv"
-check "волна собрана наполовину — она же и остаётся следующей" \
+check "half-collected wave stays the next one" \
       "$(sh -c "$DLIB"'; build_next_wave "$WB" "$WBID"')" "2"
 printf '2\tfrontend\tghi789\t2026-09-09T00:00:00Z\n' >> "$WB/ai/builds/$WBID/collected.tsv"
 sh -c "$DLIB"'; build_next_wave "$WB" "$WBID"' >/dev/null 2>&1
-check "все волны собраны — поднимать нечего" "$?" "1"
+check "all waves collected — nothing to raise" "$?" "1"
 
-# ------------------------------------------------------- приёмка дирижёра целиком
-# Приёмка — вся работа дирижёра: сверить за воркерами, прогнать мастер-проверку, прибрать,
-# увести в ствол и напечатать отчёт в вывод. Человек команд не набирает, поэтому проверяется
-# то, чем этот вывод и это слияние могут соврать: неполный сбор, красная проверка, грязное
-# рабочее дерево, чекаут с незакоммиченной работой — и обратимость записи в ствол.
-printf '\nдиспетчер: приёмка дирижёра\n'
+# ------------------------------------------------------- conductor acceptance end to end
+# Acceptance is the conductor's whole job: verify after the workers, run the master check, tidy up,
+# take it into the trunk and print the report to the output. The human types no commands, so what is checked
+# is how this output and this merge could lie: an incomplete collection, a red check, a dirty
+# working tree, a checkout with uncommitted work — and reversibility of the trunk write.
+printf '\ndispatcher: conductor acceptance\n'
 
 DLIBV="$DLIB"'
     . "'"$REPO"'/installer/lib/verbs.sh"; . "'"$REPO"'/installer/lib/tasks.sh"; . "'"$REPO"'/installer/lib/foundation.sh"; . "'"$REPO"'/installer/lib/verbtable.sh"'
@@ -2470,11 +2470,11 @@ ABID=build-accept; export ABID
 ABDIR="$AB/ai/builds/$ABID"
 sh -c "$DLIB"'; build_seal "$AB" "$ABID" "$AB/plan.md"' >/dev/null 2>&1
 
-# Отказ до сбора: отчёт о наполовину собранной сборке описал бы не ту работу, которая есть.
+# Refusal before collection: a report on a half-collected build would describe work other than what exists.
 OUT=$(sh -c "$DLIB"'; build_accept "$AB" "$ABID"' 2>&1); RC=$?
-check "несобранная сборка не принимается" "$RC" "2"
-check "отказ называет несобранные подзадачи" "$(printf '%s' "$OUT" | grep -c 'two')" "1"
-check "ствол не тронут" "$(git -C "$AB" log --oneline | wc -l | tr -d ' ')" "1"
+check "uncollected build is not accepted" "$RC" "2"
+check "refusal names the uncollected subtasks" "$(printf '%s' "$OUT" | grep -c 'two')" "1"
+check "trunk untouched" "$(git -C "$AB" log --oneline | wc -l | tr -d ' ')" "1"
 
 git -C "$AB" worktree add -q -b aw-one "$SANDBOX/$ABID-one" "fraim/$ABID"
 printf 'one\n' >> "$SANDBOX/$ABID-one/one.py"
@@ -2485,77 +2485,77 @@ printf 'two\n' >> "$SANDBOX/$ABID-two/two.py"
 git -C "$SANDBOX/$ABID-two" commit -qam two >/dev/null
 sh -c "$DLIB"'; dispatch_collect "$AB" "$ABID" 2' >/dev/null 2>&1
 
-# Воркер второй подзадачи продолжил работу после сбора — его чекаут трогать нельзя.
+# The second subtask's worker kept working after collection — its checkout must not be touched.
 printf 'черновик\n' >> "$SANDBOX/$ABID-two/two.py"
-# Фундамент сборки пишет дирижёр в ветку сборки; ни одна подзадача его не объявляла.
+# The build's foundation is written by the conductor into the build branch; no subtask declared it.
 git -C "$AB" worktree add -q "$SANDBOX/$ABID-fnd" "fraim/$ABID"
 printf -- '- решение\n' >> "$SANDBOX/$ABID-fnd/DECISIONS.md"
 git -C "$SANDBOX/$ABID-fnd" commit -qam foundation >/dev/null
 git -C "$AB" worktree remove --force "$SANDBOX/$ABID-fnd"
 
-# Красная мастер-проверка: собранное в ствол не уходит. Это не суждение, а факт,
-# и поэтому решает его машина, а не человек.
+# A red master check: what was collected does not go to the trunk. This is not a judgement but a fact,
+# and so a machine decides it, not a human.
 printf 'build_check = sh -c "exit 3"\n' > "$AB/ai/fraim.conf"
 OUT=$(sh -c "$DLIB"'; build_accept "$AB" "$ABID"' 2>&1); RC=$?
-check "красная проверка не пускает в ствол" "$RC" "1"
-check "вывод называет код проверки" \
+check "red check blocks the trunk" "$RC" "1"
+check "output names the check's exit code" \
       "$(printf '%s' "$OUT" | grep -c 'проектная проверка вернула код 3')" "1"
-check "ствол при красной проверке не тронут" \
+check "trunk untouched on a red check" \
       "$(git -C "$AB" log --oneline | wc -l | tr -d ' ')" "1"
-check "сборка не помечена принятой" "$([ -f "$ABDIR/accepted" ] && echo yes || echo no)" "no"
-check "отчёт живёт в выводе, а не файлом" \
+check "build not marked accepted" "$([ -f "$ABDIR/accepted" ] && echo yes || echo no)" "no"
+check "report lives in the output, not in a file" \
       "$([ -f "$ABDIR/report.md" ] && echo yes || echo no)" "no"
 
-# Зелёная проверка, но грязное рабочее дерево: слияние утащило бы чужую незаписанную работу.
+# Green check, but a dirty working tree: the merge would drag in someone else's unsaved work.
 printf 'build_check = true\n' > "$AB/ai/fraim.conf"
 printf 'чужое\n' >> "$AB/one.py"
 OUT=$(sh -c "$DLIB"'; build_accept "$AB" "$ABID"' 2>&1); RC=$?
-check "грязное дерево не пускает в ствол" "$RC" "1"
-check "вывод называет несохранённое" "$(printf '%s' "$OUT" | grep -c 'несохранённое')" "1"
+check "dirty tree blocks the trunk" "$RC" "1"
+check "output names the unsaved work" "$(printf '%s' "$OUT" | grep -c 'несохранённое')" "1"
 git -C "$AB" checkout -q -- one.py
 
-# Всё сошлось: сверка, проверка, чистка, ствол — одной командой и без единой команды человеку.
+# Everything matched: verification, check, cleanup, trunk — in one command and without a single command for the human.
 OUT=$(sh -c "$DLIB"'; build_accept "$AB" "$ABID"' 2>&1); RC=$?
-check "приёмка прошла" "$RC" "0"
-check "обе подзадачи в выводе" \
+check "acceptance passed" "$RC" "0"
+check "both subtasks in the output" \
       "$(printf '%s' "$OUT" | grep -cE '^    (one|two) +волна')" "2"
-check "файл, который не объявлял никто, назван" \
+check "file nobody declared is named" \
       "$(printf '%s' "$OUT" | grep -c 'не объявлял никто: DECISIONS.md')" "1"
-check "вывод называет слияние в ствол" "$(printf '%s' "$OUT" | grep -c 'в ствол: main')" "1"
-check "вывод называет команду отмены" "$(printf '%s' "$OUT" | grep -c 'fraim undo')" "1"
-check "собранное действительно в стволе" \
+check "output names the merge into the trunk" "$(printf '%s' "$OUT" | grep -c 'в ствол: main')" "1"
+check "output names the undo command" "$(printf '%s' "$OUT" | grep -c 'fraim undo')" "1"
+check "collected work really is in the trunk" \
       "$(git -C "$AB" show main:two.py | tail -1)" "two"
-check "слияние помечено как наше" \
+check "merge marked as ours" \
       "$(git -C "$AB" log -1 --format=%B main | grep -c '^fraim: ')" "1"
-check "сборка помечена принятой" "$(grep -c '^Accepted by: conductor' "$ABDIR/accepted")" "1"
-check "журнал знает про ствол" "$(grep -c 'merged into the trunk by the conductor' "$ABDIR/journal.md")" "1"
-check "список знает, что сборка в стволе" \
+check "build marked accepted" "$(grep -c '^Accepted by: conductor' "$ABDIR/accepted")" "1"
+check "journal knows about the trunk" "$(grep -c 'merged into the trunk by the conductor' "$ABDIR/journal.md")" "1"
+check "list knows the build is in the trunk" \
       "$(sh -c "$DLIB"'; build_list "$AB"' | grep -c 'в стволе')" "1"
 
-# Чистка: снимается только доказанно лишнее. Чекаут с незакоммиченной работой — это то,
-# ради чего режим существует, и он остаётся нетронутым при любом исходе приёмки.
-check "чистка сняла чекаут собранной подзадачи" \
+# Cleanup: only what is provably redundant is removed. A checkout with uncommitted work is what
+# the mode exists for, and it stays untouched whatever the acceptance outcome.
+check "cleanup removed the collected subtask's checkout" \
       "$(git -C "$AB" worktree list --porcelain | grep -c "$ABID-one")" "0"
-check "чекаут с незакоммиченным оставлен" \
+check "checkout with uncommitted work kept" \
       "$(git -C "$AB" worktree list --porcelain | grep -c "$ABID-two")" "1"
-check "работа воркера цела" "$(tail -1 "$SANDBOX/$ABID-two/two.py")" "черновик"
-check "вывод предупредил про оставленный чекаут" \
+check "worker's work intact" "$(tail -1 "$SANDBOX/$ABID-two/two.py")" "черновик"
+check "output warned about the kept checkout" \
       "$(printf '%s' "$OUT" | grep -c 'оставлен: есть незакоммиченное')" "1"
 
-# Дважды в ствол одно и то же не уводят.
+# The same thing is not taken into the trunk twice.
 sh -c "$DLIB"'; build_accept "$AB" "$ABID"' >/dev/null 2>&1
-check "принятая сборка второй раз не принимается" "$?" "2"
+check "accepted build is not accepted a second time" "$?" "2"
 
-# Обратная связь человека — словами, а рычаг под неё один: отмена слияния одной командой.
-# Без -m 1 revert на слиянии падает, и именно поэтому запись в ствол вообще допустима.
+# The human's feedback is in words, and there is one lever for it: undoing the merge with one command.
+# Without -m 1 revert fails on a merge, and that is exactly why writing to the trunk is acceptable at all.
 AMERGE=$(git -C "$AB" rev-parse --short main)
 sh -c "$DLIBV"'; verb_undo "$AB" "'"$AMERGE"'"' >/dev/null 2>&1
-check "запись в ствол отменяется одной командой" "$?" "0"
-check "после отмены ствол вернулся к прежнему" \
+check "trunk write is undone with one command" "$?" "0"
+check "after undo the trunk is back to before" \
       "$(git -C "$AB" show main:two.py | tail -1)" "base"
-check "ветка сборки цела и после отмены" \
+check "build branch intact after undo too" \
       "$(git -C "$AB" show "fraim/$ABID:two.py" | tail -1)" "two"
 
 
-printf '\n%s пройдено, %s провалено\n' "$PASS" "$FAIL"
+printf '\n%s passed, %s failed\n' "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ]
