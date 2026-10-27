@@ -73,6 +73,17 @@ for v in $DISPATCH; do
 done
 check "каждая команда CLI описана в fraim help" "$(printf '%s' "${UNDOC:-none}" | tr -s ' ')" "none"
 
+# Список глаголов агент узнаёт из одной таблицы (verbtable.sh): из неё собираются brief,
+# help и мастер-скилл. Глагол в таблице, которого нет в диспетчере, — обещание, которое
+# сломается на первом же вызове.
+VTCMDS=$(sh -c '. "'"$REPO"'/installer/lib/core.sh"; . "'"$REPO"'/installer/lib/foundation.sh"; . "'"$REPO"'/installer/lib/verbtable.sh"; vt_table' |
+         awk -F' ;; ' '{ split($2, w, " "); print w[2] }' | sort -u)
+VTMISS=""
+for v in $VTCMDS; do
+    printf '%s\n' "$DISPATCH" | grep -qx "$v" || VTMISS="$VTMISS $v"
+done
+check "каждый глагол из таблицы есть в CLI" "${VTMISS:-none}" "none"
+
 # Гейты парсят заголовки, которые печатает шаблон. Тест берёт литерал из кода гейта
 # и ищет его в шаблонах — а не в собственной копии формата.
 MISSING_HEAD=""
@@ -129,7 +140,7 @@ done
 CARDOUT=$(sh -c '
     . "'"$REPO"'/installer/lib/core.sh"; . "'"$REPO"'/installer/lib/config.sh"
     . "'"$REPO"'/installer/lib/registry.sh"; . "'"$REPO"'/installer/lib/context.sh"
-    . "'"$REPO"'/installer/lib/scaffold.sh"; . "'"$REPO"'/installer/lib/verbs.sh"; . "'"$REPO"'/installer/lib/tasks.sh"
+    . "'"$REPO"'/installer/lib/scaffold.sh"; . "'"$REPO"'/installer/lib/verbs.sh"; . "'"$REPO"'/installer/lib/tasks.sh"; . "'"$REPO"'/installer/lib/foundation.sh"; . "'"$REPO"'/installer/lib/verbtable.sh"
     . "'"$REPO"'/installer/lib/ade.sh"; . "'"$REPO"'/installer/lib/watchman.sh"; . "'"$REPO"'/installer/lib/update.sh"; . "'"$REPO"'/installer/lib/menu.sh"
     cd "'"$CARD"'" && menu_card && printf "%s\n" "$MENU_CARD"' 2>&1)
 check "карточка меню не падает на числах сторожа" "$(printf '%s' "$CARDOUT" | grep -c 'Illegal number')" "0"
@@ -149,7 +160,7 @@ cd "$SANDBOX" || exit 1
 NAV=$(sh -c '
     . "'"$REPO"'/installer/lib/core.sh"; . "'"$REPO"'/installer/lib/config.sh"
     . "'"$REPO"'/installer/lib/registry.sh"; . "'"$REPO"'/installer/lib/context.sh"
-    . "'"$REPO"'/installer/lib/scaffold.sh"; . "'"$REPO"'/installer/lib/verbs.sh"; . "'"$REPO"'/installer/lib/tasks.sh"
+    . "'"$REPO"'/installer/lib/scaffold.sh"; . "'"$REPO"'/installer/lib/verbs.sh"; . "'"$REPO"'/installer/lib/tasks.sh"; . "'"$REPO"'/installer/lib/foundation.sh"; . "'"$REPO"'/installer/lib/verbtable.sh"
     . "'"$REPO"'/installer/lib/ade.sh"; . "'"$REPO"'/installer/lib/watchman.sh"; . "'"$REPO"'/installer/lib/update.sh"; . "'"$REPO"'/installer/lib/menu.sh"
     cd "'"$CARD"'" || exit 1
     MENU_N=$(menu_count); MENU_SEL=1
@@ -337,7 +348,9 @@ check "имя проекта подставлено" "$(grep -c 'ARCHITECTURE �
 # The repository has to describe itself to an agent that has never heard of fraim —
 # a cloud session, CI, a second machine. The pointer travels in git, not on the machine.
 check "AGENTS.md несёт инвариант" "$(grep -c 'golden rule' "$PROJ2/AGENTS.md")" "1"
-check "AGENTS.md работает без CLI" "$(grep -c 'If it is not installed' "$PROJ2/AGENTS.md")" "1"
+check "AGENTS.md работает без CLI" "$(grep -c 'If `fraim` is not installed' "$PROJ2/AGENTS.md")" "1"
+check "AGENTS.md начинает с brief" "$(grep -c 'Start every session with `fraim brief`' "$PROJ2/AGENTS.md")" "1"
+check "AGENTS.md переводит слова человека в действия" "$(grep -c '«возьми задачу X»' "$PROJ2/AGENTS.md")" "1"
 check "CLAUDE.md указывает на AGENTS.md" "$(grep -c '@AGENTS.md' "$PROJ2/CLAUDE.md")" "1"
 check "AGENTS.md закоммичен скелетом" \
     "$(git -C "$PROJ2" ls-files --error-unmatch AGENTS.md >/dev/null 2>&1 && echo yes || echo no)" "yes"
@@ -1127,7 +1140,7 @@ printf '\nfraim publish (копия вне машины)\n'
 # только на терминале, а pty в POSIX sh не завести.
 PUBLIB_CANCEL='. "'"$REPO"'/installer/lib/core.sh"; . "'"$REPO"'/installer/lib/config.sh"
     . "'"$REPO"'/installer/lib/registry.sh"; . "'"$REPO"'/installer/lib/context.sh"
-    . "'"$REPO"'/installer/lib/scaffold.sh"; . "'"$REPO"'/installer/lib/verbs.sh"; . "'"$REPO"'/installer/lib/tasks.sh"
+    . "'"$REPO"'/installer/lib/scaffold.sh"; . "'"$REPO"'/installer/lib/verbs.sh"; . "'"$REPO"'/installer/lib/tasks.sh"; . "'"$REPO"'/installer/lib/foundation.sh"; . "'"$REPO"'/installer/lib/verbtable.sh"
     . "'"$REPO"'/installer/lib/ade.sh"; . "'"$REPO"'/installer/lib/watchman.sh"; . "'"$REPO"'/installer/lib/update.sh"; . "'"$REPO"'/installer/lib/publish.sh"'
 
 # Всё здесь работает без сети и без gh: «хостом» служит локальный bare-репозиторий.
@@ -1411,7 +1424,7 @@ GIT_CONFIG_COUNT=0; export GIT_CONFIG_COUNT
 
 PUBLIB='. "'"$REPO"'/installer/lib/core.sh"; . "'"$REPO"'/installer/lib/config.sh"
         . "'"$REPO"'/installer/lib/registry.sh"; . "'"$REPO"'/installer/lib/context.sh"
-        . "'"$REPO"'/installer/lib/scaffold.sh"; . "'"$REPO"'/installer/lib/verbs.sh"; . "'"$REPO"'/installer/lib/tasks.sh"
+        . "'"$REPO"'/installer/lib/scaffold.sh"; . "'"$REPO"'/installer/lib/verbs.sh"; . "'"$REPO"'/installer/lib/tasks.sh"; . "'"$REPO"'/installer/lib/foundation.sh"; . "'"$REPO"'/installer/lib/verbtable.sh"
         . "'"$REPO"'/installer/lib/ade.sh"; . "'"$REPO"'/installer/lib/watchman.sh"; . "'"$REPO"'/installer/lib/update.sh"; . "'"$REPO"'/installer/lib/publish.sh"'
 
 CONV=$(sh -c "$PUBLIB"'
@@ -2416,7 +2429,7 @@ check "все волны собраны — поднимать нечего" "$?
 printf '\nдиспетчер: приёмка дирижёра\n'
 
 DLIBV="$DLIB"'
-    . "'"$REPO"'/installer/lib/verbs.sh"; . "'"$REPO"'/installer/lib/tasks.sh"'
+    . "'"$REPO"'/installer/lib/verbs.sh"; . "'"$REPO"'/installer/lib/tasks.sh"; . "'"$REPO"'/installer/lib/foundation.sh"; . "'"$REPO"'/installer/lib/verbtable.sh"'
 
 AB="$SANDBOX/accept"; mkdir -p "$AB/ai/builds"; export AB
 git -C "$AB" init -q; git -C "$AB" config user.email t@t; git -C "$AB" config user.name t

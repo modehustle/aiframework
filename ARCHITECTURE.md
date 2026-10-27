@@ -85,9 +85,16 @@ convenience in `install.sh`). Distribution: shell installer + Claude Code plugin
 ## Data flow
 `install.sh` → clone to `~/.fraim/src` → `fraim init` reads `procedures/manifest.json`,
 generates skills per harness, writes context blocks and the project registry.
+What an agent learns about the CLI comes from ONE table, `vt_table` in `verbtable.sh`: it
+renders the verb list that opens `fraim brief`, the agent half of `fraim help` and the verb
+table of the master skill; `vt_phrases` (the human's words → procedure or verb) is shared by
+the project's AGENTS.md block and the master skill. The AGENTS.md block — always loaded by the
+harness — tells the agent to start with `fraim brief`, so the list it reads is the list of the
+CLI it runs.
 In a project: `fraim scaffold`/`stack-passport` write from templates; watchman reads
 git history + foundation files + the board (`tasks_scan`); deterministic verbs (`fraim commit`,
-`fraim decide`, `fraim task-new`/`task-seal`) make the commits themselves. `fraim roles set` resolves agent → model → effort:
+`fraim decide`, `fraim task-new`/`task-seal`) make the commits themselves. `fraim roles set`
+resolves agent → model → effort:
 the agent list comes from `harness_detect` (the harness table, independent of any
 execution environment), then models are discovered live from the chosen agent itself
 (`roles_models_of`): native listing command first, cache file or embedded binary

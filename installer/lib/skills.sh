@@ -62,16 +62,22 @@ master_render() {
     cat <<SKILLEOF
 ---
 name: $FRAIM_NAME
-description: Control panel for the fraim workflow system. Use when the user asks where a project stands, what needs attention, what to do next, which projects have drifted, or how to install and update the workflow procedures. Routes to the right procedure and reads the deterministic project watchman.
+description: How to work in a project under the fraim workflow system — read this whenever a project has ARCHITECTURE.md / AGENTS.md / ai/, and whenever the user mentions tasks, the board, a project of several tasks, the backlog or open questions, decisions, the foundation, or asks where things stand and what to do next. Lists the CLI verbs that read and write the foundation, maps the user's words to procedures, and reads the deterministic watchman.
 metadata:
   version: $_ver
   source: fraim
 ---
-# fraim — control panel
+# fraim — how to work here
 
 \`fraim\` keeps a project's context durable across chats and weeks. Each project
 carries a **foundation** (\`ARCHITECTURE.md\`, \`CONVENTIONS.md\`, \`DECISIONS.md\`,
-\`ai/\`) and work moves through explicit procedures instead of improvisation.
+\`ai/\`). Work is reactive — the human writes, you do it in this session — and a few
+procedures exist for work of a particular shape.
+
+**Start with \`fraim brief\`.** It prints the whole foundation, the board and the list of
+verbs in one stream, uncut, and says so at the end. Look things up with \`fraim find\`
+(2–4 keys, both languages, word stems). Write the foundation through the verbs below, never
+by hand.
 
 **Invariant 0.4** — the foundation is read FIRST before any task and updated LAST
 after it. \`DECISIONS.md\` is append-only. A stale foundation is a bug, not cosmetics.
@@ -106,9 +112,15 @@ an unsaved foundation) and deliberately touches nothing that needs judgement —
 board, foundation drift. It prints its plan and asks before doing anything. Every mutating procedure in this system ends by asking the human,
 by design.
 
-## Routing table
+## What the human says
 
-| The user wants | Procedure | Model tier |
+The human talks; they do not type commands. Recognise the request:
+
+$(vt_phrases)
+
+## Procedures
+
+| The work | Procedure | Model tier |
 |---|---|---|
 | decide what to build, before any code exists | \`/design-session\` | strong |
 | lay the foundation of a new authored project | \`/bootstrap\` | strong |
@@ -131,9 +143,12 @@ Most sessions are not a planned task — a question, a small fix, a look around,
 whose shape appeared while doing it. **That is legitimate.** Do not turn it into a task,
 and do not announce a procedure you are not running. What still holds:
 
-- invariant 0.4 — read the foundation first, fix it if the change made it wrong;
+- invariant 0.4 — read the foundation first (\`fraim brief\`), fix it if the change made it
+  wrong (\`fraim arch "<section>"\`);
 - **behaviour changed → \`fraim decide "<title>"\`** with the body on stdin; pure cosmetics need
   no entry. Do not hand-write the heading or the date — placement and format are the verb's;
+- **open questions at the end** — list them and ask which to keep; approved ones go to
+  \`fraim backlog-new\`;
 - **save as you go**: when a coherent piece is done, not at the end of the session,
   \`fraim commit fix \"<what changed>\" <path> <path>\`. Those commits are the record of
   reactive work; there is no second log to keep.
@@ -148,22 +163,8 @@ change something you do not understand → \`/investigate\`.
 Mechanical, repeating actions belong to the CLI, not to you. Where a procedure names one of
 these, run it: the format, the paths, the timestamps and the commit are not your business.
 
-| Command | Replaces |
-|---|---|
-| \`fraim scaffold\` | hand-building the foundation files and \`ai/\` |
-| \`fraim tasks\` | walking \`ai/tasks/\` by hand: the board, projects and their progress (\`--json\`) |
-| \`fraim task-new SLUG [--master \\| --parent M]\` | writing a task card: the card arrives on stdin, the verb owns frontmatter, place and commit |
-| \`fraim task-master SLUG\` | turning a task into a project — only on the human's word |
-| \`fraim task-seal SLUG "RESULT" [--dropped]\` | closing a card: into \`ai/archive/tasks/\` with one line of outcome |
-| \`fraim decide "TITLE"\` | writing an entry into \`DECISIONS.md\` (body on stdin, never argv) |
-| \`fraim pitfall "LINE"…\` | adding lessons to \`## Known Pitfalls / Lessons\` in \`CONVENTIONS.md\` |
-| \`fraim investigate-new SLUG\` | creating an investigation folder and its provenance stamp |
-| \`fraim investigate-seal SLUG\` | archiving a finished investigation — **it can refuse** |
-| \`fraim prune-mark\` | marking a completed prune by hand |
-| \`fraim stack-passport\` | retyping the STACK.md schema |
-| \`fraim commit KIND TEXT PATH…\` | \`git add\` + \`git commit\` by hand |
-| \`fraim undo [HASH]\` | reaching for \`git reset\` / \`git revert\` |
-| \`fraim restore PATH…\` | \`git restore\` / deleting scratch files by hand |
+$(vt_skill)
+| \`fraim scaffold\` | lay the foundation files and \`ai/\` — never by hand |
 
 Some of them **refuse**: \`task-new\` will not write a card without a title, «Что и зачем» and
 «Готово, когда»; \`task-seal\` will not close a project while its subtasks are open;

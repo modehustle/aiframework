@@ -80,22 +80,9 @@ fraim — эксплуатационный слой для проектов на
   fraim projects            реестр проектов (add ПУТЬ / rm ПУТЬ)
 
 Это зовут агенты и процедуры — тебе их помнить не нужно
-  fraim brief               весь фундамент, доска и список глаголов одним выводом
-  fraim find КЛЮЧ…          найти запись целиком в фундаменте, задачах, бэклоге
-  fraim tasks [--json]      доска: открытые задачи, проекты и их прогресс
-  fraim task-new СЛАГ [--master | --parent МАСТЕР]   поставить задачу (карточка потоком)
-  fraim task-master СЛАГ    сделать задачу проектом (мастер-задачей) — по слову человека
-  fraim task-seal СЛАГ "ИТОГ" [--dropped]   закрыть задачу: в архив со строкой итога
-  fraim backlog             открытые вопросы (backlog-new СЛАГ — записать, backlog-drop — снять)
-  fraim arch РАЗДЕЛ [--new] переписать раздел ARCHITECTURE.md (тело потоком; --in ФАЙЛ)
-  fraim decide ЗАГОЛОВОК    запись в DECISIONS.md (тело — потоком)
-  fraim pitfall СТРОКА...   грабли в CONVENTIONS.md
-  fraim investigate-new СЛАГ   папка расследования + findings.md
-  fraim investigate-seal СЛАГ  проверить исход и уборку, заархивировать
-  fraim prune-mark          сбросить счётчик дрейфа маркером
-  fraim stack-passport      создать STACK.md из шаблона
-  fraim commit ВИД ТЕКСТ ПУТЬ...   точка сохранения по перечисленным путям
-  fraim restore ПУТЬ...     вернуть перечисленные пути к последней точке
+USAGE
+    vt_help
+    cat <<'USAGE'
 
 Служебное
   fraim task-block, task-result, task-revise, plan-seal, reconcile-seal —
