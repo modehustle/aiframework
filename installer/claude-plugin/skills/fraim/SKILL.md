@@ -113,28 +113,28 @@ change something you do not understand → `/investigate`.
 Mechanical, repeating actions belong to the CLI, not to you. Where a procedure names one of
 these, run it: the format, the paths, the timestamps and the commit are not your business.
 
-| Command | When |
-|---|---|
-| `fraim brief` | в начале сессии: весь фундамент, доска и этот список одним выводом — читать файлы отдельно не нужно |
-| `fraim find КЛЮЧ…` | найти в фундаменте, задачах и бэклоге; 2–4 ключа, на обоих языках, основой слова (задач task); возвращает запись целиком |
-| `fraim status` | вердикт сторожа по проекту (--json для машины) |
-| `fraim tasks` | доска: открытые задачи, проекты с прогрессом, возраст карточек |
-| `fraim task-new СЛАГ [--master \| --parent М \| --from ВОПРОС]` | поставить задачу — только по слову человека; карточка потоком: «# Заголовок», «## Что и зачем», «## Готово, когда», «## Ссылки» |
-| `fraim task-master СЛАГ` | сделать задачу проектом — только по слову человека |
-| `fraim task-seal СЛАГ "ИТОГ" [--dropped]` | закрыть задачу строкой итога (или отменить) |
-| `fraim backlog` | открытые вопросы, отложенные человеком |
-| `fraim backlog-new СЛАГ [--from ОТКУДА]` | записать открытый вопрос — только то, что человек одобрил; потоком: «# Вопрос», «## В чём вопрос», «## Почему важно» |
-| `fraim backlog-drop СЛАГ "ПОЧЕМУ"` | снять вопрос из бэклога |
-| `fraim decide "ЗАГОЛОВОК" [--supersedes "ЧТО"]` | поведение изменилось → запись в DECISIONS.md наверх (тело потоком); заменённая запись сама уходит в архив |
-| `fraim pitfall "СТРОКА"…` | грабли, одобренные человеком → в Known Pitfalls / Lessons |
-| `fraim arch "РАЗДЕЛ" [--new] [--in ФАЙЛ]` | переписать раздел ARCHITECTURE.md (или CONVENTIONS.md / STACK.md) целиком; тело потоком |
-| `fraim commit ВИД "ЧТО" ПУТЬ…` | точка сохранения ровно по перечисленным путям — после каждого законченного куска |
-| `fraim restore ПУТЬ…` | вернуть пути к последней точке сохранения |
-| `fraim undo [ХЕШ]` | показать точки / отменить одну встречным коммитом |
-| `fraim investigate-new СЛАГ` | начать расследование (/investigate) |
-| `fraim investigate-seal СЛАГ` | закрыть расследование с исходом |
-| `fraim stack-passport` | завести STACK.md по схеме |
-| `fraim prune-mark` | отметить завершённый /prune |
+| Situation | Command | Notes |
+|---|---|---|
+| reading the foundation whole | `fraim brief` | the map, house rules, living decisions, STACK.md and the board, uncut; once per session |
+| looking something up | `fraim find KEY…` | 2–4 keys, both languages, word stems (cache кэш); returns whole entries with their heading |
+| finished a coherent piece | `fraim commit KIND "WHAT" PATH…` | a save point over exactly the paths you changed — never "everything" |
+| changed what the program does | `fraim decide "TITLE" [--supersedes "OLD"]` | body on stdin; goes on top; --supersedes moves the replaced entry to the archive |
+| changed structure, components or data flow | `fraim arch "SECTION" [--new] [--in FILE]` | rewrites one section of ARCHITECTURE.md (or CONVENTIONS.md / STACK.md); body on stdin |
+| something bit you that would trap the next change | `fraim pitfall "LINE"…` | propose the line first; write it only on the human's yes |
+| need to undo your own uncommitted edit | `fraim restore PATH…` | back to the last save point; a created file is removed |
+| open questions remain, important but not for now | `fraim backlog-new SLUG [--from WHERE]` | list them, ask; only approved ones; body on stdin: # title, ## В чём вопрос, ## Почему важно |
+| finished a task taken from the board | `fraim task-seal SLUG "RESULT" [--dropped]` | closes the card into the archive with one line of outcome; a master task only on the human's word |
+| wants to know where things stand | `fraim status` | the watchman's verdict; report it, do not act on it |
+| wants to know what is planned | `fraim tasks` | open tasks, projects with progress, age of each card |
+| wants work set aside, or a project opened | `fraim task-new SLUG [--master \| --parent M \| --from Q]` | via /make-task; body on stdin: # title, ## Что и зачем, ## Готово, когда, ## Ссылки |
+| says a task is really a project | `fraim task-master SLUG` | turns an open task into a master task |
+| wants to review open questions | `fraim backlog` | the backlog; a question that stops mattering → fraim backlog-drop |
+| drops an open question | `fraim backlog-drop SLUG "WHY"` | closes it into the archive with the reason |
+| a save point must be taken back | `fraim undo [HASH]` | lists the save points; undoes one with a counter-commit, never rewrites history |
+| starting / closing an investigation | `fraim investigate-new SLUG` | inside /investigate |
+| closing an investigation with an outcome | `fraim investigate-seal SLUG` | inside /investigate; refuses without an outcome and a cleanup report |
+| a stack was boxed | `fraim stack-passport` | inside /docker-deploy |
+| a prune is finished | `fraim prune-mark` | inside /prune |
 | `fraim scaffold` | lay the foundation files and `ai/` — never by hand |
 
 Some of them **refuse**: `task-new` will not write a card without a title, «Что и зачем» and

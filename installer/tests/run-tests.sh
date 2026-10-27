@@ -77,7 +77,7 @@ check "каждая команда CLI описана в fraim help" "$(printf '
 # help и мастер-скилл. Глагол в таблице, которого нет в диспетчере, — обещание, которое
 # сломается на первом же вызове.
 VTCMDS=$(sh -c '. "'"$REPO"'/installer/lib/core.sh"; . "'"$REPO"'/installer/lib/foundation.sh"; . "'"$REPO"'/installer/lib/verbtable.sh"; vt_table' |
-         awk -F' ;; ' '{ split($2, w, " "); print w[2] }' | sort -u)
+         awk -F' ;; ' '{ split($3, w, " "); print w[2] }' | sort -u)
 VTMISS=""
 for v in $VTCMDS; do
     printf '%s\n' "$DISPATCH" | grep -qx "$v" || VTMISS="$VTMISS $v"
@@ -915,8 +915,8 @@ check "глагол находит корень проекта из подкат
 
 # --- brief и find: фундамент целиком и запись целиком ------------------------
 B=$("$FRAIM" brief 2>/dev/null)
-check "brief кончается меткой полноты" "$(printf '%s\n' "$B" | tail -1 | grep -c 'показано всё')" "1"
-check "brief открывается списком глаголов" "$(printf '%s\n' "$B" | grep -c '`fraim find КЛЮЧ…`')" "1"
+check "brief кончается меткой полноты" "$(printf '%s\n' "$B" | tail -1 | grep -c 'nothing cut')" "1"
+check "brief открывается глаголами по ситуациям" "$(printf '%s\n' "$B" | grep -c '^- finished a coherent piece → `fraim commit')" "1"
 check "brief несёт карту" "$(printf '%s\n' "$B" | grep -c '^from below$')" "1"
 check "brief несёт решения в сжатом виде" "$(printf '%s\n' "$B" | grep -c '^Decision: retry with jitter.$')" "1"
 check "brief не даёт строк длиннее ширины" \

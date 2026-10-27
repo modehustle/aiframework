@@ -5,41 +5,54 @@
 # and the two had already drifted apart. An agent learns the verbs from `fraim brief`,
 # which prints this table, so the list it reads is always the list of the CLI it runs.
 #
-# group ;; command ;; short (for `fraim help`) ;; when to call it (for brief and the skill)
-#   group: read · board · foundation · save · other
+# group ;; situation ;; command ;; short (Russian, for `fraim help`) ;; detail (for the agent)
+#
+# Ordered by the moment of a session, not by command: an agent mid-work asks «I just
+# changed behaviour — what now?», and the answer has to be one glance down the left column.
+# The agent-facing columns are English, like every other instruction to the agent; the
+# short column is Russian because `fraim help` is read by the human.
+#   group: start · work · end · human · rare
 
 vt_table() {
     cat <<'VT'
-read ;; fraim brief ;; весь фундамент, доска и этот список одним выводом ;; в начале сессии: весь фундамент, доска и этот список одним выводом — читать файлы отдельно не нужно
-read ;; fraim find КЛЮЧ… ;; найти запись целиком в фундаменте, задачах, бэклоге ;; найти в фундаменте, задачах и бэклоге; 2–4 ключа, на обоих языках, основой слова (задач task); возвращает запись целиком
-read ;; fraim status ;; вердикт сторожа по проекту ;; вердикт сторожа по проекту (--json для машины)
-board ;; fraim tasks ;; доска задач и проектов ;; доска: открытые задачи, проекты с прогрессом, возраст карточек
-board ;; fraim task-new СЛАГ [--master | --parent М | --from ВОПРОС] ;; поставить задачу (карточка потоком) ;; поставить задачу — только по слову человека; карточка потоком: «# Заголовок», «## Что и зачем», «## Готово, когда», «## Ссылки»
-board ;; fraim task-master СЛАГ ;; сделать задачу проектом ;; сделать задачу проектом — только по слову человека
-board ;; fraim task-seal СЛАГ "ИТОГ" [--dropped] ;; закрыть задачу строкой итога ;; закрыть задачу строкой итога (или отменить)
-board ;; fraim backlog ;; открытые вопросы ;; открытые вопросы, отложенные человеком
-board ;; fraim backlog-new СЛАГ [--from ОТКУДА] ;; записать вопрос в бэклог (потоком) ;; записать открытый вопрос — только то, что человек одобрил; потоком: «# Вопрос», «## В чём вопрос», «## Почему важно»
-board ;; fraim backlog-drop СЛАГ "ПОЧЕМУ" ;; снять вопрос из бэклога ;; снять вопрос из бэклога
-foundation ;; fraim decide "ЗАГОЛОВОК" [--supersedes "ЧТО"] ;; запись в DECISIONS.md (тело потоком) ;; поведение изменилось → запись в DECISIONS.md наверх (тело потоком); заменённая запись сама уходит в архив
-foundation ;; fraim pitfall "СТРОКА"… ;; грабли в CONVENTIONS.md ;; грабли, одобренные человеком → в Known Pitfalls / Lessons
-foundation ;; fraim arch "РАЗДЕЛ" [--new] [--in ФАЙЛ] ;; переписать раздел карты (тело потоком) ;; переписать раздел ARCHITECTURE.md (или CONVENTIONS.md / STACK.md) целиком; тело потоком
-save ;; fraim commit ВИД "ЧТО" ПУТЬ… ;; точка сохранения по перечисленным путям ;; точка сохранения ровно по перечисленным путям — после каждого законченного куска
-save ;; fraim restore ПУТЬ… ;; вернуть пути к последней точке ;; вернуть пути к последней точке сохранения
-save ;; fraim undo [ХЕШ] ;; показать точки / отменить одну ;; показать точки / отменить одну встречным коммитом
-other ;; fraim investigate-new СЛАГ ;; папка расследования + findings.md ;; начать расследование (/investigate)
-other ;; fraim investigate-seal СЛАГ ;; проверить исход и уборку, заархивировать ;; закрыть расследование с исходом
-other ;; fraim stack-passport ;; создать STACK.md из шаблона ;; завести STACK.md по схеме
-other ;; fraim prune-mark ;; сбросить счётчик дрейфа маркером ;; отметить завершённый /prune
+start ;; reading the foundation whole ;; fraim brief ;; весь фундамент, доска и список глаголов одним выводом ;; the map, house rules, living decisions, STACK.md and the board, uncut; once per session
+start ;; looking something up ;; fraim find KEY… ;; найти запись целиком в фундаменте, задачах, бэклоге ;; 2–4 keys, both languages, word stems (cache кэш); returns whole entries with their heading
+work ;; finished a coherent piece ;; fraim commit KIND "WHAT" PATH… ;; точка сохранения по перечисленным путям ;; a save point over exactly the paths you changed — never "everything"
+work ;; changed what the program does ;; fraim decide "TITLE" [--supersedes "OLD"] ;; запись в DECISIONS.md (тело потоком) ;; body on stdin; goes on top; --supersedes moves the replaced entry to the archive
+work ;; changed structure, components or data flow ;; fraim arch "SECTION" [--new] [--in FILE] ;; переписать раздел карты (тело потоком) ;; rewrites one section of ARCHITECTURE.md (or CONVENTIONS.md / STACK.md); body on stdin
+work ;; something bit you that would trap the next change ;; fraim pitfall "LINE"… ;; грабли в CONVENTIONS.md ;; propose the line first; write it only on the human's yes
+work ;; need to undo your own uncommitted edit ;; fraim restore PATH… ;; вернуть пути к последней точке ;; back to the last save point; a created file is removed
+end ;; open questions remain, important but not for now ;; fraim backlog-new SLUG [--from WHERE] ;; записать вопрос в бэклог (потоком) ;; list them, ask; only approved ones; body on stdin: # title, ## В чём вопрос, ## Почему важно
+end ;; finished a task taken from the board ;; fraim task-seal SLUG "RESULT" [--dropped] ;; закрыть задачу строкой итога ;; closes the card into the archive with one line of outcome; a master task only on the human's word
+human ;; wants to know where things stand ;; fraim status ;; вердикт сторожа по проекту ;; the watchman's verdict; report it, do not act on it
+human ;; wants to know what is planned ;; fraim tasks ;; доска задач и проектов ;; open tasks, projects with progress, age of each card
+human ;; wants work set aside, or a project opened ;; fraim task-new SLUG [--master | --parent M | --from Q] ;; поставить задачу (карточка потоком) ;; via /make-task; body on stdin: # title, ## Что и зачем, ## Готово, когда, ## Ссылки
+human ;; says a task is really a project ;; fraim task-master SLUG ;; сделать задачу проектом ;; turns an open task into a master task
+human ;; wants to review open questions ;; fraim backlog ;; открытые вопросы ;; the backlog; a question that stops mattering → fraim backlog-drop
+human ;; drops an open question ;; fraim backlog-drop SLUG "WHY" ;; снять вопрос из бэклога ;; closes it into the archive with the reason
+rare ;; a save point must be taken back ;; fraim undo [HASH] ;; показать точки / отменить одну ;; lists the save points; undoes one with a counter-commit, never rewrites history
+rare ;; starting / closing an investigation ;; fraim investigate-new SLUG ;; папка расследования + findings.md ;; inside /investigate
+rare ;; closing an investigation with an outcome ;; fraim investigate-seal SLUG ;; проверить исход и уборку, заархивировать ;; inside /investigate; refuses without an outcome and a cleanup report
+rare ;; a stack was boxed ;; fraim stack-passport ;; создать STACK.md из шаблона ;; inside /docker-deploy
+rare ;; a prune is finished ;; fraim prune-mark ;; сбросить счётчик дрейфа маркером ;; inside /prune
 VT
 }
 
-# The block `fraim brief` opens with: what to call, and the three rules that make the
-# calls matter. Short on purpose — the procedures carry the rest.
+# The block `fraim brief` opens with: the rules that make the calls matter, then the
+# verbs by situation. Short on purpose — the procedures carry the rest.
 vt_brief() {
-    printf 'Фундамент пишется только глаголами: текст твой, место, формат и перенос строк — их.\n'
-    printf 'Задачи и бэклог пополняет только человек; ты делаешь работу здесь и сейчас.\n'
-    printf 'Нет fraim на машине — делай то же обычным git, правила те же.\n\n'
-    vt_table | awk -F' ;; ' '{ printf "- `%s` — %s\n", $2, $4 }' | fnd_wrap
+    printf 'The foundation is written only through these verbs: the text is yours; place, format\n'
+    printf 'and line wrapping are theirs. Tasks and the backlog are filled by the human only — the\n'
+    printf 'work in front of you is done here and now. No fraim on the machine: do the same with git.\n'
+    vt_table | awk -F' ;; ' '
+        BEGIN {
+            title["start"] = "Start of a session"; title["work"] = "While working"
+            title["end"] = "At the end of a piece of work"; title["human"] = "When the human wants it"
+            title["rare"] = "Rare"
+        }
+        $1 != g { g = $1; printf "\n%s\n", title[g] }
+        { printf "- %s → `%s` — %s\n", $2, $3, $5 }
+    ' | fnd_wrap read
 }
 
 # The agent half of `fraim help`.
@@ -48,17 +61,17 @@ vt_help() {
     vt_table | LC_ALL=C awk -F' ;; ' '
         function clen(x,  t) { t = x; gsub(/[\200-\277]/, "", t); return length(t) }
         {
-            c = $2; sub(/^fraim /, "", c)
+            c = $3; sub(/^fraim /, "", c)
             n = clen(c)
-            if (n <= 24) { pad = ""; for (i = n; i < 25; i++) pad = pad " "; printf "  fraim %s%s%s\n", c, pad, $3 }
-            else printf "  fraim %s\n                                 %s\n", c, $3
+            if (n <= 24) { pad = ""; for (i = n; i < 25; i++) pad = pad " "; printf "  fraim %s%s%s\n", c, pad, $4 }
+            else printf "  fraim %s\n                                 %s\n", c, $4
         }'
 }
 
 # The verb table of the master skill, as markdown rows.
 vt_skill() {
-    printf '| Command | When |\n|---|---|\n'
-    vt_table | awk -F' ;; ' '{ c = $2; gsub(/\|/, "\\|", c); printf "| `%s` | %s |\n", c, $4 }'
+    printf '| Situation | Command | Notes |\n|---|---|---|\n'
+    vt_table | awk -F' ;; ' '{ c = $3; gsub(/\|/, "\\|", c); printf "| %s | `%s` | %s |\n", $2, c, $5 }'
 }
 
 # What the human wants, and what that means here. Intents, not phrases: the human writes

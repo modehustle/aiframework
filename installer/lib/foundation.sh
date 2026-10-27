@@ -104,9 +104,9 @@ verb_brief() {
     _tmp=$(mktemp) || die "не удалось создать временный файл"
     {
         printf '# fraim brief — %s · fraim %s\n\n' "$(basename -- "$_root")" "$(fraim_version)"
-        printf 'Весь фундамент проекта одним выводом. Ничего не обрезано: в конце стоит метка.\n\n'
+        printf 'The whole foundation of this project in one stream. Nothing is cut: there is a mark at the end.\n\n'
 
-        printf '## Как здесь работать\n\n'
+        printf '## How to work here\n\n'
         vt_brief
         printf '\n'
 
@@ -115,11 +115,11 @@ verb_brief() {
             [ -f "$_p" ] || continue
             printf '=== %s ===\n\n' "$_f"
             if scaffold_is_stub "$_p"; then
-                printf '(заготовка — файл не заполнен: /bootstrap или /onboard)\n\n'
+                printf '(a scaffold — not filled in yet: /bootstrap or /onboard)\n\n'
                 continue
             fi
             if [ "$_f" = DECISIONS.md ]; then
-                printf '(действующие решения: заголовок и суть; полный текст — fraim find <слово> или сам DECISIONS.md)\n\n'
+                printf '(living decisions, condensed; full text — fraim find <word> or DECISIONS.md)\n\n'
                 fnd_decisions_condensed "$_p" | fnd_wrap read
             else
                 fnd_wrap read < "$_p"
@@ -127,14 +127,14 @@ verb_brief() {
             printf '\n'
         done
 
-        printf '=== доска ===\n\n'
+        printf '=== board ===\n\n'
         ( C_DIM=; C_BLD=; C_OFF=; C_GRN=; C_YEL=; C_RED=; verb_tasks "$_root" 2>&1 )
         printf '\n'
     } > "$_tmp"
     cat "$_tmp"
     _n_out=$(wc -l < "$_tmp" | tr -d ' ')
     rm -f "$_tmp"
-    printf -- '— конец brief: %s строк, показано всё. Читать файлы фундамента отдельно не нужно. —\n' "$((_n_out + 1))"
+    printf -- '— end of brief: %s lines, nothing cut. No need to read the foundation files separately. —\n' "$((_n_out + 1))"
 }
 
 # --- find -------------------------------------------------------------------

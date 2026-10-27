@@ -85,7 +85,9 @@ convenience in `install.sh`). Distribution: shell installer + Claude Code plugin
 ## Data flow
 `install.sh` → clone to `~/.fraim/src` → `fraim init` reads `procedures/manifest.json`,
 generates skills per harness, writes context blocks and the project registry.
-What an agent learns about the CLI comes from ONE table, `vt_table` in `verbtable.sh`: it
+What an agent learns about the CLI comes from ONE table, `vt_table` in `verbtable.sh`, ordered
+by the moment of a session (start · while working · end · when the human wants it · rare) and
+written in English for the agent (the short column for `fraim help` is Russian): it
 renders the verb list that opens `fraim brief`, the agent half of `fraim help` and the verb
 table of the master skill; `vt_intents` (the human's intent → procedure or verb, judged in any
 language and wording, never matched as phrases) is shared by
