@@ -28,7 +28,7 @@
 #     - why
 #
 # Role is the name of a PROCEDURE, not a word invented per plan (MODES.md §10 —
-# "свою онтологию ролей не заводим"). roles.sh resolves it to agent, model and
+# "we do not start an ontology of roles of our own"). roles.sh resolves it to agent, model and
 # effort; it is the plan's only statement about the executor, on purpose.
 # ---------------------------------------------------------------------------
 
@@ -38,8 +38,8 @@
 #
 # A per-subtask tier field was built here and removed on the owner's decision: judging
 # which subtask deserves an expensive model is not the conductor's call to make. Executors
-# run on what their procedure declares, and the human decides cost — see "Чего здесь пока
-# нет" in the conductor procedure for the session-profile idea that replaces it.
+# run on what their procedure declares, and the human decides cost — see "What is not here
+# yet" in the conductor procedure for the session-profile idea that replaces it.
 dispatch_parse_plan() {
     [ -f "$1" ] || return 0
     awk '
@@ -290,16 +290,16 @@ dispatch_wave_count() {
 #   - warn on all arithmetic of size. A file count does not measure work, and refusing on
 #     such a metric would be lying with precision.
 # The conductor reads the warning and decides; that is the same division as the watchman's
-# («сторож замечает, человек решает»).
+# ("the watchman notices, the human decides").
 #
-# The time threshold that used to live here («кусок дольше получаса») is deliberately
+# The time threshold that used to live here ("a piece longer than half an hour") is deliberately
 # absent: nobody can measure it — not the conductor before dispatch, not the human, not
 # the machine after — and it read as a rule while working as the cheapest excuse to refuse.
 # What replaces it is a comparison the conductor states out loud in the plan: dispatching
 # is worth it when executing the piece costs more than dispatching it.
 #
-# Only ceilings, no floors. The lower bounds («below three subtasks dispatch rarely pays»,
-# «one path is probably smaller than the cost of dispatch») assumed the fleet exists for
+# Only ceilings, no floors. The lower bounds ("below three subtasks dispatch rarely pays",
+# "one path is probably smaller than the cost of dispatch") assumed the fleet exists for
 # calendar time. It also exists for tokens: a conductor on a strong model handing ONE piece
 # to ONE worker on a cheap model is a whole, legitimate build (DECISIONS 2026-09-15). The
 # human asked for it; a floor would only argue with them.
@@ -526,7 +526,7 @@ build_dir() { printf '%s/ai/builds/%s\n' "$1" "$2"; }
 build_branch() { printf 'fraim/%s\n' "$1"; }
 
 # wave<TAB>subtask<TAB>merged sha<TAB>time. The record of what actually came back, in git —
-# «что кому роздано и что вернулось» is our truth (A3), unlike fleet.tsv which is a cache
+# "what was handed to whom and what came back" is our truth (A3), unlike fleet.tsv which is a cache
 # of the environment's ids.
 build_collected_file() { printf '%s/collected.tsv\n' "$(build_dir "$1" "$2")"; }
 
@@ -730,7 +730,7 @@ build_seal() {
     # branch FROM it and their results are merged back INTO it, so the trunk stays untouched
     # for the whole life of the build: `collect` writes only here, and the single merge into
     # the trunk happens once, in `accept`, after everything has been checked (MODES.md §4,
-    # вариант B). No other verb touches the trunk.
+    # option B). No other verb touches the trunk.
     _bs_br=$(build_branch "$_bs_id")
     if ! git -C "$_bs_root" rev-parse --verify --quiet "refs/heads/$_bs_br" >/dev/null 2>&1; then
         git -C "$_bs_root" branch "$_bs_br" >/dev/null 2>&1 ||
@@ -917,11 +917,11 @@ dispatch_collect() {
 # ---------------------------------------------------------------------------
 # Acceptance: the whole of it is the conductor's, trunk write included
 #
-# The word «приёмка» used to carry two things and the CLI stamped only the second:
+# The word "acceptance" used to carry two things and the CLI stamped only the second:
 # `build_accept` wrote a time and a HEAD, while everything that should have come before it
 # — verify each subtask against the tree, look at the build as a whole, run the project's
 # own check, tidy up after the fleet — was a list of commands somebody had to remember, one
-# at a time, in a chat. What reached the human was N diffs and the word «принято».
+# at a time, in a chat. What reached the human was N diffs and the word "accepted".
 #
 # So the checking became the conductor's. Then the same logic finished the sentence: the
 # human does not type commands at all here, and the trunk write is not a decision, it is
@@ -929,7 +929,7 @@ dispatch_collect() {
 # it has to live in. `accept` therefore does everything and prints a report to the terminal;
 # the human reads that report and says whether it is right.
 #
-# This is MODES.md §4 вариант B, and it is affordable now for a reason that did not exist
+# This is MODES.md §4 option B, and it is affordable now for a reason that did not exist
 # when §4 was written: `collect` assembles the whole build into ONE branch, so the trunk
 # write is ONE `--no-ff` merge commit and undoing it is `fraim undo <sha>` — not the unwind
 # of N interleaved results §4 refused. The commit carries the `fraim:` trailer precisely so
@@ -948,7 +948,7 @@ build_accepted_file() { printf '%s/accepted\n' "$(build_dir "$1" "$2")"; }
 # is missing or no longer resolves do we ask git for the fork point.
 build_base_sha() {
     _bb_root=$1; _bb_build=$2
-    # «База» is how journals written before the English format name the line.
+    # "Base" in Russian is how journals written before the English format name the line.
     _bb_s=$(sed -n 's/^- Base: //p; s/^- База: //p' "$(build_dir "$_bb_root" "$_bb_build")/journal.md" 2>/dev/null |
             head -1 | tr -d ' ')
     if [ -n "$_bb_s" ] && [ "$_bb_s" != "—" ] &&
@@ -981,8 +981,9 @@ build_open_subtasks() {
 # on its own and wrong together. The command is project configuration (C1), so it lives in
 # `build_check` and not in this file; unset, the report says so instead of implying a pass.
 #
-# Writes the command's output to $3. Prints its verdict: `нет` (nothing configured),
-# `нельзя` (the checkout could not be opened) or the command's exit code.
+# Writes the command's output to $3. Prints its verdict: the Russian token for "none"
+# (nothing configured), the Russian token for "cannot" (the checkout could not be opened)
+# or the command's exit code.
 build_master_check() {
     _mc_root=$1; _mc_build=$2; _mc_out=$3
     : > "$_mc_out" 2>/dev/null || :
@@ -1003,9 +1004,9 @@ build_master_check() {
     printf '%s\n' "$_mc_rc"
 }
 
-# Чистка: only what this build itself created, and only once it is provably redundant.
+# Cleanup: only what this build itself created, and only once it is provably redundant.
 #
-# This is B6 scaled to the fleet (MODES.md §3): there is no «прибрать лишние воркtree» here.
+# This is B6 scaled to the fleet (MODES.md §3): there is no "tidy up the extra worktrees" here.
 # The list comes from the build's own record — the subtasks of its plan, the dispatch ids in
 # its fleet.tsv — so nobody ever decides "what not to touch": another build's checkouts, and
 # the ones a human opened by hand, are not on the list to begin with.
@@ -1146,7 +1147,7 @@ build_accept() {
 
     printf 'Приёмка сборки %s\n\n' "$_ba_id"
 
-    # --- что вернулось: дерево, а не отчёты воркеров (MODES.md §3) -----------
+    # --- what came back: the tree, not the workers' reports (MODES.md §3) ----
     printf '  что вернулось\n'
     for _ba_s in $_ba_ids; do
         _ba_w=$(awk -F'\t' -v s="$_ba_s" '$2 == s { print $1; exit }' "$_ba_coll" 2>/dev/null)
@@ -1180,7 +1181,7 @@ build_accept() {
         printf '    (фундамент, который под флотом пишет сама сборка, — или утечка)\n'
     fi
 
-    # Под флотом фундамент пишет сборка, один раз (инвариант 0.4).
+    # Under the fleet the foundation is written by the build, once (invariant 0.4).
     _ba_found=$(printf '%s\n' "$_ba_changed" |
                 grep -xE 'ARCHITECTURE\.md|CONVENTIONS\.md|DECISIONS\.md' |
                 tr '\n' ' ' | sed 's/[[:space:]]*$//')
@@ -1188,7 +1189,7 @@ build_accept() {
         _ba_say="$_ba_say    фундамент не тронут — под флотом его пишет сборка, один раз (инвариант 0.4)
 "
 
-    # --- мастер-проверка -----------------------------------------------------
+    # --- master check --------------------------------------------------------
     _ba_cmd=$(config_get build_check "$_ba_root")
     _ba_mc=$(build_master_check "$_ba_root" "$_ba_id" "$_ba_tmp/check.out")
     case $_ba_mc in
@@ -1209,7 +1210,7 @@ build_accept() {
 " ;;
     esac
 
-    # --- чистка --------------------------------------------------------------
+    # --- cleanup -------------------------------------------------------------
     _ba_clean=$(build_cleanup "$_ba_root" "$_ba_id")
     printf '  чистка: чекаутов снято %s, оставлено %s, воркеров освобождено %s\n' \
         "$(printf '%s\n' "$_ba_clean" | grep -c '	снят$')" \
@@ -1220,7 +1221,7 @@ build_accept() {
         _ba_say="$_ba_say    воркер продолжил работу после сбора — в его чекауте есть незакоммиченное
 "
 
-    # --- ствол ---------------------------------------------------------------
+    # --- trunk ---------------------------------------------------------------
     _ba_merge=
     if [ -n "$_ba_stop" ]; then
         printf '\n  в ствол НЕ уводил:\n%s' "$_ba_stop"

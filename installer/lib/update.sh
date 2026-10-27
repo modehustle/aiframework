@@ -1,45 +1,46 @@
 #!/bin/sh
-# update.sh — «приехала ли новая версия» и «привези её».
+# update.sh — "has a new version arrived" and "bring it in".
 #
-# Обновление у нас всегда было, но называлось двумя строчками, которые надо
-# помнить: `sh ~/.fraim/src/installer/install.sh` (привезти исходники) и потом
-# `fraim init` (разложить их по харнесам). Пропустив вторую, человек получал
-# самое неприятное из состояний: `fraim version` показывает новое, а агент
-# читает старые процедуры с диска.
+# We always had updating, but it was spelled as two lines one had to remember:
+# `sh ~/.fraim/src/installer/install.sh` (bring in the sources) and then
+# `fraim init` (lay them out across the harnesses). Skipping the second left the human
+# in the nastiest of states: `fraim version` shows the new one, while the agent reads
+# the old procedures from disk.
 #
-# Здесь два действия, и они намеренно разные:
+# There are two actions here, and they are different on purpose:
 #
-#   ОБНАРУЖЕНИЕ  update_probe   — сходить в сеть, сверить sha, записать вердикт в кэш
-#   ДЕЙСТВИЕ     update_apply   — привезти и разложить
+#   DETECTION   update_probe   — go to the network, compare sha, write the verdict to the cache
+#   ACTION      update_apply   — bring in and lay out
 #
-# Разделены они не для красоты. Вся система стоит на D4: по расписанию работает
-# обнаружение, работу начинает человек. Поэтому в сеть не ходит ни `fraim status`,
-# ни сторож — они читают КЭШ, файл, оффлайн и детерминированно. Сеть трогают только те
-# команды, которые человек набрал сам: `fraim update`, `fraim doctor` и `fraim init`.
+# They are not separated for looks. The whole system stands on D4: detection runs on a
+# schedule, work is started by the human. So neither `fraim status` nor the watchman goes to
+# the network — they read the CACHE, a file, offline and deterministically. The network is
+# touched only by commands the human typed themselves: `fraim update`, `fraim doctor` and
+# `fraim init`.
 #
-# Своей реализации «привезти исходники» здесь нет: это делает install.sh, и он
-# остаётся единственной (B2). update_apply его и запускает.
+# There is no implementation of our own of "bring in the sources" here: install.sh does it,
+# and it stays the only one (B2). update_apply is what runs it.
 
-# Кэш проверки: одна строка `<время> <локальный sha> <удалённый sha> <статус>`.
-# Статус — behind | current | ahead | unknown. Два из четырёх заведены ради честности:
-# `unknown` отличим от «не проверяли ни разу» (файла нет вовсе), потому что молчание сети
-# не должно выглядеть как здоровье (D1); `ahead` — потому что «наш sha не равен хостовому»
-# и «на хосте есть новое» это разные утверждения, и у того, кто правит систему у себя,
-# первое верно постоянно.
+# The check cache: one line `<time> <local sha> <remote sha> <status>`.
+# Status is behind | current | ahead | unknown. Two of the four exist for honesty:
+# `unknown` is distinct from "never checked" (no file at all), because the silence of the
+# network must not look like health (D1); `ahead` — because "our sha is not the host's" and
+# "the host has something new" are different statements, and for someone editing the system
+# locally the first is true all the time.
 update_cache_file() { printf '%s/update-check\n' "$FRAIM_HOME"; }
 
 update_cache_read() { cat "$(update_cache_file)" 2>/dev/null; }
 
 update_cache_field() { update_cache_read | awk -v n="$1" '{ print $n }'; }
 
-# Вердикт последней проверки: behind | current | ahead | unknown, или пусто, если
-# не проверяли ни разу. Всё, что решает, как показывать, решает по нему, а не по
-# наличию текста: одна и та же строка бывает и тревогой, и просто справкой.
+# The verdict of the last check: behind | current | ahead | unknown, or empty if never
+# checked. Everything that decides how to display decides by it, not by the presence of
+# text: the same line can be an alarm or just a note.
 update_state() { update_cache_field 4; }
 
-# Каталог исходников, который обновляется, — тот, откуда мы сейчас работаем.
-# Обновляемым он считается, только если это git-клон с origin: dev-копия,
-# разложенная руками, обновлению не подлежит, и врать об этом не надо.
+# The source directory being updated is the one we are running from right now.
+# It counts as updatable only if it is a git clone with an origin: a dev copy laid
+# out by hand is not subject to updating, and there is no need to lie about it.
 update_src() { fraim_root 2>/dev/null; }
 
 update_src_is_clone() {
@@ -56,9 +57,9 @@ update_branch() {
     printf '%s\n' "$_u_b"
 }
 
-# Сеть с потолком по времени. `timeout` есть не везде (macOS без coreutils), поэтому
-# он используется, если найден, и не подменяется самодельным сторожем на фоновых
-# процессах: недоступная сеть и так упрётся в собственный таймаут git.
+# Network with a time ceiling. `timeout` is not everywhere (macOS without coreutils), so it
+# is used if found, and is not replaced by a home-made watchdog over background processes:
+# an unreachable network will hit git's own timeout anyway.
 update_run_bounded() {
     if command -v timeout >/dev/null 2>&1; then
         timeout "${FRAIM_NET_TIMEOUT:-10}" "$@"
@@ -67,8 +68,8 @@ update_run_bounded() {
     fi
 }
 
-# Сходить в сеть и записать результат в кэш. Возвращает 0, если проверка удалась
-# (неважно, отстали мы или нет), и 1, если сеть/репозиторий не ответили.
+# Go to the network and write the result to the cache. Returns 0 if the check succeeded
+# (no matter whether we are behind or not), and 1 if the network/repository did not answer.
 update_probe() {
     _u_src=$(update_src)
     update_src_is_clone "$_u_src" || return 1
@@ -76,8 +77,8 @@ update_probe() {
     _u_local=$(git -C "$_u_src" rev-parse HEAD 2>/dev/null)
     mkdir -p "$FRAIM_HOME" 2>/dev/null || :
 
-    # GIT_TERMINAL_PROMPT=0: приватный репозиторий без готовых доступов должен
-    # ответить отказом, а не подвесить чужую команду на запросе логина.
+    # GIT_TERMINAL_PROMPT=0: a private repository without ready credentials must answer
+    # with a refusal, not hang someone else's command on a login prompt.
     _u_remote=$(GIT_TERMINAL_PROMPT=0 update_run_bounded \
         git -C "$_u_src" ls-remote origin "refs/heads/$_u_branch" 2>/dev/null | cut -f1)
 
@@ -89,8 +90,8 @@ update_probe() {
         _u_state=current
     elif git -C "$_u_src" cat-file -e "$_u_remote^{commit}" 2>/dev/null &&
          git -C "$_u_src" merge-base --is-ancestor "$_u_remote" HEAD 2>/dev/null; then
-        # Хостовый коммит у нас уже есть, и он позади нашего HEAD. Это не отставание,
-        # это работа над самой системой: звать такого человека обновляться — враньё.
+        # We already have the host's commit, and it is behind our HEAD. This is not lagging,
+        # it is work on the system itself: telling such a person to update would be a lie.
         _u_state=ahead
     else
         _u_state=behind
@@ -99,7 +100,7 @@ update_probe() {
     return 0
 }
 
-# Кэш протух? Пустой кэш считается протухшим — проверять ещё не начинали.
+# Is the cache stale? An empty cache counts as stale — checking has not started yet.
 update_cache_stale() {
     _u_when=$(update_cache_field 1)
     [ -n "$_u_when" ] || return 0
@@ -108,7 +109,7 @@ update_cache_stale() {
     [ "$_u_age" -ge $(( _u_days * 86400 )) ]
 }
 
-# Проверить, если пора и если проверка вообще включена. Тихо: это фон, а не команда.
+# Check, if it is time and if checking is enabled at all. Quietly: background, not a command.
 update_probe_if_due() {
     config_is_on update_check || return 0
     update_cache_stale || return 0
@@ -116,8 +117,8 @@ update_probe_if_due() {
     return 0
 }
 
-# Одна строка о состоянии установки — или ничего, если сказать нечего (D2).
-# Читает только кэш: ни сети, ни задержки.
+# One line about the state of the installation — or nothing, if there is nothing to say (D2).
+# Reads only the cache: no network, no delay.
 update_line() {
     case $(update_cache_field 4) in
         behind)
@@ -131,15 +132,15 @@ update_line() {
     esac
 }
 
-# Привезти и разложить. Исходники тянет install.sh — он один это умеет, и он же
-# знает про смену ветки. Дальше exec на новый бинарник: продолжать в этом процессе
-# нельзя, мы уже прочитали старые lib/, а на диске лежат новые.
+# Bring in and lay out. The sources are fetched by install.sh — it alone knows how, and it
+# also knows about a branch change. Then exec into the new binary: continuing in this process
+# is not allowed, we have already read the old lib/, and the new ones are on disk.
 update_apply() {
     _u_src=$(update_src)
-    # install.sh обновляет ровно `$FRAIM_HOME/src` — это записано в нём, и он источник
-    # правды об установке. Если мы работаем не оттуда (dev-копия, склонированная себе),
-    # то обновлять её этой командой значило бы обновить ЧУЖОЙ каталог и отчитаться так,
-    # будто обновилось то, из чего человек нас запустил.
+    # install.sh updates exactly `$FRAIM_HOME/src` — that is written in it, and it is the
+    # source of truth about the installation. If we are not running from there (a dev copy
+    # cloned for oneself), updating it with this command would mean updating SOMEONE ELSE'S
+    # directory and reporting as if what the human launched us from had been updated.
     if [ "$_u_src" != "$FRAIM_HOME/src" ]; then
         warn "запущено из $_u_src, а обновление живёт в $FRAIM_HOME/src"
         dim "    это копия для работы над самой системой — обнови её как обычно"
@@ -159,7 +160,7 @@ update_apply() {
         warn "не удалось обновить исходники"
         return 1
     }
-    # Кэш относился к прошлой установке.
+    # The cache belonged to the previous installation.
     rm -f "$(update_cache_file)" 2>/dev/null || :
     return 0
 }

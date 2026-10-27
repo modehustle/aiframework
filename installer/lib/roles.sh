@@ -7,8 +7,8 @@
 # file for roles would have been a second implementation of a thing that works (B2).
 #
 # WHAT A ROLE IS, and this is the part that is easy to get wrong: a role is the name of
-# a PROCEDURE. MODES.md §10 forbids inventing an onion of our own — "роли у нас уже
-# названы: make-task, run-task, investigate, prune" — so the table binds names that
+# a PROCEDURE. MODES.md §10 forbids inventing an onion of our own — "our roles are already
+# named: make-task, run-task, investigate, prune" — so the table binds names that
 # already exist rather than a fresh vocabulary of refactor/design/migration. A subtask
 # saying `**Role**: run-task` says which procedure its worker executes, and the table
 # says on what.

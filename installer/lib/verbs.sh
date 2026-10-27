@@ -243,7 +243,7 @@ verb_undo() {
     # A merge commit has to say which side to keep. Ours are made by the fleet's trunk
     # write (`dispatch accept`), and there the first parent is the trunk as it stood — so
     # -m 1 undoes exactly the build that was merged in. Without this, undoing a trunk write
-    # died with "изменения пересеклись", which is the wrong sentence for "this is a merge".
+    # died with "the changes overlapped", which is the wrong sentence for "this is a merge".
     _mflag=
     [ "$(git -C "$_root" rev-list --parents -n 1 "$_ref" 2>/dev/null | wc -w)" -gt 2 ] && _mflag='-m 1'
     if git -C "$_root" revert --no-edit $_mflag "$_ref" >/dev/null 2>&1; then

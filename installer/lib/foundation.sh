@@ -69,8 +69,8 @@ fnd_wrap() {
 FND_FILES='ARCHITECTURE.md CONVENTIONS.md DECISIONS.md STACK.md'
 
 # DECISIONS as the living decisions only, condensed: every heading, its Supersedes line,
-# and its decision paragraph — «Decision:» / «Решение:», or the first paragraph when the
-# entry has no such label. The full text is one `fraim find` away.
+# and its decision paragraph — «Decision:» or its older Russian equivalent, or the first
+# paragraph when the entry has no such label. The full text is one `fraim find` away.
 fnd_decisions_condensed() {
     awk '
         /^## / {

@@ -36,7 +36,7 @@ wm_code_commits_since() {
     fi
 }
 
-# Russian plurals: 1 хотфикс, 2 хотфикса, 5 хотфиксов. The verdict is read
+# Russian plurals: "hotfix" takes three forms — after 1, after 2 and after 5. The verdict is read
 # daily, so getting this wrong is a small papercut repeated forever.
 wm_plural() {
     _n=$1; _one=$2; _few=$3; _many=$4
@@ -159,14 +159,15 @@ wm_check_remote() {
         return 0
     fi
 
-    # Настройку начали и не довели: адрес прописан, а remote-tracking веток нет ни одной —
-    # значит туда ни разу ничего не отправляли. Репозиторий на хосте в этот момент обычно
-    # создан и пуст, и это худшее из состояний: снаружи копия выглядит существующей, а
-    # внутри её нет. Видно без сети — сторож читает собственные refs, а не спрашивает хост.
+    # The setup was started and not finished: an address is set, but there is not a single
+    # remote-tracking branch — so nothing was ever pushed there. The repository on the host
+    # is usually created and empty at this point, and that is the worst of states: from the
+    # outside the copy looks like it exists, but inside there is nothing. Visible without
+    # network — the watchman reads its own refs instead of asking the host.
     #
-    # Отдельная находка, а не «N точек не уехали», потому что величина другая: не
-    # отставание копии, а незаконченная работа (D5). Порог сюда не применяется — незакрытая
-    # настройка не становится нормой от того, что точек в проекте всего две.
+    # A separate finding, not "N points did not leave", because the quantity is different:
+    # not the copy lagging, but unfinished work (D5). The threshold does not apply here —
+    # an unfinished setup does not become normal because the project has only two save points.
     if [ -n "$(git -C "$_root" rev-parse -q --verify HEAD 2>/dev/null)" ] &&
        [ -z "$(git -C "$_root" for-each-ref --count=1 refs/remotes 2>/dev/null)" ]; then
         wm_add remote attention "адрес копии прописан, но туда ни разу ничего не уезжало" "fraim publish"
@@ -459,15 +460,15 @@ wm_check_lessons() {
     return 0
 }
 
-# 11. Новая версия самой системы. Единственная находка, которая не про проект, —
-#     и потому info, а не attention: чужой проект не становится хуже оттого, что
-#     на хосте лежит свежий fraim.
+# 11. A new version of the system itself. The only finding that is not about the project —
+#     and therefore info, not attention: someone's project does not get worse because a
+#     fresh fraim is sitting on the host.
 #
-#     В сеть эта проверка НЕ ходит. Сторож обязан работать оффлайн и за миллисекунды
-#     (SCHEDULING.md, слой 1), поэтому она читает файл кэша, который пишут те команды,
-#     где сеть человек и ожидает: `fraim update --check` и `fraim doctor`. Отсюда же
-#     следует, что «мы не знаем» она не показывает: незнание сторожа — это его тишина,
-#     а состояние проверки видно в докторе, который её и делает.
+#     This check does NOT go to the network. The watchman must work offline and within
+#     milliseconds (SCHEDULING.md, layer 1), so it reads the cache file written by the
+#     commands where the human expects the network: `fraim update --check` and `fraim doctor`.
+#     It also follows that it does not show "we do not know": the watchman's not knowing is
+#     its silence, and the state of the check is visible in doctor, which performs it.
 wm_check_update() {
     [ "$(update_cache_field 4)" = behind ] || return 0
     wm_add system-update info \

@@ -1,7 +1,7 @@
 #!/bin/sh
 # publish.sh — the way out of "this project exists on one disk".
 #
-# The watchman has long said «нет удалённой копии — проект живёт только на этой машине»
+# The watchman has long said «no remote copy — the project lives only on this machine»
 # and stopped there, because BACKLOG §3 ruled that setting a copy up is a one-off action
 # with a real fork inside (which host, private or public) and therefore a conversation
 # with the agent rather than a verb. The revision is recorded in BACKLOG §3: the fork is
@@ -15,8 +15,8 @@
 #
 #   1. The floor is a URL. Provider CLIs (gh, glab) are accelerators: whenever one is
 #      missing, unauthorised, or behaves differently than we expect, the answer is never
-#      "нельзя" — it is «создай репозиторий в браузере и дай ссылку». No dependency is
-#      hard, so no user is locked out by an install they cannot perform.
+#      "cannot" — it is «create the repository in the browser and give me the link». No
+#      dependency is hard, so no user is locked out by an install they cannot perform.
 #   2. Nothing reaches the network before a human says yes (B5). The plan is printed in
 #      full — host, name, visibility, what is going, what the scan found. Through a pipe
 #      without --yes the command prints that plan and stops, exactly like `fraim clean`.
@@ -55,7 +55,7 @@ publish_provider_known() { publish_providers | cut -d'|' -f1 | grep -qx "$1"; }
 # --- dependencies -----------------------------------------------------------
 # Never installs anything. The environment is the user's choice (C1), and a product that
 # runs a package manager on someone's machine has stopped being a workflow layer. What we
-# owe instead is the exact line to paste — by P0, "поставь gh" is not an instruction to
+# owe instead is the exact line to paste — by P0, "install gh" is not an instruction to
 # somebody who has never installed a CLI.
 publish_os() {
     case $(uname -s 2>/dev/null) in
@@ -102,7 +102,7 @@ publish_install_hint() {
     return 0
 }
 
-# 0 — готово к работе, 1 — CLI нет, 2 — CLI есть, но вход не сделан.
+# 0 — ready to work, 1 — no CLI, 2 — CLI present, but not logged in.
 publish_cli_state() {
     _pub_cli=$1
     [ -n "$_pub_cli" ] || return 0
@@ -123,7 +123,7 @@ publish_cli_account() {
     return 0
 }
 
-# The dependency screen. Answers "чего мне не хватает" for every provider at once, so the
+# The dependency screen. Answers "what am I missing" for every provider at once, so the
 # user picks with the answer in front of them instead of discovering it after choosing.
 publish_deps_report() {
     say "${C_BLD}Чем можно опубликовать${C_OFF}"
@@ -155,14 +155,14 @@ publish_deps_report() {
 }
 
 # --- what is in this repository --------------------------------------------
-# All four answer «пусто», never «ошибка»: a project with no remote and a project with no
+# All four answer «empty», never «error»: a project with no remote and a project with no
 # commits are both normal states here, and the CLI runs under `set -e` — a bare failing
 # `git remote get-url` inside a command substitution would end the command instead of
 # reporting the state it was asked about.
 publish_remote_url() { git -C "$1" remote get-url origin 2>/dev/null || true; }
 publish_branch()     { git -C "$1" rev-parse --abbrev-ref HEAD 2>/dev/null || true; }
 # --verify, not a bare rev-parse: in a repository with no commits `git rev-parse HEAD`
-# prints the string "HEAD" and fails, and «пусто» read as a commit id is exactly the kind
+# prints the string "HEAD" and fails, and «empty» read as a commit id is exactly the kind
 # of not-data-that-looks-like-data D1 is about.
 publish_head()       { git -C "$1" rev-parse -q --verify HEAD 2>/dev/null || true; }
 publish_commits()    { git -C "$1" rev-list --count HEAD 2>/dev/null || true; }
@@ -214,8 +214,8 @@ publish_scan() {
         "файл окружения — в нём живут пароли и ключи"
     publish_scan_names "$_pub_paths_real" '(^|/)id_(rsa|dsa|ecdsa|ed25519)$|(^|/)\.ssh/' \
         "приватный ssh-ключ"
-    # .asc и .gpg сюда не входят: подписи релизов и файлы sops/git-crypt лежат в
-    # репозиториях законно и зашифрованными, а ложный стоп учит проходить стоп.
+    # .asc and .gpg are not included: release signatures and sops/git-crypt files live in
+    # repositories legitimately and encrypted, and a false stop teaches people to walk past stops.
     publish_scan_names "$_pub_paths_real" '\.(pem|key|p12|pfx|jks|keystore|ppk)$' \
         "ключ или сертификат"
     publish_scan_names "$_pub_paths_real" '(^|/)\.(npmrc|pypirc|netrc|htpasswd)$' \
@@ -239,7 +239,7 @@ publish_scan() {
     # --force by reflex — which is how the real stop above stops working.
     publish_scan_warn_names "$_pub_paths" '(^|/)(node_modules|venv|\.venv|__pycache__|vendor)/' \
         "воспроизводимые зависимости в истории — клон будет тяжёлым"
-    # Без .sql: миграции — это код, и они лежат в истории у всех.
+    # No .sql: migrations are code, and they sit in everyone's history.
     publish_scan_warn_names "$_pub_paths" '\.(sqlite3?|db|dump|tfstate)$' \
         "похоже на данные, а не на код — проверь, что там нет живых записей"
 
@@ -290,8 +290,8 @@ publish_scan_content() {
     return 0
 }
 
-# Big blobs. The number matters more than the noun: "12 МБ в истории" is a fact the
-# human can act on, "большой файл" is not.
+# Big blobs. The number matters more than the noun: "12 MB in history" is a fact the
+# human can act on, "a big file" is not.
 publish_scan_size() {
     _pub_root=$1
     _pub_big=$(git -C "$_pub_root" rev-list --objects --all 2>/dev/null |
@@ -350,9 +350,9 @@ publish_scan_show() {
 
 # --- naming -----------------------------------------------------------------
 # GitHub and GitLab both accept only [A-Za-z0-9._-] in a repository name. A folder called
-# «платежи api» is a perfectly good folder, so the name is sanitised rather than refused —
-# and the substitution is printed, because a repository that quietly got a different name
-# than the folder is a small mystery for later.
+# «payments api» written in Cyrillic is a perfectly good folder, so the name is sanitised
+# rather than refused — and the substitution is printed, because a repository that quietly
+# got a different name than the folder is a small mystery for later.
 publish_repo_name() {
     _pub_name=$(printf '%s' "$1" | sed 's#[^A-Za-z0-9._/-]#-#g; s#--*#-#g; s#^-##; s#-$##')
     # A folder named entirely in Cyrillic sanitises to nothing. Refusing would be honest
@@ -383,7 +383,7 @@ publish_plan_show() {
     say "${C_BLD}Публикация проекта $(basename -- "$_pub_root")${C_OFF}"
     say ""
     # wm_pad, not printf's %-10s: %-Ns counts BYTES, and every Cyrillic letter is two of
-    # them — «доступ» and «что едет» would sit in different columns.
+    # them — the labels "access" and "what goes" would sit in different columns.
     if [ -n "$_pub_have" ]; then
         printf '  %s %s\n' "$(wm_pad куда 9)" "$_pub_have (ремоут уже настроен)"
     elif [ "$_pub_prov" = url ]; then
@@ -429,8 +429,8 @@ publish_ask_provider() {
                    "$(wm_pad "$_pub_lbl" 34)" "$C_YEL" "$_pub_cli" "$_pub_cli" "$C_OFF" >&2 ;;
         esac
     done
-    # Умолчанием стоит первый готовый вариант, а не первый по списку: предлагать GitHub
-    # там, где gh не установлен, значит вести человека в отказ через два экрана.
+    # The default is the first READY option, not the first in the list: offering GitHub
+    # where gh is not installed means leading the human into a refusal two screens later.
     _pub_def=$(publish_default_provider)
     printf '  Номер [%s]: ' "$_pub_def" >&2
     read -r _pub_ans || _pub_ans=
@@ -440,8 +440,8 @@ publish_ask_provider() {
     printf '%s\n' "$_pub_pick"
 }
 
-# Номер первого варианта, которым прямо сейчас можно воспользоваться. Пол (URL) готов
-# всегда, поэтому ответ есть при любом состоянии машины.
+# The number of the first option that can be used right now. The floor (URL) is always
+# ready, so there is an answer in any state of the machine.
 publish_default_provider() {
     _pub_i=0; _pub_found=
     publish_providers | while IFS='|' read -r _pub_k _pub_lbl _pub_cli _pub_creates; do
@@ -474,39 +474,39 @@ publish_ask_url() {
     printf '%s\n' "$_pub_ans"
 }
 
-# --- транспорт --------------------------------------------------------------
-# Адрес и доступ — разные вещи, и до сих пор продукт их путал. Владелец получил
-# `Permission denied (publickey)`, подсказка сказала «через gh это чинит gh auth login»,
-# он честно её выполнил — `gh auth login` с протоколом HTTPS кладёт credential helper для
-# https и НЕ кладёт ssh-ключ, — адрес остался ssh-овым, отправка снова упала, и цикл
-# замкнулся. Подсказка была не просто бесполезной: она уводила от единственного рабочего
-# действия.
+# --- transport --------------------------------------------------------------
+# Address and access are different things, and until now the product confused them. The
+# owner got `Permission denied (publickey)`, the hint said "with gh this is fixed by gh auth
+# login", he honestly ran it — `gh auth login` with the HTTPS protocol installs a credential
+# helper for https and does NOT install an ssh key — the address stayed ssh, the push failed
+# again, and the loop closed. The hint was not merely useless: it led away from the only
+# action that worked.
 #
-# Пол здесь тот же, что и у всего модуля: URL. Если ключ не приняли, а gh уже держит
-# авторизацию для https того же самого репозитория — меняется транспорт, и только он.
-# Хост, имя, видимость, ветка не меняются: человек ратифицировал именно этот репозиторий,
-# и он остаётся тем же. Замена говорится вслух и остаётся в ремоуте — молчаливая правка
-# чужого репозитория здесь была бы хуже отказа.
+# The floor here is the same as for the whole module: the URL. If the key was not accepted
+# and gh already holds authorisation for https to the very same repository — the transport
+# changes, and only the transport. Host, name, visibility, branch do not change: the human
+# ratified exactly this repository, and it stays the same. The replacement is said out loud
+# and stays in the remote — a silent edit of someone's repository would be worse than a refusal.
 
 publish_ssh_to_https() {
     case $1 in
         ssh://git@*) printf '%s\n' "$1" | sed 's#^ssh://git@#https://#' ;;
-        # Двоеточие режется ровно одно — то, что отделяет хост от пути. Наивное
-        # «убрать первое двоеточие» после подстановки схемы съело бы двоеточие самой
-        # https:// и выдало бы адрес, которого не существует.
+        # Exactly one colon is cut — the one that separates the host from the path. A naive
+        # "remove the first colon" after substituting the scheme would eat the colon of
+        # https:// itself and produce an address that does not exist.
         git@*)       printf '%s\n' "$1" | sed 's#^git@\([^:/]*\):#https://\1/#' ;;
         *)           return 1 ;;
     esac
 }
 
-# Умеет ли git сам подставить логин для https этого хоста. Пустой ответ значит «нет»:
-# переключить адрес и упереться в запрос пароля — это тот же тупик, только другими словами.
+# Whether git can supply the login for https to this host by itself. An empty answer means
+# "no": switching the address and hitting a password prompt is the same dead end in other words.
 publish_https_credentials() {
     [ -n "$(git config --get-urlmatch credential.helper "$1" 2>/dev/null)" ]
 }
 
-# Возвращает 0, если транспорт заменён. Молча ничего не делает: каждая ветка отказа
-# печатает, чего именно не хватило.
+# Returns 0 if the transport was replaced. Never does nothing silently: every refusal branch
+# prints what exactly was missing.
 publish_transport_https() {
     _pub_root=$1
     _pub_have=$(publish_remote_url "$_pub_root")
@@ -515,9 +515,9 @@ publish_transport_https() {
     publish_cli_state gh || return 1
 
     if ! publish_https_credentials https://github.com; then
-        # Это не «настроить машину за человека»: gh auth setup-git лишь дописывает в git
-        # тот вход, который человек уже сделал командой gh auth login. Идемпотентно и
-        # называется вслух — как и всё остальное, что эта команда трогает вне проекта.
+        # This is not "setting up the machine for the human": gh auth setup-git only adds to
+        # git the login the human already made with gh auth login. Idempotent and said out
+        # loud — like everything else this command touches outside the project.
         gh auth setup-git >/dev/null 2>&1 || return 1
         publish_https_credentials https://github.com || return 1
         dim "  git научен брать логин у gh (gh auth setup-git)"
@@ -531,7 +531,7 @@ publish_transport_https() {
     return 0
 }
 
-# Что сказать, когда переключить нечем. Каждая строка — действие, а не диагноз.
+# What to say when there is nothing to switch to. Every line is an action, not a diagnosis.
 publish_transport_hint() {
     _pub_have=$1
     _pub_alt=$(publish_ssh_to_https "$_pub_have") || {
@@ -578,9 +578,9 @@ publish_do() {
     say ""
     say "Отправляю $_pub_branch → $_pub_have"
     if ! _pub_out=$(git -C "$_pub_root" push -u origin "$_pub_branch" 2>&1); then
-        # Одна и только одна повторная попытка, и только при отказе по ключу: транспорт
-        # меняется на тот, вход к которому уже есть. Повторять что-либо ещё было бы
-        # надеждой, а не действием.
+        # One and only one retry, and only on a key refusal: the transport changes to the one
+        # for which a login already exists. Repeating anything else would be hope, not
+        # action.
         _pub_retried=0
         case $_pub_out in
             *'Permission denied'*|*publickey*)
@@ -701,9 +701,9 @@ publish_create() {
 
 publish_created_url() {
     case $1 in
-        # Адрес в той форме, к которой у этой машины есть вход. `gh auth login` с
-        # протоколом https не кладёт ssh-ключ, и sshUrl на такой машине — заведомо
-        # нерабочий адрес: спрашиваем у gh, каким протоколом он сам живёт.
+        # The address in the form this machine has a login for. `gh auth login` with the
+        # https protocol does not install an ssh key, and sshUrl on such a machine is a
+        # knowingly broken address: we ask gh which protocol it itself lives on.
         github)
             if [ "$(gh config get git_protocol 2>/dev/null)" = ssh ]; then
                 gh repo view "$2" --json sshUrl --jq .sshUrl 2>/dev/null
@@ -716,29 +716,31 @@ publish_created_url() {
     return 0
 }
 
-# --- правда с хоста ---------------------------------------------------------
-# Локальная бухгалтерия «уехало / не уехало» — это `refs/remotes`, то есть память ЭТОЙ
-# машины о прошлом push. Она врёт ровно в тех случаях, ради которых проверка и нужна:
-# репозиторий на хосте создали и не наполнили, ветку там удалили, историю туда положили
-# из другого места. Спросить можно только сам хост — поэтому это делает `publish`
-# (команда человека, которой можно в сеть), а не сторож (D4: он без сети и без действий).
+# --- the truth from the host ------------------------------------------------
+# Local "left / did not leave" bookkeeping is `refs/remotes`, i.e. THIS machine's memory of
+# the last push. It lies in exactly the cases the check exists for: the repository on the
+# host was created and not filled, the branch there was deleted, history was put there from
+# somewhere else. Only the host itself can be asked — so this is done by `publish` (the
+# human's command, which is allowed onto the network), not by the watchman (D4: it has no
+# network and no actions).
 #
-# PUB_HOST — одно слово, PUB_HOST_SHA — то, что лежит на хосте, когда оно там есть:
-#   unreachable  хост не ответил
-#   empty        на хосте нет ни одной ветки — «создан, но пуст»
-#   synced       наша ветка там и совпадает с HEAD
-#   behind       наша ветка там отстаёт, или её там нет вовсе
-#   diverged     на хосте есть работа, которой нет здесь
+# PUB_HOST — one word, PUB_HOST_SHA — what is on the host, when there is something there:
+#   unreachable  the host did not answer
+#   empty        the host has not a single branch — "created, but empty"
+#   synced       our branch is there and matches HEAD
+#   behind       our branch there lags behind, or is not there at all
+#   diverged     the host has work that is not here
 PUB_HOST=
 PUB_HOST_SHA=
 PUB_HOST_ERR=
 publish_host_state() {
     _pub_root=$1; _pub_br=$2
     PUB_HOST=; PUB_HOST_SHA=; PUB_HOST_ERR=
-    # stderr ловится вместе с stdout, потому что причина отказа — это ответ, а не шум:
-    # «хост не ответил» и «хост не принял твой ключ» чинятся разными руками, и второе
-    # чинится нами. Строки рефов отбираются по форме (sha + refs/…), иначе безобидное
-    # «Warning: Permanently added 'github.com' …» посчиталось бы веткой.
+    # stderr is captured together with stdout, because the reason for a refusal is an answer,
+    # not noise: "the host did not answer" and "the host did not accept your key" are fixed
+    # by different hands, and the second is fixed by us. Ref lines are picked by their shape
+    # (sha + refs/…), otherwise a harmless "Warning: Permanently added 'github.com' …"
+    # would count as a branch.
     if _pub_ls=$(git -C "$_pub_root" ls-remote --heads origin 2>&1); then
         _pub_ls=$(printf '%s\n' "$_pub_ls" | grep -E '^[0-9a-f]{7,40}[[:space:]]+refs/' || true)
     else
@@ -756,8 +758,8 @@ publish_host_state() {
     if [ -z "$PUB_HOST_SHA" ]; then PUB_HOST=behind; return 0; fi
     _pub_local=$(publish_head "$_pub_root")
     if [ "$PUB_HOST_SHA" = "$_pub_local" ]; then PUB_HOST=synced; return 0; fi
-    # Объекта с хоста может не быть у нас вовсе — тогда сверять нечем, и это по
-    # определению расхождение: там лежит то, чего здесь не видели.
+    # The object from the host may not exist here at all — then there is nothing to compare
+    # against, and that is by definition divergence: there is something there not seen here.
     if git -C "$_pub_root" cat-file -e "$PUB_HOST_SHA^{commit}" 2>/dev/null &&
        git -C "$_pub_root" merge-base --is-ancestor "$PUB_HOST_SHA" "$_pub_local" 2>/dev/null; then
         PUB_HOST=behind
@@ -779,16 +781,16 @@ publish_host_line() {
     esac
 }
 
-# --- задание агенту ---------------------------------------------------------
-# Два места, где команда обязана остановиться и где «сделай сам» было бы просьбой о
-# экспертизе, которой у пользователя может не быть (P0): секрет, уже лежащий в истории,
-# и расхождение с хостом. Обе задачи требуют суждения и обе делаются инструментами,
-# которых у системы нет и не будет: чистка истории — это ПЕРЕПИСЫВАНИЕ истории, а его
-# fraim себе не позволяет нигде (`fraim undo` — встречный коммит, и это не случайность).
+# --- a task for the agent ---------------------------------------------------
+# Two places where the command must stop and where "do it yourself" would be a request for
+# expertise the user may not have (P0): a secret already sitting in history, and divergence
+# from the host. Both tasks need judgement and both are done with tools the system does not
+# and will not have: cleaning history is REWRITING history, and fraim never allows itself
+# that anywhere (`fraim undo` is a counter-commit, and that is no accident).
 #
-# Поэтому отказ печатает не совет, а готовое задание: самодостаточное, с фактами внутри
-# и с границами, за которые агенту выходить нельзя. Блок печатается без цвета и без рамок
-# по краям строк — его копируют целиком.
+# So the refusal prints not advice but a ready task: self-contained, with the facts inside
+# and with the boundaries the agent must not cross. The block is printed without colour and
+# without borders at the line edges — it is copied whole.
 PUB_RULE='────────────────────────────────────────────────────────────────'
 
 publish_brief_open() {
@@ -837,8 +839,8 @@ publish_refuse_secret() {
     return 0
 }
 
-# То же задание, печатаемое по требованию: `fraim publish --brief`. Отказ — не единственный
-# момент, когда его хотят: приняв риск однажды, чистку обычно заказывают позже и спокойно.
+# The same task, printed on demand: `fraim publish --brief`. A refusal is not the only moment
+# it is wanted: having accepted the risk once, the cleanup is usually ordered later and calmly.
 publish_brief_secret() {
     _pub_root=$1
     publish_brief_open
@@ -904,20 +906,21 @@ BRIEF
     return 0
 }
 
-# --- кому это будет видно ---------------------------------------------------
-# Цена утечки ключа целиком определяется тем, кто сможет его прочитать, и одинаковый
-# ответ на публичный и приватный репозиторий — плохой ответ в обе стороны. Для публичного
-# «стоп» это единственно верное поведение. Для приватного тот же стоп превращается в
-# стену на ровном месте: человек ЗНАЕТ, что копию видит только он, и требование сначала
-# переписать историю не защищает его ни от чего — оно просто не даёт работать.
+# --- who will be able to see it ---------------------------------------------
+# The cost of a leaked key is wholly determined by who will be able to read it, and the same
+# answer for a public and a private repository is a bad answer both ways. For a public one a
+# "stop" is the only correct behaviour. For a private one the same stop turns into a wall out
+# of nowhere: the human KNOWS that only they see the copy, and a demand to rewrite history
+# first protects them from nothing — it simply keeps them from working.
 #
-# Поэтому решает не находка, а видимость: приватный — находки становятся РАТИФИКАЦИЕЙ
-# (показаны поимённо, отдельным явным «да», каждый раз), публичный — остаются стопом.
-# Это ровно граница B5: стоп ради правильности остаётся, стоп ради права исчезает.
+# So what decides is not the finding but the visibility: private — the findings become a
+# RATIFICATION (shown one by one, with a separate explicit "yes", every time), public — they
+# stay a stop. This is exactly the B5 line: a stop for correctness stays, a stop for
+# permission disappears.
 #
-# Настройкой это не становится намеренно. Ключ вида `publish_secrets = off` выключил бы
-# предупреждение НАВСЕГДА и молча — а по D3 обход обязан быть видимым. Ратификация видна
-# каждый раз и стоит одного нажатия.
+# This deliberately does not become a setting. A key like `publish_secrets = off` would turn
+# the warning off FOREVER and silently — and by D3 a bypass must be visible. Ratification is
+# visible every time and costs one keypress.
 PUB_VIS=
 PUB_VIS_SRC=
 
@@ -929,9 +932,9 @@ publish_github_slug() {
     printf '%s' "$1" | sed 's#^.*github\.com[:/]##; s#\.git$##; s#/*$##'
 }
 
-# Что говорит сам хост. Работает только для GitHub через gh — там, где можно проверить,
-# слово хоста бьёт любое утверждение человека: «у меня приватный» и «на самом деле
-# публичный» это ровно тот случай, ради которого проверка и нужна.
+# What the host itself says. Works only for GitHub through gh — where it can be checked, the
+# host's word beats any claim by the human: "mine is private" and "actually public" is
+# exactly the case the check exists for.
 publish_host_visibility() {
     _pub_url=$1
     _pub_slug=$(publish_github_slug "$_pub_url") || { printf 'unknown\n'; return 0; }
@@ -943,15 +946,15 @@ publish_host_visibility() {
     esac
 }
 
-# Итог: private / public / unknown — и откуда это известно. Порядок источников не
-# случаен: сначала то, что можно проверить, и только потом то, что сказали.
+# Result: private / public / unknown — and how it is known. The order of sources is not
+# accidental: first what can be checked, and only then what was said.
 publish_visibility_effective() {
     _pub_root=$1; _pub_vis=$2; _pub_prov=${3:-}
     _pub_have=$(publish_remote_url "$_pub_root")
     if [ -z "$_pub_have" ] && [ "$_pub_prov" != url ] &&
        { [ "$_pub_vis" = private ] || [ "$_pub_vis" = public ]; }; then
-        # Репозиторий ещё не существует, и создаём его мы — здесь видимость не со слов,
-        # а из той самой команды, которая его сейчас заведёт.
+        # The repository does not exist yet, and we are the ones creating it — here the
+        # visibility is not hearsay but comes from the very command that is about to create it.
         PUB_VIS=$_pub_vis; PUB_VIS_SRC="создаём таким"
         return 0
     fi
@@ -982,9 +985,9 @@ publish_ask_private() {
     esac
 }
 
-# Принятие риска говорится вслух и полностью: что именно уедет, куда, и чего это НЕ
-# отменяет. Обещать «в приватном ничего не страшно» продукт не имеет права — приватный
-# репозиторий переключается в публичный одной кнопкой, и история едет вместе с ним.
+# Accepting the risk is said out loud and in full: what exactly will leave, where to, and what
+# it does NOT undo. The product has no right to promise "nothing to fear in a private one" — a
+# private repository is switched to public with one button, and the history goes along with it.
 publish_accept_notice() {
     _pub_n=$1
     say ""
@@ -999,15 +1002,15 @@ publish_accept_notice() {
     return 0
 }
 
-# «Нет» на вопросе о находках — это не «не хочу публиковать», это «не так». Человек хочет
-# копию, но чистую, и упирается ровно в ту операцию, которой у системы нет: убрать файл из
-# истории значит её переписать, а этого fraim не делает нигде.
+# "No" on the findings question is not "I do not want to publish", it is "not like this". The
+# human wants a copy, but a clean one, and runs into exactly the operation the system does not
+# have: removing a file from history means rewriting it, and fraim does that nowhere.
 #
-# Раньше здесь печаталось одно слово — «отменено». Человек оставался с тем же, с чего начал:
-# находки на месте, что с ними делать — не сказано, а единственная строка про задание уехала
-# вверх экрана вместе с принятием риска, которое он как раз и отклонил. Отказ системы уже
-# печатал задание (publish_refuse_secret); отказ человека печатает то же самое — момент один
-# и тот же, и разной должна быть только первая фраза.
+# This used to print one word — "cancelled". The human was left where they started: the
+# findings in place, nothing said about what to do with them, and the single line about the
+# task had scrolled off the top together with the risk acceptance they had just declined. The
+# system's refusal already printed the task (publish_refuse_secret); the human's refusal prints
+# the same — the moment is the same, and only the first sentence should differ.
 publish_cancel_findings() {
     _pub_root=$1
     _pub_n=$(pub_count "$PUB_STOP")

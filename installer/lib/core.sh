@@ -3,7 +3,7 @@
 #
 # The frontmatter of each procedure is the single source of truth for the
 # procedure list: name, description and model tier all live there, so no
-# generator ever hardcodes the roster (HARNESS_TARGETS.md, "Нужен манифест").
+# generator ever hardcodes the roster (HARNESS_TARGETS.md, "A manifest is needed").
 
 FRAIM_NAME=fraim
 FRAIM_HOME=${FRAIM_HOME:-$HOME/.fraim}

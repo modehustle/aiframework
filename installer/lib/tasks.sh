@@ -459,8 +459,8 @@ backlog_to_task() {
 
 # --- migration from the old format ------------------------------------------
 # A folder task carried a plan, and its sections were guaranteed by plan-seal — so the
-# intent can be lifted out of it mechanically: Summary → title, Goal + Why → «Что и
-# зачем», Acceptance Criteria → «Done when». The plan itself is kept, whole, in the
+# intent can be lifted out of it mechanically: Summary → title, Goal + Why → «What and
+# why», Acceptance Criteria → «Done when». The plan itself is kept, whole, in the
 # archive, and the card links to it. A folder with a result.md was executed and never
 # sealed: it is archived as it is. What cannot be read mechanically is still turned into
 # a card — with the gap said in words — and named in TASKS_UNPARSED for the caller.

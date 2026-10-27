@@ -151,9 +151,10 @@ cmd_init() {
 
     claude_permission_hint
 
-    # Единственное место в init, где есть сеть, и оно необязательное: узнать, не вышло
-    # ли уже что-то новее. Молча и не чаще, чем раз в update_check_days; отказ сети
-    # ничего не ломает. Сторож потом прочитает готовый ответ из кэша, сам никуда не идя.
+    # The only place in init that touches the network, and it is optional: find out whether
+    # something newer has already shipped. Silently and no more than once per
+    # update_check_days; a network refusal breaks nothing. The watchman later reads the ready
+    # answer from the cache without going anywhere itself.
     update_probe_if_due
     if [ "$(update_state)" = behind ]; then
         say ""
@@ -165,11 +166,11 @@ cmd_init() {
 }
 
 # --- update -----------------------------------------------------------------
-# `fraim init` раскладывает то, что уже лежит на диске. `fraim update` сначала
-# привозит новое, потом раскладывает — и это две разные команды, потому что init
-# нужен ещё и просто так: поставил новый харнес → init, сеть не при чём.
+# `fraim init` lays out what is already on disk. `fraim update` first brings in what is
+# new, then lays it out — and these are two different commands, because init is also
+# needed on its own: installed a new harness → init, the network has nothing to do with it.
 #
-# --check ничего не меняет и годится для расписания: exit 1, если отстали.
+# --check changes nothing and fits a schedule: exit 1 if we are behind.
 cmd_update() {
     case ${1:-} in
         --check)
@@ -213,8 +214,8 @@ cmd_update() {
     _u_before=$(fraim_version)
     update_apply || return 1
     say ""
-    # Новый бинарник, новые lib/, новые процедуры — и только теперь раскладка.
-    # В этом процессе продолжать нельзя: он прочитал lib/ до обновления.
+    # New binary, new lib/, new procedures — and only now the layout.
+    # This process cannot continue: it read lib/ before the update.
     _u_bin="$(update_src)/installer/bin/fraim"
     dim "  было: $_u_before"
     exec "$_u_bin" init
@@ -430,8 +431,8 @@ cmd_doctor() {
         say "  источник:  $_root"
     fi
     say "  состояние: $FRAIM_HOME"
-    # Единственная сеть в докторе, и она уместна: доктор для того и зовётся, чтобы
-    # узнать, всё ли на месте, а «вышло ли что-то новее» — часть этого вопроса.
+    # The only network in doctor, and it belongs: doctor is called precisely to find out
+    # whether everything is in place, and "has something newer shipped" is part of that.
     update_probe_if_due
     case $(update_state) in
         behind|unknown) warn "  $(update_line)" ;;
@@ -539,7 +540,7 @@ cmd_scaffold() {
 # The twin of `scaffold`, for a project laid down by an older release. Same additive
 # machinery — nothing existing is ever overwritten — plus the repair of sections the
 # system reads by code. Separate name because the situations differ for the human:
-# `scaffold` is «завести проект», `upgrade` is «этот уже есть, доведи до стандарта».
+# `scaffold` is "start a project", `upgrade` is "this one exists, bring it up to standard".
 cmd_upgrade() {
     _path=${1:-$(pwd -P)}
     _root=$(cd -- "$_path" 2>/dev/null && pwd -P) || die "нет такого каталога: $_path"
@@ -558,11 +559,11 @@ cmd_upgrade() {
 }
 
 # --- version ----------------------------------------------------------------
-# Номер версии — плохой ответ на вопрос «приехало ли обновление»: он меняется, только
-# когда о нём вспомнили, а между двумя релизами ветка успевает уехать на десяток
-# коммитов. Поэтому команда показывает и то, откуда взят исходник: ветку, коммит и его
-# дату. Функция fraim_version при этом печатает по-прежнему один номер — он уезжает в
-# штампы провенанса и во фронтматтер скиллов, и там ему не место рядом с датой.
+# A version number is a poor answer to "did the update arrive": it changes only when
+# somebody remembers to bump it, while between two releases the branch can move a dozen
+# commits. So the command also shows where the source came from: branch, commit and its
+# date. fraim_version itself still prints a single number — it goes into provenance stamps
+# and skill frontmatter, and a date has no place next to it there.
 cmd_version() {
     _ver=$(fraim_version)
     _root=$(fraim_root 2>/dev/null) || _root=
@@ -580,10 +581,10 @@ cmd_version() {
 }
 
 # --- publish ----------------------------------------------------------------
-# Вывести проект с этой машины. Развилка «какой хост, приватный или публичный» остаётся
-# вопросом к человеку — а всё вокруг неё (чем это делать, что при этом уедет, дошло ли)
-# перестаёт быть его заботой. Логика — в installer/lib/publish.sh, здесь только разбор
-# флагов, ратификация и порядок шагов.
+# Get the project off this machine. The fork "which host, private or public" stays a
+# question for the human — and everything around it (what to do it with, what will leave,
+# whether it arrived) stops being their concern. The logic is in installer/lib/publish.sh;
+# here only flag parsing, ratification and the order of steps.
 cmd_publish() {
     _prov=; _name=; _url=; _vis=; _yes=0; _check=0; _force=0; _brief=0
     while [ $# -gt 0 ]; do
@@ -613,8 +614,9 @@ cmd_publish() {
     verb_is_git "$_root" ||
         die "здесь нет репозитория — заводится командой fraim scaffold"
 
-    # --brief: то же задание для агента, но по требованию, а не только в отказе. После
-    # принятого риска чистку обычно заказывают позже — и тогда её надо чем-то заказать.
+    # --brief: the same agent task, but on demand, not only inside a refusal. After a risk
+    # has been accepted the cleanup is usually ordered later — and then it needs something
+    # to order it with.
     if [ "$_brief" = 1 ]; then
         publish_scan "$_root"
         if [ "$(pub_count "$PUB_STOP")" -eq 0 ]; then
@@ -625,8 +627,8 @@ cmd_publish() {
         exit 0
     fi
 
-    # --check: разведка без сети. Это же режим для агента: он может посмотреть и
-    # рассказать, но отправку по-прежнему начинает человек.
+    # --check: reconnaissance without network. This is also the mode for the agent: it can
+    # look and report, but sending is still started by the human.
     if [ "$_check" = 1 ]; then
         publish_deps_report
         say ""
@@ -637,9 +639,9 @@ cmd_publish() {
         _have=$(publish_remote_url "$_root")
         if [ -n "$_have" ]; then
             say "Копия: $_have"
-            # Всё, что здесь известно, — это память ЭТОЙ машины о прошлых отправках.
-            # Разведка идёт без сети (её запускает и агент, и она не должна ни висеть на
-            # недоступном хосте, ни ходить наружу без спроса), поэтому граница названа вслух.
+            # Everything known here is THIS machine's memory of past pushes. The
+            # reconnaissance runs without network (the agent runs it too, and it must neither
+            # hang on an unreachable host nor go outside unasked), so the limit is said out loud.
             if [ -z "$(git -C "$_root" for-each-ref --count=1 refs/remotes 2>/dev/null)" ]; then
                 warn "туда ни разу ничего не уезжало — настройку начали и не довели"
             else
@@ -671,17 +673,18 @@ cmd_publish() {
         die "нет ни одной точки сохранения — отправлять пока нечего
     сохрани работу и повтори: fraim clean, либо fraim commit ВИД ТЕКСТ ПУТЬ..."
 
-    # Ремоут есть — значит вопрос «всё ли уехало» решает ХОСТ, а не наши refs/remotes.
-    # Ровно здесь ловится незаконченная настройка: репозиторий создали, адрес прописали,
-    # а истории там нет. Локальная бухгалтерия в этом случае молчит или врёт.
+    # There is a remote — so the question "did everything leave" is answered by the HOST,
+    # not by our refs/remotes. This is exactly where an unfinished setup is caught: the
+    # repository was created, the address was set, but no history is there. Local
+    # bookkeeping in that case stays silent or lies.
     _have=$(publish_remote_url "$_root")
     if [ -n "$_have" ]; then
         _branch=$(publish_branch "$_root")
         dim "  спрашиваю хост, что там лежит…"
         publish_host_state "$_root" "$_branch"
-        # Хост не принял доступ по этому адресу — чиним транспорт ДО плана. Человек
-        # обязан ратифицировать тот адрес, по которому копия действительно поедет, а не
-        # тот, по которому ему уже отказали; репозиторий при этом остаётся тем же.
+        # The host did not accept access over this address — fix the transport BEFORE the
+        # plan. The human must ratify the address the copy will actually travel over, not
+        # the one they were already refused on; the repository stays the same.
         if [ "$PUB_HOST" = denied ] && publish_transport_https "$_root"; then
             _have=$(publish_remote_url "$_root")
             publish_host_state "$_root" "$_branch"
@@ -693,13 +696,13 @@ cmd_publish() {
             diverged)
                 publish_refuse_diverged "$_root" "$_have" "$_branch"
                 exit 2 ;;
-            # empty / behind / unreachable говорит строка «на хосте» в самом плане —
-            # одно место, где человек и так читает состояние. Второй раз то же самое
-            # сверху — шум, а шум учат пролистывать.
+            # empty / behind / unreachable are stated by the "on the host" line in the plan
+            # itself — the one place where the human already reads the state. Saying the
+            # same thing again on top is noise, and noise teaches people to scroll past.
         esac
     fi
 
-    # Развилка. Спрашиваем только там, где ответа у нас нет и быть не может.
+    # The fork. We ask only where we have no answer and cannot have one.
     if [ -z "$_have" ]; then
         if [ -z "$_prov" ]; then
             if [ -t 0 ] && [ -t 1 ]; then
@@ -721,8 +724,8 @@ cmd_publish() {
             if [ -t 0 ] && [ -t 1 ]; then
                 _vis=$(publish_ask_visibility)
             else
-                # Умолчание одно и оно приватное: публичность не должна получаться
-                # молчанием — только явным --public (P0, D3).
+                # There is one default and it is private: publicity must never come from
+                # silence — only from an explicit --public (P0, D3).
                 _vis=private
             fi
         fi
@@ -739,9 +742,9 @@ cmd_publish() {
     publish_plan_show "$_root" "$_prov" "$_name" "$_url" "$_vis"
     say ""
 
-    # Решает не находка, а то, кто её прочитает. Публичный репозиторий — стоп: принимать
-    # такой риск пришлось бы не одному человеку. Приватный — ратификация: находки названы
-    # поимённо, «да» отдельное и каждый раз, но стены нет.
+    # What decides is not the finding but who will read it. A public repository — stop:
+    # such a risk would not be one person's to accept. A private one — ratification: the
+    # findings are named one by one, the "yes" is separate and every time, but no wall.
     _stops=$(pub_count "$PUB_STOP")
     _accept=0
     if [ "$_stops" -gt 0 ] && [ "$_force" = 0 ]; then
@@ -755,9 +758,9 @@ cmd_publish() {
                 publish_accept_notice "$_stops"
                 _accept=1 ;;
             *)
-                # Не совет, а готовое задание: «убери файл из истории» — это просьба об
-                # экспертизе, которой у пользователя может не быть, то есть ровно то, что
-                # P0 запрещает процедуре предполагать.
+                # Not advice but a ready task: "remove the file from history" is a request for
+                # expertise the user may not have, which is exactly what P0 forbids a
+                # procedure to assume.
                 publish_refuse_secret "$_root" "$PUB_VIS"
                 exit 2 ;;
         esac
@@ -776,8 +779,8 @@ cmd_publish() {
             case $_ans in
                 y|Y|д|Д|yes|да) ;;
                 *)
-                    # «Нет» именно на вопросе о находках означает «хочу, но чистым», и
-                    # ответ на это — задание агенту, а не одно слово «отменено».
+                    # "No" specifically on the findings question means "I want it, but clean",
+                    # and the answer to that is a task for the agent, not the one word "cancelled".
                     if [ "$_stops" -gt 0 ]; then
                         publish_cancel_findings "$_root"
                     else
@@ -796,8 +799,9 @@ cmd_publish() {
 }
 
 # --- clean ------------------------------------------------------------------
-# Один заход вместо тридцати команд. Ратификация не исчезает: план показывается всегда,
-# и без «да» ничего не делается — под пайпом «да» это --yes, иначе чистка только покажет.
+# One pass instead of thirty commands. Ratification does not disappear: the plan is always
+# shown, and nothing is done without a "yes" — under a pipe "yes" is --yes, otherwise the
+# cleanup only shows.
 cmd_clean() {
     _yes=0
     for _a in "$@"; do
@@ -947,7 +951,7 @@ cmd_restore() { verb_restore "$(pwd -P)" "$@"; }
 # They say what they want and read what came back; every step in between, `accept` (check
 # behind the workers, run the project's check, clean up, write the trunk, report) included,
 # is the agent's. The human's judgement comes after, in words, and its lever is
-# `fraim undo <слияние>` — which the agent runs too.
+# `fraim undo <merge>` — which the agent runs too.
 cmd_dispatch() {
     _sub=${1:-}
 
@@ -1055,7 +1059,7 @@ cmd_dispatch() {
             # The whole of the acceptance, and all of it the conductor's: check behind every
             # worker, run the project's check on the assembled branch, clean up after the
             # fleet, write the trunk, print the report. The human types nothing — they read
-            # this output and answer in words (MODES.md §4, вариант B).
+            # this output and answer in words (MODES.md §4, option B).
             [ $# -ge 2 ] || die "нужно: fraim dispatch accept СБОРКА"
             _arc=0
             build_accept "$_root" "$2" || _arc=$?
@@ -1122,7 +1126,7 @@ cmd_roles_set() {
     _rs_force_machine=
     if [ "${1:-}" = --machine ]; then _rs_force_machine=1; shift; fi
 
-    # Non-interactive form: `fraim roles set КЛЮЧ ЗНАЧЕНИЕ`. This is the path a Dockerfile
+    # Non-interactive form: `fraim roles set KEY VALUE`. This is the path a Dockerfile
     # or a VM recipe takes — an image is built without a terminal, and baking the role
     # table into the image is the whole point of building one. `fraim config set` cannot
     # do it: it validates the key against config_table, and role_/tier_ keys are open-ended
@@ -1258,7 +1262,8 @@ cmd_roles() {
         return 0
     fi
     # Literal, not a printf format: POSIX printf pads to BYTES, and these headings are
-    # Cyrillic — %-15s on «роль» pads 8 bytes to 15 and lands 4 characters wide.
+    # Cyrillic — %-15s on the 4-letter Cyrillic word for «role» pads 8 bytes to 15 and lands
+    # 4 characters wide.
     printf 'роль            агент   модель   усилие  источник\n'
     for _r in $_rs; do
         _ex=$(roles_resolve "$_r" "$_root") || continue

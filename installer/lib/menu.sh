@@ -3,7 +3,7 @@
 #
 # Line-based, not a curses app: one full redraw per keypress, no windows, no
 # resize handling, no second language. That keeps the whole product in POSIX
-# shell (PRODUCT.md, «Язык CLI — решено: POSIX shell целиком») while still
+# shell (PRODUCT.md, «CLI language — decided: POSIX shell throughout») while still
 # giving the operator a front door instead of a list of twenty commands.
 #
 # Hard rule: the menu appears ONLY when stdin and stdout are both terminals.
@@ -37,7 +37,7 @@ menu_cooked() {
 # --- drawing primitives -----------------------------------------------------
 # Every variable here is prefixed `_menu_`. POSIX sh has no locals, and the watchman
 # writes plain `_w`, `_n`, `_msg` while it works: a card that computed its width before
-# calling wm_run got «Illegal number: точек сохранения» and rendered one blank line —
+# calling wm_run got «Illegal number: <the "save points" label>» and rendered one blank line —
 # on exactly the projects that have the most to report.
 menu_width() {
     _menu_cols=$(tput cols 2>/dev/null) || _menu_cols=
@@ -56,8 +56,8 @@ menu_clip() {
     if [ "$_menu_len" -le "$_menu_max" ]; then
         printf '%s' "$_menu_s"; return
     fi
-    # Cut at the colon rather than at a column: every long finding is «что случилось: с
-    # чем именно», and the head is the half worth keeping. Cutting by column would need a
+    # Cut at the colon rather than at a column: every long finding is «what happened: to
+    # what exactly», and the head is the half worth keeping. Cutting by column would need a
     # character-aware `cut`, which in the C locale counts bytes and slices Cyrillic in half.
     _menu_head=${_menu_s%%:*}
     if [ "$_menu_head" != "$_menu_s" ] &&
@@ -215,7 +215,7 @@ menu_getkey() {
 # And every subshell ends in `|| true`, which is not belt-and-braces: the CLI runs
 # under `set -e`, and `fraim status` exits 1 whenever the project has anything
 # needing the human — the normal case for the person who opened the menu to look.
-# Without it, choosing «Скан проекта» printed the verdict and then killed the whole
+# Without it, choosing «Scan project» printed the verdict and then killed the whole
 # process mid-screen, leaving the terminal in raw mode with the cursor hidden. The
 # menu must survive every exit code its own items produce, including the refusals
 # that are answers rather than failures.

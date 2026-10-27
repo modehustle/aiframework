@@ -1,18 +1,18 @@
 #!/bin/sh
-# clean.sh — «чистка»: сделать за один заход всё, что чинится детерминированно.
+# clean.sh — "cleanup": do in one pass everything that can be fixed deterministically.
 #
-# Сторож показывает, что в проекте не так, и на живом проекте этого набирается тридцать
-# строк. Большая их часть — не работа, а хвосты: фундамент от старой версии, расследования,
-# доведённые до исхода и не заархивированные, задачи старого формата, несохранённые
-# файлы фундамента. Каждый хвост закрывается известной командой, и человеку
-# незачем набирать её тридцать раз.
+# The watchman shows what is wrong with the project, and on a live project that adds up to
+# thirty lines. Most of them are not work but leftovers: a foundation from an old version,
+# investigations brought to an outcome and not archived, tasks in the old format, unsaved
+# foundation files. Each leftover is closed by a known command, and the human has no reason
+# to type it thirty times.
 #
-# Граница проведена жёстко: чистка делает только то, у чего ответ один и он вычислим.
-# Доску задач, дрейф фундамента и отправку копии она не трогает — там нужно
-# суждение, а действие без суждения в этих местах и есть тот самый дрейф.
+# The line is drawn hard: cleanup does only what has one answer and that answer is
+# computable. The task board, foundation drift and pushing the copy it leaves alone — those
+# need judgement, and action without judgement in those places is exactly that drift.
 #
-# Ратификация остаётся: план показывается, вопрос задаётся один раз (B5). Под пайпом без
-# --yes чистка ничего не делает — печатает план и выходит.
+# Ratification stays: the plan is shown, the question is asked once (B5). Under a pipe
+# without --yes cleanup does nothing — it prints the plan and exits.
 
 CLEAN_PLAN=
 CLEAN_N=0
@@ -23,7 +23,7 @@ clean_add() {
 "
 }
 
-# Что можно сделать прямо сейчас. Читает то же состояние, что и сторож: одна арифметика.
+# What can be done right now. Reads the same state as the watchman: one arithmetic.
 clean_scan() {
     _root=$1
     CLEAN_PLAN=; CLEAN_N=0
@@ -35,14 +35,15 @@ clean_scan() {
         clean_add upgrade "" "довести фундамент до стандарта (fraim upgrade)"
     fi
 
-    # Расследования. Доведённое до исхода — запечатать штатным гейтом. Брошенное —
-    # закрыть честно: в архив с записью о том, что исхода нет и уборка не проверялась.
+    # Investigations. One brought to an outcome — seal it through the regular gate. An
+    # abandoned one — close it honestly: into the archive with a record that there is no
+    # outcome and the cleanup was not checked.
     #
-    # Обход по ПАПКАМ, а не по findings.md: папка без отчёта не видна была ни сторожу, ни
-    # чистке, и потому переживала любое количество заходов молча. Возраст такой папки
-    # считается по самому свежему файлу внутри — mtime самого каталога двигается только
-    # при добавлении и удалении записей, и папка, в которой каждый день правят заметку,
-    # выглядела бы брошенной уже через месяц.
+    # The walk is over FOLDERS, not over findings.md: a folder without a report was visible
+    # to neither the watchman nor cleanup, and so survived any number of passes silently.
+    # The age of such a folder is taken from the newest file inside — the mtime of the
+    # directory itself moves only when entries are added or removed, and a folder where a
+    # note is edited every day would look abandoned after a month.
     _days_max=$(config_get abandon_after_days "$_root")
     for _dir in "$_root"/ai/investigations/*/; do
         [ -d "$_dir" ] || continue
@@ -67,8 +68,8 @@ clean_scan() {
         fi
     done
 
-    # Несохранённый фундамент. Сохраняются ровно те пути, которые считает сторож, — у
-    # чистки, как и у глагола, нет режима «сохрани всё» (B6).
+    # Unsaved foundation. Exactly the paths the watchman counts are saved — cleanup, like
+    # the verb, has no "save everything" mode (B6).
     if verb_is_git "$_root" && config_is_on check_dirty "$_root"; then
         _dirty=$(clean_dirty_paths "$_root")
         [ -n "$_dirty" ] && clean_add commit "$_dirty" \
@@ -107,17 +108,17 @@ clean_show() {
     return 0
 }
 
-# Закрыть расследование, которое бросили. Запись честная: не «сделано», а «закрыто чисткой,
-# исхода нет, уборка не проверялась». Архив обязан говорить правду — на этом стоит вся
-# ценность архива, и молчаливое удаление папки её уничтожает.
+# Close an investigation that was abandoned. The record is honest: not "done" but "closed by
+# cleanup, no outcome, cleanup not checked". The archive must tell the truth — the whole
+# value of the archive rests on that, and silently deleting the folder destroys it.
 clean_investigate_abandon() {
     _root=$1; _slug=$2
     _dir="$_root/ai/investigations/$_slug"
     [ -d "$_dir" ] || return 1
     _f="$_dir/findings.md"
-    # Папка без findings.md получает его здесь, а не остаётся лежать: архив без отчёта —
-    # это тот же молчаливый мусор, только этажом ниже. Заголовок ставится тот же, что
-    # печатает шаблон, чтобы /orient читал архив одинаково.
+    # A folder without findings.md gets one here instead of being left lying around: an
+    # archive without a report is the same silent garbage, only one floor down. The heading
+    # is the same one the template prints, so /orient reads the archive uniformly.
     if [ ! -f "$_f" ]; then
         _age=$(wm_days_since "$(wm_newest_mtime "$_dir")")
         printf '# INVESTIGATION — %s\n\n## Outcome — fill exactly ONE branch\n\n' "$_slug" > "$_f" ||
@@ -135,11 +136,11 @@ clean_investigate_abandon() {
     verb_archive "$_root" "$_dir" "investigate_$_slug" abandon "investigate $_slug — abandoned"
 }
 
-# Одно действие: выполнить, показать его вывод и — если оно отказало — запомнить, ЧЕМ
-# именно. Раньше отказ печатался посреди списка и уезжал вверх экрана, а в конце
-# оставалось одно число: «осталось требующего тебя: 1». Человек видел, что расследования
-# на месте, и не видел ни одного слова о том, почему. Причина — последняя непустая
-# строка отказавшего гейта: это ровно тот текст, который гейт и написал.
+# One action: run it, show its output and — if it refused — remember WHAT the refusal was.
+# The refusal used to be printed mid-list and scroll off the top of the screen, and at the
+# end a single number remained: "left needing you: 1". The human saw that the investigations
+# were still there and saw not one word about why. The reason is the last non-empty line of
+# the refusing gate: exactly the text the gate itself wrote.
 CLEAN_LEFT=
 clean_run() {
     _clean_text=$1; shift
@@ -193,9 +194,9 @@ clean_apply() {
     IFS=$_clean_ifs
     say ""
     ok "сделано: $_done"
-    # Что осталось — списком, а не числом. Хвост печатается последним и потому виден:
-    # человек уходит от чистки, зная имена и причины, а не догадываясь, почему папки
-    # всё ещё на месте.
+    # What remains — as a list, not a number. The tail is printed last and therefore stays
+    # visible: the human leaves cleanup knowing the names and the reasons, not guessing why
+    # the folders are still there.
     if [ "$_refused" -gt 0 ]; then
         say ""
         say "${C_BLD}Осталось требующего тебя: $_refused${C_OFF}"
@@ -205,8 +206,8 @@ clean_apply() {
     return 0
 }
 
-# Фундамент до стандарта — одним шагом, чтобы у чистки был единый способ звать действия
-# и единый способ понимать отказ.
+# Foundation up to standard — in one step, so that cleanup has a single way to call actions
+# and a single way to understand a refusal.
 clean_upgrade() {
     _cu_root=$1
     scaffold_run "$_cu_root" >/dev/null 2>&1 || { printf 'не удалось развернуть скелет\n' >&2; return 1; }
