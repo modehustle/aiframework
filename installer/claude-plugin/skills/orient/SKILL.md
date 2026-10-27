@@ -46,7 +46,7 @@ Without the CLI, read whatever exists, in this order, whole, and note what is mi
 5. `README.md` — entry point / run instructions.
 
 If none of these exist, this project has not been bootstrapped:
-> Tell the user: \"Нет файлов фундамента. Это не bootstrap-проект — начни с `design-session.md` → `bootstrap.md`.\" Then stop.
+> Tell the user: \"No foundation files. This is not a bootstrapped project — start with `design-session.md` → `bootstrap.md`.\" Then stop.
 
 ## Step 2 — Read the board and the drift signals
 
@@ -63,7 +63,7 @@ Give a tight briefing, not a wall of text:
 <1–2 sentences from ARCHITECTURE.md> · Deploy: <access mode from STACK.md, or \"not deployed\">
 
 ## Board
-<For each open card: `<slug>` — title — age; masters with «в работе, N из M». \"Empty.\" if none.>
+<For each open card: `<slug>` — title — age; masters with «in progress, N of M». \"Empty.\" if none.>
 
 ## Recent history
 - <YYYY-MM-DD_slug> — <its `result` line>
@@ -77,12 +77,12 @@ Give a tight briefing, not a wall of text:
 
 Based on state, name the single most likely next command — do not run it:
 
-- **An investigation is finished and not archived** → \"Расследование `<slug>` доведено до исхода и ждёт архивации — `fraim investigate-seal <slug>`.\"
-- **An investigation has been open for days with no outcome** → \"Расследование `<slug>` открыто <N> дней без исхода. Доведи его через `/investigate` или признай тупик — за незакрытым расследованием могут стоять неубранные строки в базе.\"
-- **Open cards on the board** → \"На доске <N> задач(а): <slugs>. Скажи, какую берём, — или что делаем вместо них.\"
-- **A card older than a month** → name it: \"Задача `<slug>` висит <N> дней — ещё актуальна?\"
-- **Empty board** → \"Доска пуста. Скажи, что делаем дальше, — сделаю в этой сессии.\"
-- **Drift built up** (the watchman reported `drift` at attention level, or the foundation looks stale) → \"С последнего прунинга <N> хотфиксов — фундамент мог поплыть. Запусти `/prune`, чтобы свести его с реальностью.\"
-- **A trivial fix is all that is needed** → \"Это микро-правка — сделай прямо в этой сессии и поставь точку сохранения, полный цикл тут ни к чему.\"
+- **An investigation is finished and not archived** → \"Investigation `<slug>` has reached an outcome and is waiting to be archived — `fraim investigate-seal <slug>`.\"
+- **An investigation has been open for days with no outcome** → \"Investigation `<slug>` has been open <N> days with no outcome. Finish it via `/investigate` or declare a dead end — an unclosed investigation may have left uncleaned rows in the database.\"
+- **Open cards on the board** → \"There are <N> task(s) on the board: <slugs>. Tell me which one we take — or what we do instead.\"
+- **A card older than a month** → name it: \"Task `<slug>` has been sitting for <N> days — is it still relevant?\"
+- **Empty board** → \"The board is empty. Tell me what we do next — I will do it in this session.\"
+- **Drift built up** (the watchman reported `drift` at attention level, or the foundation looks stale) → \"<N> hotfixes since the last prune — the foundation may have drifted. Run `/prune` to reconcile it with reality.\"
+- **A trivial fix is all that is needed** → \"This is a micro-fix — do it right in this session and put down a save point; the full cycle is unnecessary here.\"
 
 Then stop and wait for the human. Do not begin work in this session.

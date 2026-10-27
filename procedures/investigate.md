@@ -116,7 +116,7 @@ Fill exactly one outcome branch in `findings.md`:
   - the cause is documentation diverged from code → `/prune`.
 - **DEAD-END** — record what you ruled out (the `excluded` rows are the gold here), where exactly you got stuck, and what the human must decide or provide to unblock a future attempt. Preserve this carefully — a well-recorded dead-end is what makes the *next* investigation cheaper.
 
-Then clean up. This is **mandatory and automatic — it is not optional and does not wait for the user's \"да\".** You restore **both** kinds of state you touched; skipping either leaves the system you were measuring in a state you changed.
+Then clean up. This is **mandatory and automatic — it is not optional and does not wait for the user's \"yes\".** You restore **both** kinds of state you touched; skipping either leaves the system you were measuring in a state you changed.
 
 1. **Confirm both manifests in `findings.md` are complete.** The **Touched/created manifest** (every repo file you made or modified) and the **State manifest** (every world-state mutation — rows written, leases consumed, processes started — each with its undo command).
 2. **Restore the repo** — by the manifest, never \"everything\":
@@ -132,9 +132,9 @@ Then clean up. This is **mandatory and automatic — it is not optional and does
 
 > If you are ever interrupted mid-investigation, the two manifests in `findings.md` *are* the cleanup list — that is why they are written live, the moment you touch something, not at the end.
 
-**The baseline gate (do not skip — say it out loud).** After restoring, the last thing you output before the report is an explicit confirmation, in the shape of a question the user could veto, modeled on `/run-task`'s *\"Принимаем результат?\"*:
+**The baseline gate (do not skip — say it out loud).** After restoring, the last thing you output before the report is an explicit confirmation, in the shape of a question the user could veto, modeled on `/run-task`'s *\"Do we accept the result?\"*:
 
-> *\"Состояние восстановлено к базе: код — всё из манифеста вернулось к последней точке сохранения; мир — <N задач удалено, лиз освобождён, воркер как был>. Ничего от расследования не осталось. Baseline?\"*
+> *\"State restored to baseline: code — everything in the manifest is back to the last save point; world — <N tasks deleted, lease released, worker as it was>. Nothing of the investigation is left. Baseline?\"*
 
 Naming each restored thing out loud is what makes a silent skip visible — to you and to the user. If you cannot say this line truthfully, you are not done cleaning up.
 
@@ -147,9 +147,9 @@ Naming each restored thing out loud is what makes a silent skip visible — to y
 - If DEAD-END: what was ruled out, where you stuck, what you need from the human.
 - **Cleanup:** confirm both axes were restored to baseline — repo (every manifest path back or gone) and world (rows deleted, leases released, processes as found). Nothing left behind.
 - The next line:
-  - DIAGNOSIS → structural: *\"Причина найдена, правка структурная — обсудим подход и сделаем в обычной сессии, опираясь на `ai/investigations/<slug>/findings.md`.\"*
-  - DIAGNOSIS → surgical: *\"Причина найдена, правка хирургическая — можно сделать прямо сейчас, с точкой сохранения.\"*
-  - DEAD-END: *\"Зашёл в тупик — записал, что исключено и где встал. Реши, что дальше: сузить вопрос, дать мне доступ/данные, или отложить.\"*
+  - DIAGNOSIS → structural: *\"Cause found, the fix is structural — let's discuss the approach and do it in an ordinary session, building on `ai/investigations/<slug>/findings.md`.\"*
+  - DIAGNOSIS → surgical: *\"Cause found, the fix is surgical — it can be done right now, with a save point.\"*
+  - DEAD-END: *\"Hit a dead end — I recorded what was ruled out and where I got stuck. Decide what next: narrow the question, give me access/data, or put it off.\"*
 
 Do not fix the thing yourself. Then **seal the investigation — it is finished, and finished is
 not a state it should sit in:**

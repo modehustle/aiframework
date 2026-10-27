@@ -13,10 +13,10 @@ metadata:
 > Purpose: persistent context for AI coding agents.
 > The agent **follows the phases in order** and does not skip the design phase.
 
-> **Детерминированные действия делает `fraim`, не ты.** Где стоит команда `fraim …`,
-> выполняй её, а не воспроизводи результат руками: формат, пути и коммит — не твоя забота.
-> Нет `fraim` — **остановись и скажи об этом**, как `/docker-deploy` останавливается на
-> хостовых действиях. У детерминированного действия ровно одна реализация.
+> **Deterministic actions are done by `fraim`, not by you.** Where a `fraim …` command stands,
+> run it rather than reproducing its result by hand: the format, the paths and the commit are not
+> your concern. No `fraim` — **stop and say so**, the way `/docker-deploy` stops at host
+> actions. A deterministic action has exactly one implementation.
 
 
 ## When to use this file (a human decision, made before attaching)

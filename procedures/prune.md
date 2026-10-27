@@ -81,21 +81,22 @@ There is no wrong time to garden, but those are the triggers that catch drift be
 
 ---
 
-## Миграция формата
+## Format migration
 
-Сюда приводит карточка `fraim-migration`, которую ставит `fraim upgrade`, когда механика
-разобрала не всё. Механическую часть он уже сделал; в карточке перечислено, что осталось.
+You are brought here by the `fraim-migration` card, which `fraim upgrade` puts on the board when
+the mechanics did not sort out everything. It has already done the mechanical part; the card lists
+what is left.
 
-- **Задачи без нужных разделов.** Старый план лежит в `ai/archive/legacy-plans/<слаг>/`, а на
-  доске — карточка с пометкой «не разобрано механически». Прочитай старый план и перепиши
-  карточку: «What and why» — намерение и причина, «Done when» — проверяемый признак. Ни
-  путей, ни шагов, ни пересказа кода: это и есть новый формат. Задача больше не нужна —
-  предложи человеку закрыть её: `fraim task-seal <слаг> --dropped "<почему>"`.
-- **ARCHITECTURE.md без разделов.** `fraim arch` правит карту по разделам `## `, и без них
-  агент снова будет править её руками. Предложи раскладку по стандартным разделам (Purpose &
-  scope, Stack, Components & responsibilities, Data model, Data flow, External interfaces,
-  Deployment) или по тем, что напрашиваются из текста, — содержание не меняй, только раскладку.
-  Это единственная правка карты руками в этой процедуре; дальше — только `fraim arch`.
-- Покажи переписанные карточки и карту человеку списком, правь по его ответу, сохрани:
-  `fraim commit fix "карточки после миграции" ai/tasks/<слаг>.md …`.
-- Закрой саму карточку: `fraim task-seal fraim-migration "<что доделано>"`.
+- **Tasks without the required sections.** The old plan is in `ai/archive/legacy-plans/<slug>/`,
+  and on the board there is a card marked «not sorted out mechanically». Read the old plan and
+  rewrite the card: "What and why" — the intent and the reason, "Done when" — a checkable sign. No
+  paths, no steps, no retelling of the code: that is the new format. The task is no longer needed —
+  propose to the human to close it: `fraim task-seal <slug> --dropped "<why>"`.
+- **ARCHITECTURE.md without sections.** `fraim arch` edits the map by `## ` sections, and without
+  them the agent will be editing it by hand again. Propose a layout by the standard sections
+  (Purpose & scope, Stack, Components & responsibilities, Data model, Data flow, External
+  interfaces, Deployment) or by those the text suggests — do not change the content, only the
+  layout. This is the only hand edit of the map in this procedure; after it — only `fraim arch`.
+- Show the human the rewritten cards and the map as a list, edit per their answer, save:
+  `fraim commit fix "cards after migration" ai/tasks/<slug>.md …`.
+- Close the card itself: `fraim task-seal fraim-migration "<what was finished>"`.

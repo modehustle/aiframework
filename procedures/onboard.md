@@ -19,10 +19,10 @@ The shape is **reverse bootstrap / reverse deploy**: greenfield goes design → 
 
 > Paths are **repo-relative to the project root** (the folder the agent has open). Never hardcode an absolute project path.
 
-> **Детерминированные действия делает `fraim`, не ты.** Где стоит команда `fraim …`,
-> выполняй её, а не воспроизводи результат руками: формат, пути и коммит — не твоя забота.
-> Нет `fraim` — **остановись и скажи об этом**, как `/docker-deploy` останавливается на
-> хостовых действиях. У детерминированного действия ровно одна реализация.
+> **Deterministic actions are done by `fraim`, not by you.** Where a `fraim …` command stands,
+> run it rather than reproducing its result by hand: the format, the paths and the commit are not
+> your concern. No `fraim` — **stop and say so**, the way `/docker-deploy` stops at host
+> actions. A deterministic action has exactly one implementation.
 
 This is a **one-time** act per project. Afterward the project is a normal citizen: reactive sessions, `/make-task`, `/run-task` and `/prune` work on it identically, and `/prune` maintains the foundation from there. Think of `/onboard` as the manual first `/prune` that also stands up `ai/` and the git baseline.
 
