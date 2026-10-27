@@ -30,7 +30,7 @@ printf 'check_shape = off\n' > "$FRAIM_HOME/config"
 printf '\nprocedures/\n'
 
 N=$(ls "$REPO"/procedures/*.md | grep -v manifest | wc -l | tr -d ' ')
-check "13 процедур на диске" "$N" "13"
+check "11 процедур на диске" "$N" "11"
 
 BADFM=""
 for f in "$REPO"/procedures/*.md; do
@@ -129,7 +129,7 @@ done
 CARDOUT=$(sh -c '
     . "'"$REPO"'/installer/lib/core.sh"; . "'"$REPO"'/installer/lib/config.sh"
     . "'"$REPO"'/installer/lib/registry.sh"; . "'"$REPO"'/installer/lib/context.sh"
-    . "'"$REPO"'/installer/lib/scaffold.sh"; . "'"$REPO"'/installer/lib/verbs.sh"
+    . "'"$REPO"'/installer/lib/scaffold.sh"; . "'"$REPO"'/installer/lib/verbs.sh"; . "'"$REPO"'/installer/lib/tasks.sh"
     . "'"$REPO"'/installer/lib/ade.sh"; . "'"$REPO"'/installer/lib/watchman.sh"; . "'"$REPO"'/installer/lib/update.sh"; . "'"$REPO"'/installer/lib/menu.sh"
     cd "'"$CARD"'" && menu_card && printf "%s\n" "$MENU_CARD"' 2>&1)
 check "карточка меню не падает на числах сторожа" "$(printf '%s' "$CARDOUT" | grep -c 'Illegal number')" "0"
@@ -149,7 +149,7 @@ cd "$SANDBOX" || exit 1
 NAV=$(sh -c '
     . "'"$REPO"'/installer/lib/core.sh"; . "'"$REPO"'/installer/lib/config.sh"
     . "'"$REPO"'/installer/lib/registry.sh"; . "'"$REPO"'/installer/lib/context.sh"
-    . "'"$REPO"'/installer/lib/scaffold.sh"; . "'"$REPO"'/installer/lib/verbs.sh"
+    . "'"$REPO"'/installer/lib/scaffold.sh"; . "'"$REPO"'/installer/lib/verbs.sh"; . "'"$REPO"'/installer/lib/tasks.sh"
     . "'"$REPO"'/installer/lib/ade.sh"; . "'"$REPO"'/installer/lib/watchman.sh"; . "'"$REPO"'/installer/lib/update.sh"; . "'"$REPO"'/installer/lib/menu.sh"
     cd "'"$CARD"'" || exit 1
     MENU_N=$(menu_count); MENU_SEL=1
@@ -185,7 +185,7 @@ printf '\nfraim build\n'
 check "build завершился успешно" "$?" "0"
 
 PLUG="$REPO/installer/claude-plugin/skills"
-check "плагин: 14 скиллов" "$(find "$PLUG" -name SKILL.md | wc -l | tr -d ' ')" "14"
+check "плагин: 12 скиллов" "$(find "$PLUG" -name SKILL.md | wc -l | tr -d ' ')" "12"
 
 # The single-file rule is a compatibility constraint, not tidiness:
 # Hermes fetches only SKILL.md when installing from a URL, and omp discovers
@@ -252,139 +252,29 @@ git -C "$PROJ" commit -qm "prune: reconcile foundation" >/dev/null 2>&1
 check "обновление карты сбрасывает счётчик → exit 0" "$?" "0"
 rm -f "$PROJ/ai/fraim.conf"
 
-# Blockers: the executor refused the plan and stopped.
-mkdir -p "$PROJ/ai/tasks/add-auth"
-printf '# Blocked\n' > "$PROJ/ai/tasks/add-auth/blockers.md"
+# The board: an open card is information, never alarm. Nothing on a card can go stale or
+# be blocked — it carries an intent, not a snapshot of the code.
+printf -- '---\nkind: task\ncreated: 2026-01-01\n---\n# Сделать X\n\n## Что и зачем\nx\n\n## Готово, когда\nx\n' \
+    > "$PROJ/ai/tasks/do-x.md"
+git -C "$PROJ" add -A >/dev/null 2>&1; git -C "$PROJ" commit -qm "task: do-x" >/dev/null 2>&1
 "$FRAIM" status "$PROJ" >/dev/null 2>&1
-check "blockers.md → exit 1" "$?" "1"
-"$FRAIM" status "$PROJ" 2>/dev/null | grep -q '/revise-task'
-check "вердикт указывает на /revise-task" "$?" "0"
-rm -rf "$PROJ/ai/tasks/add-auth"
-
-# Stale plan: HEAD moved after the plan was written against an older commit.
-BASE=$(git -C "$PROJ" rev-parse HEAD)
-mkdir -p "$PROJ/ai/tasks/feature-x"
-printf '# Task Context\n\n## Plan provenance\n- Based on: HEAD %s\n' "$BASE" > "$PROJ/ai/tasks/feature-x/context.md"
-printf '# Task\n' > "$PROJ/ai/tasks/feature-x/task.md"
-"$FRAIM" status "$PROJ" >/dev/null 2>&1
-check "план на актуальном HEAD → exit 0" "$?" "0"
+check "открытая задача на доске → exit 0" "$?" "0"
+"$FRAIM" status "$PROJ" 2>/dev/null | grep -q '1 открытая задача на доске'
+check "доска названа в вердикте" "$?" "0"
+"$FRAIM" status "$PROJ" --json 2>/dev/null | grep -q '"slug": "do-x", "kind": "task", "parent": ""'
+check "json: карточка с видом и родителем" "$?" "0"
 printf 'y\n' >> "$PROJ/main.py"
 git -C "$PROJ" commit -aqm second
-"$FRAIM" status "$PROJ" >/dev/null 2>&1
-check "HEAD ушёл вперёд → exit 1" "$?" "1"
-"$FRAIM" status "$PROJ" 2>/dev/null | grep -q 'отстал'
-check "вердикт называет протухший план" "$?" "0"
+"$FRAIM" status "$PROJ" --json 2>/dev/null | grep -qE '"id": "(stale-plan|plan-version|blocker|unsealed)"'
+check "у карточки нет протухания, блокеров и печатей" "$?" "1"
 
-# Протухание меряется по ПОВЕРХНОСТИ плана, а не по счётчику коммитов. Три исхода —
-# и первый из них тот, из-за которого проверка была бесполезна: очередь, запечатывая
-# сама себя, двигала HEAD и объявляла протухшими все планы в себе.
-STALE="$SANDBOX/stale"
-mkdir -p "$STALE/ai/tasks" "$STALE/src"
-git -C "$STALE" init -q
-git -C "$STALE" config user.email t@t; git -C "$STALE" config user.name t
-printf '# Arch\n' > "$STALE/ARCHITECTURE.md"
-printf '# Conv\n' > "$STALE/CONVENTIONS.md"
-printf 'app\n' > "$STALE/src/app.py"
-printf 'other\n' > "$STALE/src/other.py"
-git -C "$STALE" add -A >/dev/null 2>&1
-git -C "$STALE" commit -qm init >/dev/null 2>&1
-
-stale_plan() { # slug base surface-file
-    mkdir -p "$STALE/ai/tasks/$1"
-    printf '# Task Context\n\n## Plan provenance\n- Based on: HEAD %s\n\n## Codebase Context\n- `%s` — образец\n' \
-        "$2" "$3" > "$STALE/ai/tasks/$1/context.md"
-    printf '# Task\n\n## Files to Change\n\n### `%s`\n- **Action:** modify\n' "$3" > "$STALE/ai/tasks/$1/task.md"
-}
-
-BASE=$(git -C "$STALE" rev-parse --short HEAD)
-stale_plan alpha "$BASE" src/app.py
-stale_plan beta  "$BASE" src/app.py
-git -C "$STALE" add -A >/dev/null 2>&1
-git -C "$STALE" commit -qm "plan: alpha — план готов к исполнению" >/dev/null 2>&1
-printf 'x\n' >> "$STALE/ai/tasks/beta/task.md"
-git -C "$STALE" add -A >/dev/null 2>&1
-git -C "$STALE" commit -qm "plan: beta — план готов к исполнению" >/dev/null 2>&1
-
-"$FRAIM" status "$STALE" >/dev/null 2>&1
-check "очередь запечатала себя (только ai/) → не протухание" "$?" "0"
-check "ни одного stale-plan на бухгалтерии" \
-    "$("$FRAIM" status "$STALE" --json 2>/dev/null | grep -c '"id": "stale-plan"')" "0"
-
-# Код поехал мимо файлов плана: сказать стоит, блокировать — нет.
-printf 'changed\n' >> "$STALE/src/other.py"
-git -C "$STALE" commit -aqm "feat: other" >/dev/null 2>&1
-"$FRAIM" status "$STALE" >/dev/null 2>&1
-check "коммит мимо поверхности плана → exit 0" "$?" "0"
-check "но он назван как info" \
-    "$("$FRAIM" status "$STALE" --json 2>/dev/null | grep -c '"severity": "info", "message": "план «alpha»')" "1"
-
-# Изменился файл, на котором план стоит, — вот это протухание, и оно с уликой.
-printf 'changed\n' >> "$STALE/src/app.py"
-git -C "$STALE" commit -aqm "feat: app" >/dev/null 2>&1
-"$FRAIM" status "$STALE" >/dev/null 2>&1
-check "изменился файл из плана → exit 1" "$?" "1"
-"$FRAIM" status "$STALE" 2>/dev/null | grep -q 'план «alpha» отстал: изменился src/app.py'
-check "находка называет файл, а не число коммитов" "$?" "0"
-
-# Каталог в Codebase Context покрывает всё под собой.
-BASE2=$(git -C "$STALE" rev-parse --short HEAD)
-stale_plan gamma "$BASE2" src/
-printf 'deep\n' > "$STALE/src/nested.py"
-git -C "$STALE" add -A >/dev/null 2>&1
-git -C "$STALE" commit -qm "feat: nested" >/dev/null 2>&1
-"$FRAIM" status "$STALE" 2>/dev/null | grep -q 'план «gamma» отстал: изменился src/nested.py'
-check "каталог в поверхности ловит файл под ним" "$?" "0"
-
-# Фундамент, который исполнитель и так перечитывает на Шаге 1, поверхностью не считается:
-# он стоит в КАЖДОМ плане по шаблону, и одна правка карты подняла бы всю очередь разом.
-BASE4=$(git -C "$STALE" rev-parse --short HEAD)
-stale_plan delta "$BASE4" src/app.py
-printf 'map moved\n' >> "$STALE/ARCHITECTURE.md"
-git -C "$STALE" add -A >/dev/null 2>&1
-git -C "$STALE" commit -qm "prune: карта" >/dev/null 2>&1
-check "правка ARCHITECTURE.md не поднимает очередь" \
-    "$("$FRAIM" status "$STALE" --json 2>/dev/null | grep -c '"severity": "attention", "message": "план «delta»')" "0"
-
-# План без перечисленных файлов сверить не с чем — там счётчик коммитов и остаётся.
-BASE3=$(git -C "$STALE" rev-parse --short HEAD)
-mkdir -p "$STALE/ai/tasks/blind"
-printf '# Task Context\n\n## Plan provenance\n- Based on: HEAD %s\n' "$BASE3" > "$STALE/ai/tasks/blind/context.md"
-printf 'more\n' >> "$STALE/src/other.py"
-git -C "$STALE" commit -aqm "feat: other again" >/dev/null 2>&1
-"$FRAIM" status "$STALE" 2>/dev/null | grep -q 'план «blind» отстал от HEAD на 1 коммит кода'
-check "план без списка файлов падает обратно на счётчик" "$?" "0"
-
-# Протухание — утверждение о том, что исполнителю ещё предстоит. Задача, у которой уже
-# есть результат или блокер, исполнителя не ждёт, и её план стареть не может.
-BASE5=$(git -C "$STALE" rev-parse --short HEAD)
-stale_plan done-task "$BASE5" src/app.py
-printf 'changed again\n' >> "$STALE/src/app.py"
-git -C "$STALE" add -A >/dev/null 2>&1
-git -C "$STALE" commit -qm "feat: app again" >/dev/null 2>&1
-"$FRAIM" status "$STALE" 2>/dev/null | grep -q 'план «done-task» отстал'
-check "незакрытая задача с изменившимся файлом протухла" "$?" "0"
-printf '# Result\n' > "$STALE/ai/tasks/done-task/result.md"
-"$FRAIM" status "$STALE" 2>/dev/null | grep -q 'план «done-task» отстал'
-check "исполненная задача не считается протухшей" "$?" "1"
-
-# План, который пересказывает код вместо ссылки на него. Информация, не блокер.
-mkdir -p "$PROJ/ai/tasks/retold"
-printf '# Task Context\n\n## Codebase Context\n- `app.py` · `handler` — pattern to mirror\n' \
-    > "$PROJ/ai/tasks/retold/context.md"
-printf '# Task\n' > "$PROJ/ai/tasks/retold/task.md"
-"$FRAIM" status "$PROJ" 2>/dev/null | grep -q 'пересказывает код'
-check "план с указателями пересказом не считается" "$?" "1"
-printf 'Read lines 660-792 of app.py; create_run_dir (lines 664-670).\n' >> "$PROJ/ai/tasks/retold/task.md"
-"$FRAIM" status "$PROJ" 2>/dev/null | grep -q 'пересказывает код'
-check "пересказ кода замечен" "$?" "0"
-"$FRAIM" status "$PROJ" --json 2>/dev/null | grep -q '"id": "plan-retelling", "severity": "info"'
-check "пересказ — info, а не блокер" "$?" "0"
-rm -rf "$PROJ/ai/tasks/retold"
-
-# Version drift of the system itself.
-printf -- '- System: fraim 0.0.1-old\n' >> "$PROJ/ai/tasks/feature-x/context.md"
-"$FRAIM" status "$PROJ" 2>/dev/null | grep -q 'написан fraim 0.0.1-old'
-check "план от старой версии fraim замечен" "$?" "0"
+# A task in the old format is somebody's intent too — the verdict sends it to upgrade.
+mkdir -p "$PROJ/ai/tasks/old-plan"
+printf '# Task\n' > "$PROJ/ai/tasks/old-plan/task.md"
+printf 'check_shape = on\n' > "$PROJ/ai/fraim.conf"
+"$FRAIM" status "$PROJ" 2>/dev/null | grep -q 'ai/tasks:старый-формат'
+check "задача старого формата — находка shape" "$?" "0"
+rm -rf "$PROJ/ai/tasks/old-plan" "$PROJ/ai/fraim.conf"
 
 python3 -c "import json,sys;json.load(sys.stdin)" < "$("$FRAIM" status "$PROJ" --json > "$SANDBOX/s.json" 2>/dev/null; echo "$SANDBOX/s.json")"
 check "--json — валидный JSON" "$?" "0"
@@ -681,8 +571,8 @@ check "значение по умолчанию" "$("$FRAIM" config 2>/dev/null 
 "$FRAIM" config set foundation_lag_commits 3 >/dev/null 2>&1
 check "проектная настройка записана" "$(grep -c 'foundation_lag_commits = 3' "$PROJ2/ai/fraim.conf")" "1"
 check "источник значения показан" "$("$FRAIM" config 2>/dev/null | grep foundation_lag_commits | grep -c 'ai/fraim.conf')" "1"
-"$FRAIM" config set --machine stale_plan_commits 4 >/dev/null 2>&1
-check "машинная настройка записана" "$(grep -c 'stale_plan_commits = 4' "$FRAIM_HOME/config")" "1"
+"$FRAIM" config set --machine abandon_after_days 31 >/dev/null 2>&1
+check "машинная настройка записана" "$(grep -c 'abandon_after_days = 31' "$FRAIM_HOME/config")" "1"
 "$FRAIM" config set nonsense_key 1 >/dev/null 2>&1
 check "неизвестный ключ отвергнут" "$?" "2"
 
@@ -703,50 +593,76 @@ check "выключенная проверка не срабатывает" "$?"
 # ---------------------------------------------------------------- verbs
 printf '\nдетерминированные глаголы\n'
 
-"$FRAIM" task-new add-auth >/dev/null 2>&1
-check "task-new создал задачу" "$([ -f "$PROJ2/ai/tasks/add-auth/context.md" ] && echo yes || echo no)" "yes"
-check "провенанс: дата проставлена" "$(grep -c '^- Planned: 20' "$PROJ2/ai/tasks/add-auth/context.md")" "1"
-check "провенанс: git-ref проставлен" "$(grep -c '^- Based on: HEAD ' "$PROJ2/ai/tasks/add-auth/context.md")" "1"
-check "провенанс: версия системы проставлена" "$(grep -c '^- System: fraim ' "$PROJ2/ai/tasks/add-auth/context.md")" "1"
-# The executor's rules live in /run-task. The verb lays down a pointer so the planner never
-# retypes them into a copy that outlives the procedure it was copied from.
-check "task-new положил указатель на правила" \
-    "$(grep -c 'Your rules are `/run-task` itself' "$PROJ2/ai/tasks/add-auth/task.md")" "1"
-check "правила исполнителя в план не скопированы" \
-    "$(grep -c 'Touch only files listed' "$PROJ2/ai/tasks/add-auth/task.md")" "0"
-"$FRAIM" task-new add-auth >/dev/null 2>&1
+# --- доска: карточки задач ------------------------------------------------
+card() { # title — тело карточки, как его присылает агент
+    printf '# %s\n\n## Что и зачем\nНужно, потому что нужно.\n\n## Готово, когда\nРаботает.\n' "$1"
+}
+card "Добавить вход" | "$FRAIM" task-new add-auth >/dev/null 2>&1
+check "task-new поставил карточку" "$([ -f "$PROJ2/ai/tasks/add-auth.md" ] && echo yes || echo no)" "yes"
+check "frontmatter: вид" "$(sed -n 's/^kind: //p' "$PROJ2/ai/tasks/add-auth.md")" "task"
+check "frontmatter: дата" "$(grep -c '^created: 20' "$PROJ2/ai/tasks/add-auth.md")" "1"
+check "карточка сохранена точкой" "$(git -C "$PROJ2" log --oneline -1 --format=%s)" "task: add-auth — поставлена"
+# В карточке нет ничего, что могло бы протухнуть: ни провенанса, ни плана.
+check "в карточке нет провенанса" "$(grep -c 'Based on\|Plan provenance' "$PROJ2/ai/tasks/add-auth.md")" "0"
+card "x" | "$FRAIM" task-new add-auth >/dev/null 2>&1
 check "task-new не затирает существующую задачу" "$?" "2"
-"$FRAIM" task-new "Not Kebab" >/dev/null 2>&1
+card "x" | "$FRAIM" task-new "Not Kebab" >/dev/null 2>&1
 check "task-new требует kebab-case" "$?" "2"
+"$FRAIM" task-new no-body </dev/null >/dev/null 2>&1
+check "без тела карточки — отказ" "$?" "2"
+printf '# Только заголовок\n' | "$FRAIM" task-new no-sections >/dev/null 2>&1
+check "без «Что и зачем» и «Готово, когда» — отказ" "$?" "2"
+printf -- '---\nkind: master\n---\n# x\n' | "$FRAIM" task-new own-fm >/dev/null 2>&1
+check "frontmatter от агента — отказ" "$?" "2"
+check "отказы ничего не оставили" "$(ls "$PROJ2/ai/tasks" | grep -c 'no-body\|no-sections\|own-fm\|^\.')" "0"
 
-# The gate: each precondition must actually block.
-"$FRAIM" task-seal add-auth >/dev/null 2>&1
-check "гейт: без result.md не архивирует" "$?" "2"
+# Проект: мастер-задача и подзадачи, один уровень.
+card "Веб-версия" | "$FRAIM" task-new web --master >/dev/null 2>&1
+check "мастер-задача поставлена" "$(sed -n 's/^kind: //p' "$PROJ2/ai/tasks/web.md")" "master"
+card "Логин" | "$FRAIM" task-new web-login --parent web >/dev/null 2>&1
+check "подзадача знает проект" "$(sed -n 's/^parent: //p' "$PROJ2/ai/tasks/web-login.md")" "web"
+card "x" | "$FRAIM" task-new bad-child --parent add-auth >/dev/null 2>&1
+check "родитель — только мастер-задача" "$?" "2"
+card "x" | "$FRAIM" task-new bad-master --master --parent web >/dev/null 2>&1
+check "у мастер-задачи нет родителя" "$?" "2"
+"$FRAIM" tasks 2>/dev/null | grep -q '◆ web — Веб-версия'
+check "доска показывает проект" "$?" "0"
+"$FRAIM" tasks 2>/dev/null | grep -q '      · web-login — Логин'
+check "подзадача — под проектом" "$?" "0"
+"$FRAIM" tasks 2>/dev/null | grep -q 'не начата, 0 из 1'
+check "прогресс проекта до первой закрытой" "$?" "0"
+python3 -c "import json,sys;json.load(sys.stdin)" < "$("$FRAIM" tasks --json > "$SANDBOX/t.json" 2>/dev/null; echo "$SANDBOX/t.json")"
+check "tasks --json — валидный JSON" "$?" "0"
 
-printf '## Status\n✅ complete\n' > "$PROJ2/ai/tasks/add-auth/result.md"
-"$FRAIM" task-seal add-auth >/dev/null 2>&1
-check "гейт: без раздела Foundation не архивирует" "$?" "2"
+# Закрытие: карточка уезжает в архив со строкой итога.
+"$FRAIM" task-seal web "всё" >/dev/null 2>&1
+check "проект с открытыми подзадачами не закрыть" "$?" "2"
+"$FRAIM" task-seal web-login >/dev/null 2>&1
+check "без строки итога — отказ" "$?" "2"
+"$FRAIM" task-seal web-login "вход работает" >/dev/null 2>&1
+check "подзадача закрыта" "$?" "0"
+check "карточка ушла с доски" "$([ -f "$PROJ2/ai/tasks/web-login.md" ] && echo yes || echo no)" "no"
+ARCH=$(find "$PROJ2/ai/archive/tasks" -name '*_web-login.md')
+check "карточка в архиве" "$([ -n "$ARCH" ] && echo yes || echo no)" "yes"
+check "архив: исход" "$(sed -n 's/^outcome: //p' "$ARCH")" "done"
+check "архив: итог" "$(sed -n 's/^result: //p' "$ARCH")" '"вход работает"'
+check "закрытие сохранено точкой" "$(git -C "$PROJ2" log --oneline -1 --format=%s)" "archive: web-login — выполнена"
+"$FRAIM" tasks 2>/dev/null | grep -q 'в работе, 1 из 1'
+check "проект в работе — вычислено" "$?" "0"
+"$FRAIM" task-seal add-auth --dropped "передумали" >/dev/null 2>&1
+check "отмена — тоже закрытие" "$(sed -n 's/^outcome: //p' "$(find "$PROJ2/ai/archive/tasks" -name '*_add-auth.md')")" "dropped"
+"$FRAIM" task-seal web "веб-версия готова" >/dev/null 2>&1
+check "проект без открытых подзадач закрывается" "$?" "0"
 
-printf '\n## Foundation updated\n- `ARCHITECTURE.md`: <what changed>\n' >> "$PROJ2/ai/tasks/add-auth/result.md"
-"$FRAIM" task-seal add-auth >/dev/null 2>&1
-check "гейт: незаполненные плейсхолдеры не проходят" "$?" "2"
+# Обычная задача становится проектом только глаголом — по слову человека.
+card "Большое" | "$FRAIM" task-new big >/dev/null 2>&1
+"$FRAIM" task-master big >/dev/null 2>&1
+check "task-master делает проект" "$(sed -n 's/^kind: //p' "$PROJ2/ai/tasks/big.md")" "master"
+"$FRAIM" task-seal big "x" >/dev/null 2>&1
 
-python3 - "$PROJ2/ai/tasks/add-auth/result.md" <<'PY'
-import pathlib, sys
-p = pathlib.Path(sys.argv[1])
-p.write_text(p.read_text().replace("- `ARCHITECTURE.md`: <what changed>",
-                                   "- `ARCHITECTURE.md`: no structural change"))
-PY
-printf '# blocked\n' > "$PROJ2/ai/tasks/add-auth/blockers.md"
-"$FRAIM" task-seal add-auth >/dev/null 2>&1
-check "гейт: заблокированная задача не архивируется" "$?" "2"
-rm -f "$PROJ2/ai/tasks/add-auth/blockers.md"
-
-"$FRAIM" task-seal add-auth >/dev/null 2>&1
-check "гейт: честный отчёт пропускается" "$?" "0"
-check "задача убрана из очереди" "$([ -d "$PROJ2/ai/tasks/add-auth" ] && echo yes || echo no)" "no"
-check "задача лежит в архиве" "$(find "$PROJ2/ai/archive" -maxdepth 1 -name '*_add-auth' | wc -l | tr -d ' ')" "1"
-check "архивация закоммичена" "$(git -C "$PROJ2" log --oneline -1 --format=%s)" "archive: add-auth"
+# Удалённые глаголы отвечают словами, а не «неизвестной командой».
+"$FRAIM" plan-seal x 2>&1 | grep -q 'задача теперь карточка'
+check "удалённый глагол объясняет, куда делся" "$?" "0"
 
 # The reactive save point is the record of unplanned work: an ordinary commit verb.
 mkdir -p "$PROJ2/src"; printf 'reactive\n' >> "$PROJ2/src/a.py"
@@ -765,78 +681,6 @@ check "stack-passport не перезаписывает" "$?" "2"
 check "prune-mark оставил якорь-коммит" "$(git -C "$PROJ2" log --oneline -1 --format=%s | grep -c '^prune: reconcile foundation')" "1"
 "$FRAIM" status "$PROJ2" >/dev/null 2>&1
 check "маркер сбросил счётчик дрейфа" "$?" "0"
-
-# --- task-block / task-revise ----------------------------------------------
-"$FRAIM" task-new fix-cache >/dev/null 2>&1
-"$FRAIM" task-block fix-cache >/dev/null 2>&1
-check "task-block завёл blockers.md" "$(grep -c 'fraim:stub' "$PROJ2/ai/tasks/fix-cache/blockers.md")" "1"
-"$FRAIM" task-seal fix-cache >/dev/null 2>&1
-check "гейт: заблокированную задачу не запечатать" "$?" "2"
-
-"$FRAIM" task-revise fix-cache "wrong path in step 3" "path realigned with the code" >/dev/null 2>&1
-check "task-revise отработал" "$?" "0"
-check "task-revise снял блокер" "$([ -f "$PROJ2/ai/tasks/fix-cache/blockers.md" ] && echo yes || echo no)" "no"
-check "task-revise записал ревизию" "$(grep -c '^## Revision 1 — 20' "$PROJ2/ai/tasks/fix-cache/task.md")" "1"
-check "task-revise записал дефект" "$(grep -c 'Defect: wrong path in step 3' "$PROJ2/ai/tasks/fix-cache/task.md")" "1"
-check "провенанс не задвоился" "$(grep -c '^- Planned: ' "$PROJ2/ai/tasks/fix-cache/context.md")" "1"
-check "task-revise закоммитил" "$(git -C "$PROJ2" log --oneline -1 --format=%s)" "revise: fix-cache — wrong path in step 3"
-# The repair used to leave the plan one commit behind again — its own — so /run-task sent it
-# straight back to /revise-task. The loop has to terminate.
-"$FRAIM" status "$PROJ2" 2>/dev/null | grep -q 'fix-cache.*отстал'
-check "после ревизии план не считается протухшим" "$?" "1"
-"$FRAIM" task-revise fix-cache "again" "again" >/dev/null 2>&1
-check "task-revise без блокера отказывает" "$?" "2"
-
-# --- task-result ------------------------------------------------------------
-"$FRAIM" task-result fix-cache >/dev/null 2>&1
-check "task-result завёл отчёт" "$(grep -c '^## Foundation updated$' "$PROJ2/ai/tasks/fix-cache/result.md")" "1"
-"$FRAIM" task-seal fix-cache >/dev/null 2>&1
-check "гейт: незаполненную заготовку не архивирует" "$?" "2"
-
-fill_result() {
-    python3 - "$1" <<'PY2'
-import pathlib, re, sys
-p = pathlib.Path(sys.argv[1]); t = p.read_text()
-t = "\n".join(l for l in t.splitlines() if "fraim:stub" not in l) + "\n"
-t = re.sub(r"(## Foundation updated\n)(?:- .*\n)+",
-           "\\1- `ARCHITECTURE.md`: no structural change\n", t)
-t = re.sub(r"(## Divergence from plan\n)<[^>]*>\n(?:- .*\n)+",
-           "\\1- Plan assumed a sync call; it is async.\n", t)
-t = re.sub(r"^(- \(one-off\)|- \(pitfall\)|- \(bug\)|- \[x/|- `path/to|<verbatim|<If any|✅ complete).*$",
-           "none", t, flags=re.M)
-p.write_text(t)
-PY2
-}
-fill_result "$PROJ2/ai/tasks/fix-cache/result.md"
-"$FRAIM" task-seal fix-cache >/dev/null 2>&1
-check "гейт: заполненный отчёт пропускается" "$?" "0"
-
-"$FRAIM" task-new stale-plan >/dev/null 2>&1
-"$FRAIM" task-result stale-plan >/dev/null 2>&1
-"$FRAIM" task-result stale-plan --reset >/dev/null 2>&1
-check "task-result --reset снял отчёт" "$([ -f "$PROJ2/ai/tasks/stale-plan/result.md" ] && echo yes || echo no)" "no"
-
-# --- reconcile-seal (вторая дверь) ------------------------------------------
-"$FRAIM" task-result stale-plan --reconcile >/dev/null 2>&1
-check "task-result --reconcile завёл раздел расхождений" \
-    "$(grep -c '^## Divergence from plan$' "$PROJ2/ai/tasks/stale-plan/result.md")" "1"
-"$FRAIM" reconcile-seal stale-plan >/dev/null 2>&1
-check "гейт: незаполненную заготовку не сводит" "$?" "2"
-fill_result "$PROJ2/ai/tasks/stale-plan/result.md"
-python3 - "$PROJ2/ai/tasks/stale-plan/result.md" <<'PY2'
-import pathlib, sys
-p = pathlib.Path(sys.argv[1])
-t = p.read_text().replace("- Plan assumed a sync call; it is async.\n", "")
-p.write_text(t)
-PY2
-"$FRAIM" reconcile-seal stale-plan >/dev/null 2>&1
-check "гейт: пустой раздел расхождений не проходит" "$?" "2"
-printf -- '- Plan assumed a sync call; it is async.\n' >> "$PROJ2/ai/tasks/stale-plan/result.md"
-"$FRAIM" reconcile-seal stale-plan >/dev/null 2>&1
-check "reconcile-seal сводит и архивирует" "$?" "0"
-check "дрейфнувшая сессия в архиве" "$(find "$PROJ2/ai/archive" -maxdepth 1 -name '*_stale-plan' | wc -l | tr -d ' ')" "1"
-check "reconcile-seal закоммитил своим видом" \
-    "$(git -C "$PROJ2" log --oneline -1 --format=%s)" "reconcile: stale-plan — sealed drifted session"
 
 # --- investigate-new / investigate-seal -------------------------------------
 "$FRAIM" investigate-new selector-flicker >/dev/null 2>&1
@@ -862,7 +706,7 @@ check "гейт: без исхода не архивирует" "$?" "2"
 python3 - "$FIND" <<'PY2'
 import pathlib, re, sys
 p = pathlib.Path(sys.argv[1]); t = p.read_text()
-t = t.replace("<root cause, plainly. Route: reactive fix (surgical or structural) | /revise-task | /prune.>",
+t = t.replace("<root cause, plainly. Route: reactive fix (surgical or structural) | a task on the board | /prune.>",
               "The selector is rebuilt on every render; the observer attaches to the old node.")
 p.write_text(t)
 PY2
@@ -891,14 +735,7 @@ check "расследование в архиве" \
 check "архивация расследования закоммичена" \
     "$(git -C "$PROJ2" log --oneline -1 --format=%s)" "archive: investigate selector-flicker"
 
-# --- сторож видит незапечатанное -------------------------------------------
-"$FRAIM" task-new unsealed-one >/dev/null 2>&1
-"$FRAIM" task-result unsealed-one >/dev/null 2>&1
-"$FRAIM" status "$PROJ2" >/dev/null 2>&1
-check "сторож замечает незапечатанную задачу" "$?" "1"
-check "вердикт зовёт task-seal" "$("$FRAIM" status "$PROJ2" 2>/dev/null | grep -c 'не запечатана')" "1"
-rm -rf "$PROJ2/ai/tasks/unsealed-one"
-
+# --- расследование в работе ------------------------------------------------
 "$FRAIM" investigate-new open-one >/dev/null 2>&1
 "$FRAIM" status "$PROJ2" >/dev/null 2>&1
 check "расследование в работе не поднимает тревогу" "$?" "0"
@@ -1021,82 +858,6 @@ check "заглушка «None yet» убрана" "$(grep -c '^- None yet\.$' "
 check "вторая строка легла следом" \
       "$(sed -n '/^## Known Pitfalls/,$p' "$PROJ2/CONVENTIONS.md" | grep -c '^- ')" "2"
 
-# --- plan-seal: четвёртая дверь ---------------------------------------------
-"$FRAIM" task-new add-cache >/dev/null 2>&1
-"$FRAIM" plan-seal add-cache >/dev/null 2>&1
-check "гейт плана: заготовку не выпускает" "$?" "2"
-
-python3 - "$PROJ2/ai/tasks/add-cache" <<'PYFILL'
-import pathlib, sys
-d = pathlib.Path(sys.argv[1])
-ctx = {'Goal': 'Cache price lookups for 60 seconds.',
-       'Why': 'The upstream is slow and rate limited.',
-       'Codebase Context': '- `app.py` — entry point, holds the price call',
-       'Constraints': '- Do NOT modify: `DECISIONS.md`',
-       'Decisions and Rationale': 'In-process TTL cache, not Redis: a service for 60 seconds does not pay.',
-       'Known Pitfalls': 'None known.',
-       'Out of Scope': 'Event-based invalidation.'}
-task = {'Summary': 'TTL cache around get_price().',
-        'Files to Change': '### `app.py`\n- **Action:** modify\n- **Must be true after:** get_price() serves from cache while the entry is under 60s old\n- **Pattern reference:** n/a',
-        'Step-by-step Implementation': '1. Add the cache dict next to get_price() in `app.py`.',
-        'Acceptance Criteria': '- [ ] Two calls in a row make one network request',
-        'Verification Commands': '```bash\npython3 -c "import sys"\n```',
-        'Foundation updates': "- `ARCHITECTURE.md`: no structural change",
-        'Executor Rules': '- Follow the plan literally.'}
-for name, fill in (('context.md', ctx), ('task.md', task)):
-    p = d / name
-    out = []
-    for line in p.read_text().splitlines():
-        if 'fraim:stub' in line:
-            continue
-        out.append(line)
-        head = line[3:].strip() if line.startswith('## ') else None
-        if head:
-            for k, v in fill.items():
-                if head.startswith(k):
-                    out.append(v)
-                    break
-    p.write_text('\n'.join(out) + '\n')
-PYFILL
-
-"$FRAIM" plan-seal add-cache >/dev/null 2>&1
-check "гейт плана: заполненный план проходит" "$?" "0"
-check "план сохранён точкой" "$(git -C "$PROJ2" log --oneline -1 --format=%s)" "plan: add-cache — план готов к исполнению"
-
-printf 'Как мы обсуждали, TTL держим на 60.\n' >> "$PROJ2/ai/tasks/add-cache/context.md"
-"$FRAIM" plan-seal add-cache >/dev/null 2>&1
-check "гейт плана: отсылку к разговору не пропускает" "$?" "2"
-python3 - "$PROJ2/ai/tasks/add-cache/context.md" <<'PYCUT'
-import pathlib, sys
-p = pathlib.Path(sys.argv[1])
-p.write_text("".join(l for l in p.read_text().splitlines(True) if "обсуждали" not in l))
-PYCUT
-
-python3 - "$PROJ2/ai/tasks/add-cache/context.md" <<'PYBAD'
-import pathlib, sys
-p = pathlib.Path(sys.argv[1])
-p.write_text(p.read_text().replace('`app.py` — entry point', '`src/pricing.py` — entry point'))
-PYBAD
-"$FRAIM" plan-seal add-cache >/dev/null 2>&1
-check "гейт плана: несуществующий путь не пропускает" "$?" "2"
-python3 - "$PROJ2/ai/tasks/add-cache/context.md" <<'PYFIX'
-import pathlib, sys
-p = pathlib.Path(sys.argv[1])
-p.write_text(p.read_text().replace('`src/pricing.py` — entry point', '`app.py` — entry point'))
-PYFIX
-
-python3 - "$PROJ2/ai/tasks/add-cache/task.md" <<'PYEMPTY'
-import pathlib, sys, re
-p = pathlib.Path(sys.argv[1])
-t = p.read_text()
-t = re.sub(r'## Verification Commands\n.*?\n## ', '## Verification Commands\n\n## ', t, flags=re.S)
-p.write_text(t)
-PYEMPTY
-"$FRAIM" plan-seal add-cache >/dev/null 2>&1
-check "гейт плана: пустую проверку не пропускает" "$?" "2"
-
-rm -rf "$PROJ2/ai/tasks/add-cache"
-
 # ---------------------------------------------------------------- version
 printf '\nfraim version (что именно стоит)\n'
 
@@ -1127,15 +888,12 @@ printf 'x\n' > "$CL/app.py"
 git -C "$CL" add -A >/dev/null; git -C "$CL" commit -qm base >/dev/null
 cd "$CL" || exit 1
 
-# исполненная задача с честным отчётом — гейт её пропустит
-"$FRAIM" task-new done-task >/dev/null 2>&1
-printf '# Result\n\n## Status\ncomplete\n\n## Foundation updated\n- ARCHITECTURE.md: no structural change\n' \
-    > "$CL/ai/tasks/done-task/result.md"
-# исполненная задача без отчёта о фундаменте — гейт обязан отказать и в чистке
-"$FRAIM" task-new bad-task >/dev/null 2>&1
-printf '# Result\n\n## Status\ncomplete\n' > "$CL/ai/tasks/bad-task/result.md"
-# протухший план — чистка НЕ должна его трогать
-"$FRAIM" task-new stale-plan >/dev/null 2>&1
+# задача старого формата: план в папке. Чистка переводит её в карточку через upgrade.
+mkdir -p "$CL/ai/tasks/old-plan"
+printf '# Task Context\n\n## Goal\nСделать Y.\n\n## Why\nНадо.\n' > "$CL/ai/tasks/old-plan/context.md"
+printf '# Task\n\n## Summary\nДобавить Y.\n\n## Acceptance Criteria\n- [ ] Y есть\n' > "$CL/ai/tasks/old-plan/task.md"
+# открытая карточка — доску чистка НЕ трогает
+printf '# Открытая\n\n## Что и зачем\nx\n\n## Готово, когда\nx\n' | "$FRAIM" task-new open-card >/dev/null 2>&1
 for i in 1 2 3; do
     printf 'c%s\n' "$i" >> "$CL/app.py"
     git -C "$CL" add app.py >/dev/null; git -C "$CL" commit -qm "fix: c$i" >/dev/null
@@ -1159,7 +917,7 @@ python3 - "$CL/ai/investigations/solved-one/findings.md" <<'PYSOLVE'
 import pathlib, sys
 p = pathlib.Path(sys.argv[1]); t = p.read_text()
 t = t.replace('<the ONE unclear thing, as a question that can be answered>', 'why the counter lies')
-t = t.replace('<root cause, plainly. Route: reactive fix (surgical or structural) | /revise-task | /prune.>',
+t = t.replace('<root cause, plainly. Route: reactive fix (surgical or structural) | a task on the board | /prune.>',
               'it counted folders, not runnable tasks')
 t = t.replace('<what was ruled out, where exactly you got stuck, what the human must decide or provide.>', '')
 t = t.replace('<repo: what `git status` shows — and world: what was undone, counted against the baseline above>',
@@ -1184,8 +942,7 @@ check "план НЕ трогает свежую папку без findings.md" 
       "$(printf '%s' "$PLAN" | grep -c 'fresh-no-report')" "0"
 check "сторож называет папку без findings.md" \
       "$("$FRAIM" status "$CL" 2>/dev/null | grep -c 'без findings.md')" "2"
-check "план включает незапечатанную задачу" "$(printf '%s' "$PLAN" | grep -c 'done-task')" "1"
-check "план НЕ трогает протухший план" "$(printf '%s' "$PLAN" | grep -c 'stale-plan')" "0"
+check "план НЕ трогает доску" "$(printf '%s' "$PLAN" | grep -c 'open-card')" "0"
 
 OUT=$("$FRAIM" clean --yes </dev/null 2>&1)
 check "clean --yes отработал" "$(printf '%s' "$OUT" | grep -c 'сделано:')" "1"
@@ -1199,22 +956,17 @@ check "в архиве записано, что расследование бр�
       "$(cat "$CL"/ai/archive/*investigate_abandoned-one/findings.md | grep -c '^## Abandoned$')" "1"
 check "и что уборка не проверялась" \
       "$(cat "$CL"/ai/archive/*investigate_abandoned-one/findings.md | grep -c 'Уборка не проверялась')" "1"
-check "исполненная задача запечатана" "$([ -d "$CL/ai/tasks/done-task" ] && echo yes || echo no)" "no"
-# Гейт остаётся гейтом внутри чистки: задача без отчёта о фундаменте не уезжает в архив.
-check "задача без отчёта о фундаменте осталась" "$([ -d "$CL/ai/tasks/bad-task" ] && echo yes || echo no)" "yes"
+check "задача старого формата стала карточкой" "$(sed -n 's/^kind: //p' "$CL/ai/tasks/old-plan.md" 2>/dev/null)" "task"
+check "в карточку перенесено намерение" "$(grep -c '^Сделать Y.$' "$CL/ai/tasks/old-plan.md" 2>/dev/null)" "1"
+check "старый план сохранён в архиве" "$([ -f "$CL/ai/archive/legacy-plans/old-plan/task.md" ] && echo yes || echo no)" "yes"
+check "открытая карточка не тронута" "$([ -f "$CL/ai/tasks/open-card.md" ] && echo yes || echo no)" "yes"
 check "папка без findings.md заархивирована" \
       "$(find "$CL/ai/archive" -maxdepth 1 -name '*investigate_no-report' | wc -l | tr -d ' ')" "1"
 check "и получила отчёт, а не уехала в архив молча" \
       "$(cat "$CL"/ai/archive/*investigate_no-report/findings.md 2>/dev/null | grep -c '^## Abandoned$')" "1"
 check "свежая папка без findings.md не тронута" \
       "$([ -d "$CL/ai/investigations/fresh-no-report" ] && echo yes || echo no)" "yes"
-# Хвост чистки называет, ЧТО осталось и ПОЧЕМУ. Раньше в конце стояло одно число, а
-# причина отказа уезжала вверх экрана посреди списка — человек видел папки на месте и
-# ни одного слова о том, что от него требуется.
-check "чистка честно сказала, что осталось" "$(printf '%s' "$OUT" | grep -c 'Осталось требующего тебя')" "1"
-check "хвост называет оставшееся по имени" "$(printf '%s' "$OUT" | tail -6 | grep -c 'bad-task')" "1"
-check "хвост называет причину отказа" "$(printf '%s' "$OUT" | tail -6 | grep -c 'Foundation updated')" "1"
-check "протухший план не тронут" "$([ -d "$CL/ai/tasks/stale-plan" ] && echo yes || echo no)" "yes"
+check "чистке нечего было отказывать" "$(printf '%s' "$OUT" | grep -c 'Осталось требующего тебя')" "0"
 
 # Повторный заход не должен находить работу там, где её уже нет.
 PLAN2=$("$FRAIM" clean </dev/null 2>&1)
@@ -1267,17 +1019,13 @@ mkdir -p "$QP"
 git -C "$QP" init -q; git -C "$QP" config user.email t@t; git -C "$QP" config user.name t
 cd "$QP" || exit 1
 "$FRAIM" scaffold >/dev/null 2>&1
-"$FRAIM" task-new blocked-one >/dev/null 2>&1; "$FRAIM" task-block blocked-one >/dev/null 2>&1
-"$FRAIM" task-new done-one    >/dev/null 2>&1; "$FRAIM" task-result done-one >/dev/null 2>&1
-"$FRAIM" task-new ready-one   >/dev/null 2>&1
+printf '# Проект\n\n## Что и зачем\nx\n\n## Готово, когда\nx\n' | "$FRAIM" task-new proj-one --master >/dev/null 2>&1
+printf '# Часть\n\n## Что и зачем\nx\n\n## Готово, когда\nx\n' | "$FRAIM" task-new part-one --parent proj-one >/dev/null 2>&1
 J=$("$FRAIM" status --json 2>/dev/null)
-
-check "json: состояние каждой задачи" \
-      "$(printf '%s' "$J" | grep -c '"slug": "blocked-one", "state": "blocked"')$(printf '%s' "$J" | grep -c '"slug": "done-one", "state": "done"')$(printf '%s' "$J" | grep -c '"slug": "ready-one", "state": "runnable"')" "111"
-# Раньше счётчик считал папки: три задачи, из которых исполнима одна, читались как
-# «3 задачи в очереди → /run-task». Это была неправда в самом читаемом месте вывода.
-check "счётчик считает исполнимые, а не папки" \
-      "$(printf '%s' "$J" | grep -c '1 задача готова к исполнению')" "1"
+check "json: вид и родитель каждой карточки" \
+      "$(printf '%s' "$J" | grep -c '"slug": "proj-one", "kind": "master", "parent": ""')$(printf '%s' "$J" | grep -c '"slug": "part-one", "kind": "task", "parent": "proj-one"')" "11"
+check "счётчик считает карточки на доске" \
+      "$(printf '%s' "$J" | grep -c '2 открытые задачи на доске')" "1"
 check "json: заглушка отличима от заполненного" \
       "$(printf '%s' "$J" | grep -c '"ARCHITECTURE.md": "stub"')" "1"
 check "json: отсутствующий файл виден как missing" \
@@ -1299,7 +1047,7 @@ printf '\nfraim publish (копия вне машины)\n'
 # только на терминале, а pty в POSIX sh не завести.
 PUBLIB_CANCEL='. "'"$REPO"'/installer/lib/core.sh"; . "'"$REPO"'/installer/lib/config.sh"
     . "'"$REPO"'/installer/lib/registry.sh"; . "'"$REPO"'/installer/lib/context.sh"
-    . "'"$REPO"'/installer/lib/scaffold.sh"; . "'"$REPO"'/installer/lib/verbs.sh"
+    . "'"$REPO"'/installer/lib/scaffold.sh"; . "'"$REPO"'/installer/lib/verbs.sh"; . "'"$REPO"'/installer/lib/tasks.sh"
     . "'"$REPO"'/installer/lib/ade.sh"; . "'"$REPO"'/installer/lib/watchman.sh"; . "'"$REPO"'/installer/lib/update.sh"; . "'"$REPO"'/installer/lib/publish.sh"'
 
 # Всё здесь работает без сети и без gh: «хостом» служит локальный bare-репозиторий.
@@ -1583,7 +1331,7 @@ GIT_CONFIG_COUNT=0; export GIT_CONFIG_COUNT
 
 PUBLIB='. "'"$REPO"'/installer/lib/core.sh"; . "'"$REPO"'/installer/lib/config.sh"
         . "'"$REPO"'/installer/lib/registry.sh"; . "'"$REPO"'/installer/lib/context.sh"
-        . "'"$REPO"'/installer/lib/scaffold.sh"; . "'"$REPO"'/installer/lib/verbs.sh"
+        . "'"$REPO"'/installer/lib/scaffold.sh"; . "'"$REPO"'/installer/lib/verbs.sh"; . "'"$REPO"'/installer/lib/tasks.sh"
         . "'"$REPO"'/installer/lib/ade.sh"; . "'"$REPO"'/installer/lib/watchman.sh"; . "'"$REPO"'/installer/lib/update.sh"; . "'"$REPO"'/installer/lib/publish.sh"'
 
 CONV=$(sh -c "$PUBLIB"'
@@ -1751,9 +1499,9 @@ check "голый ~/.gemini — это не Antigravity" \
 mkdir -p "$HOME/.gemini/config"
 env PATH="$SANDBOX_PATH" "$FRAIM" init >/dev/null 2>&1
 check "init завершился успешно" "$?" "0"
-check "Codex: 14 скиллов" "$(find "$HOME/.codex/skills" -name SKILL.md 2>/dev/null | wc -l | tr -d ' ')" "14"
-check "Claude Code: 14 скиллов" "$(find "$HOME/.claude/skills" -name SKILL.md 2>/dev/null | wc -l | tr -d ' ')" "14"
-check "Antigravity: 14 скиллов" "$(find "$HOME/.gemini/config/skills" -name SKILL.md 2>/dev/null | wc -l | tr -d ' ')" "14"
+check "Codex: 12 скиллов" "$(find "$HOME/.codex/skills" -name SKILL.md 2>/dev/null | wc -l | tr -d ' ')" "12"
+check "Claude Code: 12 скиллов" "$(find "$HOME/.claude/skills" -name SKILL.md 2>/dev/null | wc -l | tr -d ' ')" "12"
+check "Antigravity: 12 скиллов" "$(find "$HOME/.gemini/config/skills" -name SKILL.md 2>/dev/null | wc -l | tr -d ' ')" "12"
 check "контекстный блок в ~/.codex/AGENTS.md" "$(grep -c 'fraim:begin' "$HOME/.codex/AGENTS.md" 2>/dev/null)" "1"
 check "контекстный блок в ~/.gemini/AGENTS.md" "$(grep -c 'fraim:begin' "$HOME/.gemini/AGENTS.md" 2>/dev/null)" "1"
 check "GEMINI.md чужой — мы в него не пишем" \
@@ -1890,35 +1638,29 @@ rm -f "$FRAIM_HOME/update-check"
 # ---------------------------------------------------------------- флот
 printf '\nфлот: чекауты и среда исполнения\n'
 
-# Проект с двумя чекаутами: в основном задача в очереди, в соседнем — исполненная и
-# не запечатанная. До этого модуля сторож второго чекаута не видел вовсе.
+# Проект с двумя чекаутами: в основном одна карточка на доске, в соседнем — две. До этого
+# модуля сторож второго чекаута не видел вовсе.
 FLEET="$SANDBOX/fleetproj"
-mkdir -p "$FLEET/ai/tasks/add-auth"
+mkdir -p "$FLEET/ai/tasks"
 git -C "$FLEET" init -q
 git -C "$FLEET" config user.email t@t; git -C "$FLEET" config user.name t
-printf 'x\n' > "$FLEET/ai/tasks/add-auth/task.md"
+printf -- '---\nkind: task\ncreated: 2026-01-01\n---\n# A\n' > "$FLEET/ai/tasks/add-auth.md"
 printf '# arch\n' > "$FLEET/ARCHITECTURE.md"
 git -C "$FLEET" add -A >/dev/null 2>&1; git -C "$FLEET" commit -qm init >/dev/null 2>&1
 git -C "$FLEET" worktree add -q "$SANDBOX/wt-rate-limit" -b rate-limit >/dev/null 2>&1
-mkdir -p "$SANDBOX/wt-rate-limit/ai/tasks/rate-limit"
-printf 'x\n' > "$SANDBOX/wt-rate-limit/ai/tasks/rate-limit/task.md"
-printf 'done\n' > "$SANDBOX/wt-rate-limit/ai/tasks/rate-limit/result.md"
+printf -- '---\nkind: task\ncreated: 2026-01-01\n---\n# R\n' > "$SANDBOX/wt-rate-limit/ai/tasks/rate-limit.md"
 
 FJ=$("$FRAIM" status "$FLEET" --json 2>/dev/null || true)
 printf '%s' "$FJ" | grep -q '"id": "worktree"'
 check "параллельный чекаут виден в вердикте" "$?" "0"
-printf '%s' "$FJ" | grep -q '"id": "worktree-unsealed"'
-check "незапечатанная задача в чужом чекауте — находка" "$?" "0"
-printf '%s' "$FJ" | grep -q '"id": "worktree-unsealed", "severity": "attention"'
-check "и она attention, а не info" "$?" "0"
 
 # Реестр чекаутов ведёт git, а не среда: ответ тот же, когда среды на машине нет вовсе.
 # PATH урезан до системных: на машине разработчика может стоять настоящий orca-ide,
 # и унаследованный PATH подсунет его проверке «среды нет».
 FLJ=$(env PATH="/usr/bin:/bin" "$FRAIM" fleet "$FLEET" --json 2>/dev/null || true)
 check "fleet перечисляет оба чекаута" "$(printf '%s' "$FLJ" | grep -c '"path"')" "2"
-printf '%s' "$FLJ" | grep -q '"path": ".*wt-rate-limit", "current": false, "runnable": 1, "blocked": 0, "unsealed": 1'
-check "и считает состояние каждого" "$?" "0"
+printf '%s' "$FLJ" | grep -q '"path": ".*wt-rate-limit", "current": false, "open_tasks": 2'
+check "и считает доску каждого" "$?" "0"
 check "без среды раздел про неё пуст" "$(printf '%s' "$FLJ" | grep -c '"key": "orca"')" "0"
 
 # --- среда исполнения -------------------------------------------------------
@@ -2594,7 +2336,7 @@ check "все волны собраны — поднимать нечего" "$?
 printf '\nдиспетчер: приёмка дирижёра\n'
 
 DLIBV="$DLIB"'
-    . "'"$REPO"'/installer/lib/verbs.sh"'
+    . "'"$REPO"'/installer/lib/verbs.sh"; . "'"$REPO"'/installer/lib/tasks.sh"'
 
 AB="$SANDBOX/accept"; mkdir -p "$AB/ai/builds"; export AB
 git -C "$AB" init -q; git -C "$AB" config user.email t@t; git -C "$AB" config user.name t

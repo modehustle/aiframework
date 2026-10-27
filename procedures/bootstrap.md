@@ -46,7 +46,7 @@ Canonical order for an authored project from scratch:
 2. **Design session** with the human (`design-session.md`) → the agreed architecture, captured as a Design Brief. This is the authored-project equivalent of a per-stack prompt, but it is a *design artifact*, not a one-line deploy instruction.
 3. This workflow (Phases 2–3) → foundation files + a minimal runnable code skeleton.
 4. `docker-deploy.md` (when there is something to run) → the box + `STACK.md`.
-5. Forever after: reactive work in the session keeps the foundation current; `/make-task` → `/run-task` hands work to another session when the human asks (Phase 5).
+5. Forever after: reactive work in the session keeps the foundation current; the board (`/make-task` → `/run-task`) holds work the human put aside for later (Phase 5).
 
 ## Standard layout (environment invariant)
 
@@ -177,17 +177,16 @@ When there is something to run, box it. Attach `docker-deploy.md` + a per-stack 
 
 ## 5. Phase: the ongoing loop (how the foundation stays alive)
 
-Bootstrap is a **one-time** act — it puts up the shelf. Keeping context current forever is the job of the **planner→executor loop** you already use, now operating on this foundation:
+Bootstrap is a **one-time** act — it puts up the shelf. Keeping context current forever is the job of ordinary work on this foundation:
 
-- `/make-task` (planner) writes a new task folder `ai/tasks/<slug>/`; `/run-task` (executor) picks a task from the queue, executes it, and archives the folder to `ai/archive/`; `/revise-task` (planner) repairs a plan the executor found defective; `/orient` re-loads context when you return after a break.
-- **Reactive work needs no procedure at all**: a question, a small fix, a change whose shape appeared while doing it. It is the most frequent mode and it is legitimate at any size, as long as invariant 0.4 holds, a behaviour change leaves a line in `DECISIONS.md`, and each coherent piece gets its own save point. `/make-task` is not an escalation from it — it is the separate act of handing work to someone outside the conversation.
-- `/reconcile-task` is the **drift valve at the close of execution**: when a `/run-task` session turned into live debugging and the code diverged from the plan, it folds the unplanned changes back into the record (a `DECISIONS` entry per behavioral delta, a divergence note in the task's `result.md`, generalizable gotchas into `CONVENTIONS`) and archives truthfully — but **only if the drift was surgical** (details the plan got wrong: a constant, URL, endpoint version, payload field, header). If the live edits were **structural** (changed approach, contracts, signatures, or component boundaries), it STOPS and hands the task to `/revise-task`, because a structural change made in the executor seat skipped the reference scan. The principle: *debug freely, but the archive must tell the truth.*
+- **Reactive work is the default and needs no procedure**: the human writes, the agent does it in the same session, at any size — as long as invariant 0.4 holds, a behaviour change leaves a line in `DECISIONS.md` (`fraim decide`), and each coherent piece gets its own save point (`fraim commit`).
+- **The board.** When the human asks to put work aside for later, or to open a project, `/make-task` writes a **card** — `ai/tasks/<slug>.md`: what, why, and how we will know it is done. No plan and no snapshot of the code, so nothing in it goes stale. A project is a master card (`kind: master`) with child cards pointing at it. `/run-task` takes a card when the human says so, as an ordinary session that reads the foundation and the code fresh, and closes it with `fraim task-seal`. `fraim tasks` shows the board. Only the human puts work on the board; the agent never proposes it.
+- `/orient` re-loads context when you return after a break.
 - `/prune` is the **gardener**: run every 2–4 weeks, or when the watchman reports the drift threshold reached (`fraim config` shows it), it reconciles the foundation against ground truth (code for `ARCHITECTURE`/`CONVENTIONS`/`DECISIONS`; infra for `STACK.md`), proposing diffs the human approves. It relocates superseded `DECISIONS` entries to `ai/archive/decisions_log.md` (append-only is preserved — relocate, never delete) and curates the Known Pitfalls store.
 - **Every task reads `ARCHITECTURE.md` + `CONVENTIONS.md` first** (invariant 0.4) — that is how the agent re-enters with context instead of re-deriving it.
 - **Every task that changes structure updates `ARCHITECTURE.md` as its final step**, and **appends a decision to `DECISIONS.md`** when it made a non-obvious choice — unprompted.
-- **The executor's lessons feed the planner.** A generalizable gotcha the executor discovers (`(pitfall)` in its report) is proposed, on the user's approval, into `CONVENTIONS.md`'s `## Known Pitfalls / Lessons` — which `/make-task` reads. That closes the loop from execution back to planning quality.
-- This is what gives you \"always-current context\": the bootstrap built the structure, the loop maintains it, the gardener keeps it lean.
-- **The planner↔executor wall holds even during correction.** If the plan turns out wrong, the executor never improvises a fix — it records why in the task's `blockers.md` and hands back to `/revise-task`. (See the correction loop in those workflows.) The one legitimate in-seat exception is **operator-driven live debugging** — when *you*, consciously, feed live discoveries into a running `/run-task` — and even that is not a licence to leave a silent trail: the session is sealed honestly by `/reconcile-task`, which folds surgical drift into the record and refuses anything structural (sending it to `/revise-task`).
+- **Lessons come back.** A gotcha that bit a session and would bite the next one is proposed, on the human's approval, into `CONVENTIONS.md`'s `## Known Pitfalls / Lessons` (`fraim pitfall`) — which every session reads first.
+- This is what gives you "always-current context": the bootstrap built the structure, ordinary work maintains it, the gardener keeps it lean.
 
 ### Making it stick without you having to remember
 
@@ -219,17 +218,16 @@ block and its `fraim:stub` marker.
 | `ARCHITECTURE.md` | purpose & scope · stack · components & responsibilities · data model · data flow · external interfaces · deployment access mode |
 | `CONVENTIONS.md` | house rules, the agent rules, and the `## Known Pitfalls / Lessons` store (starts empty) |
 | `DECISIONS.md` | append-only log, seeded with the founding decisions from Phase 1 |
-| `ai/` | `tasks/` (the queue, one folder per task) · `investigations/` · `archive/` (finished work under a timestamp, plus `decisions_log.md`) · `fraim.conf` |
+| `ai/` | `tasks/` (the board, one card per task) · `investigations/` · `archive/` (finished work under a timestamp, plus `decisions_log.md`) · `fraim.conf` |
 | `.gitignore` | the two lines that are about secrets, not about the stack — extend for this project |
 
 Keep each foundation file to about half a page (invariant 0.7), and delete the `fraim:stub` line
 from every file you filled — while it is there, `fraim status` correctly calls the foundation
 unfilled.
 
-> One **folder per task** (named by a slug). The queue may hold several tasks, but only the one
-> being executed is \"in flight\". A task with a `blockers.md` is paused awaiting `/revise-task`.
-> Done tasks leave the queue only through a gate (`fraim task-seal`, or `fraim reconcile-seal`
-> for a session that drifted), which is what keeps the archive honest.
+> One **card per task** (`ai/tasks/<slug>.md`), written by `fraim task-new` and closed by
+> `fraim task-seal` into `ai/archive/tasks/`. Where the file is IS the state: on the board — open,
+> in the archive — closed.
 
 > `ai/` and its contents are NOT secrets — they are tracked in git, so the decision and task trail
 > travels with the repo.

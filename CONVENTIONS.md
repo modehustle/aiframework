@@ -4,20 +4,14 @@
 > Register this as your agent's workspace rule so it auto-loads.
 
 - Language: code, comments, docs in English. Chat may be in another language.
-- Workflow: reactive work in the session by default. The agent never routes itself into
-  `/make-task` or `/conductor` — both run only when the human asks.
-  Handoff when asked: planner→executor→reviser. Task queue in `ai/tasks/<slug>/`; archive to `ai/archive/`.
-  Commands: `/make-task`, `/run-task`, `/revise-task`, `/reconcile-task`, `/orient`, `/prune`.
-  Most sessions need none of them: reactive work is the default mode.
+- Workflow: reactive work in the session by default — almost always the answer. The board
+  (`ai/tasks/<slug>.md`, `fraim tasks`) holds work the human put aside or a project; only the
+  human puts a task there (`/make-task`) or says to take one (`/run-task`). The agent never
+  routes itself into `/make-task` or `/conductor`, and never proposes them.
+- A task card carries an intent (what, why, done-when), never the code's context: no paths,
+  patterns, steps or snapshots. Whoever takes it reads the foundation and the code fresh.
 - Before a task: read `ARCHITECTURE.md` + this file (including Known Pitfalls below).
   After: update them if changed; append any non-obvious choice to `DECISIONS.md`.
-- Solo-operator note: you may be both planner (`/make-task`) and executor (`/run-task`),
-  sometimes even running a strong model as executor. The temptation to improvise as
-  executor is strongest then, because you remember the plan's intent. Resist it — if the
-  plan is wrong, that is `blockers.md` + `/revise-task`, even on your own plan.
-- Queue discipline: keep the queue shallow. If two queued tasks touch the same files they
-  are NOT independent — sequence them explicitly or merge them, or the second plan goes
-  stale when the first lands.
 - Language: this is a Russian-language product. Procedure text, commit messages, and
   user-facing CLI output are written in Russian; code identifiers and this foundation
   file's structural prose in English. Chat may be in another language.
@@ -37,11 +31,10 @@
 - Secrets: never commit `.env` or `data/` (see `.gitignore`).
 
 ## Known Pitfalls / Lessons
-> Gotchas this codebase has cost an execution at least once. `/make-task` reads these so
-> the planner does not walk a new task into the same trap. Three things add to the list, all
-> on your approval: `/run-task` from its `(pitfall)` observations, `/prune` when it finds a
-> lesson in the save points that never got written down, and any ordinary session the moment
-> something bites — that last one is where most of them come from. `/prune` also curates.
+> Gotchas this codebase has cost a session at least once. Every session reads these so the
+> next change does not walk into the same trap. Two things add to the list, both on your
+> approval: any session the moment something bites (`fraim pitfall`), and `/prune` when it
+> finds a lesson in the save points that never got written down. `/prune` also curates.
 - pi --list-models prints its model table to stderr, not stdout — a blind 2>/dev/null around a command source silently empties it; join streams and let pattern-based parsers filter
 - roles.sh sourced standalone has no ade_timeout_bin (it lives in ade.sh); call sites must silence and tolerate its absence
 - POSIX printf with more arguments than conversions reprocesses the surplus as FORMAT (dash) — build the string in a variable, then printf '%s

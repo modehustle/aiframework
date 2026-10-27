@@ -27,10 +27,9 @@ without being asked. `DECISIONS.md` is append-only. A stale foundation is a bug.
 | new authored project, foundation not laid yet | `/bootstrap` |
 | packaging a stack into Docker | `/docker-deploy` |
 | making a running service reachable from outside | `/expose` |
-| the human asks to hand work to another session | `/make-task`, then `/run-task` |
+| the human asks to put work on the board for later, or to open a project | `/make-task` |
+| the human asks to take a task from the board | `/run-task` |
 | the human asks to conduct: cheap workers, or a split across directions | `/conductor` |
-| the executor reported the plan is defective | `/revise-task` |
-| the run drifted into live debugging and is done | `/reconcile-task` |
 | where is this bug / is X even feasible | `/investigate` |
 | the documents drifted from the code | `/prune` |
 | returning to a project after a break | `/orient` |
@@ -39,8 +38,8 @@ without being asked. `DECISIONS.md` is append-only. A stale foundation is a bug.
 ### Working without a procedure
 
 Most sessions are not a planned task: a question, a small fix, a look around, a change
-whose shape only appeared while doing it. **That is legitimate** — do not force it into
-`/make-task`, and do not announce a procedure you are not running. Two things still hold:
+whose shape only appeared while doing it. **That is legitimate** — do not turn it into a
+task, and do not announce a procedure you are not running. Two things still hold:
 
 - **Invariant 0.4 applies anyway.** Read the foundation first; if the change made it
   wrong, fix it before you finish.
@@ -51,26 +50,25 @@ whose shape only appeared while doing it. **That is legitimate** — do not forc
   silently, a config that means the opposite of what it reads, an order of operations that
   must not be swapped. Propose the line, let the human approve, edit or skip it, and save it
   with the same save point. This is the only way a lesson from a session with no procedure
-  ever reaches the next one — `/make-task` reads that section before planning, and nothing
-  else in reactive work writes to it.
+  ever reaches the next one — every session reads that section first, and nothing else in
+  reactive work writes to it.
 - **Save as you go.** When a coherent piece is done — not at the end of the session, a
   session can die — put down a save point naming the paths you changed:
   `fraim commit fix "<what changed>" <path> <path>`. Those commits **are** the record of
   reactive work; there is no separate log to keep.
 
 Reactive work has **no size limit** — a long session with a human in it is not a failure
-mode. `/make-task` is not the procedure for "this got big"; it is the procedure for
-**handing the work to someone who is not in this conversation** — a fresh chat, a cheaper
-executor, tomorrow's you. Size does not decide that, and neither do you: the human does.
-**Never write a task for yourself to then execute in the same session**: that is the
-ceremony without the handoff it exists for. Just do the work and save it.
+mode. A task on the board (`/make-task`) is work **put aside for later**, or a project made
+of several tasks — and only the human puts it there. Never propose turning the work in front
+of you into a task, and never write one to execute it yourself in the same session: just do
+the work and save it. `fraim tasks` shows the board when the human asks what is on it.
 The same holds for `/conductor` (handing pieces to workers on cheaper models, or splitting
 work of different directions across a fleet): it runs when the human asks for it, never
 on your own initiative.
 You are about to change something you do not understand → `/investigate`.
 
-`fraim status` gives a deterministic verdict on the current project — drift count,
-blockers, stale plans, foundation freshness. It reads files only and costs nothing.
+`fraim status` gives a deterministic verdict on the current project — foundation
+freshness, unsaved files, open tasks. It reads files only and costs nothing.
 
 **The system's own rule:** the watchman notices, the human decides. Do not start a
 mutating procedure because a status line suggested it.
@@ -152,7 +150,7 @@ it as the last step of your change — without being asked.
 - `CONVENTIONS.md` — the house rules, plus `## Known Pitfalls / Lessons`.
 - `DECISIONS.md` — the decision log. **Append-only**, newest on top; never rewrite or
   delete an entry. If a decision is superseded, add the new one saying so.
-- `ai/` — the working folder: task queue, archive, investigations.
+- `ai/` — the working folder: the task board (`ai/tasks/`), archive, investigations.
 - `STACK.md` — the deploy passport, if this project is packaged.
 
 **The golden rule.** `ARCHITECTURE.md` and `CONVENTIONS.md` are read FIRST, before any task,

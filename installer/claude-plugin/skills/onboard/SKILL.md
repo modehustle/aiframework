@@ -16,7 +16,7 @@ The shape is **reverse bootstrap / reverse deploy**: greenfield goes design → 
 >
 > **Derive WITH the human, do not fabricate.** You read reality and propose a draft; the human ratifies and corrects. The human knows what the code cannot show — what is dead, what is load-bearing, what is out of scope.
 >
-> Run this on a **strong model** — recovering architecture from existing code is `/make-task`/`/prune`-grade reasoning.
+> Run this on a **strong model** — recovering architecture from existing code is `/prune`-grade reasoning.
 
 > Paths are **repo-relative to the project root** (the folder the agent has open). Never hardcode an absolute project path.
 

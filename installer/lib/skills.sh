@@ -88,8 +88,8 @@ fraim status --json   # same verdict, machine-readable
 
 The JSON answer carries three things, and procedures read them instead of probing the
 filesystem: \`foundation\` — each file as \`missing\` / \`stub\` / \`filled\` (a \`stub\` is an
-empty scaffold: reading it means guessing, so stop); \`tasks\` — every queued slug with
-\`blocked\` / \`done\` / \`runnable\`; \`findings\` — what needs a human, each with the action.
+empty scaffold: reading it means guessing, so stop); \`tasks\` — every open card with its
+\`kind\` (\`task\` / \`master\`) and \`parent\`; \`findings\` — what needs a human, each with the action.
 
 A \`shape\` finding means the project's foundation predates the current standard — laid down
 before \`AGENTS.md\`/\`CLAUDE.md\`, before \`ai/fraim.conf\`, or before a section the verbs write
@@ -101,9 +101,9 @@ under the system.
 Report the verdict as-is. **Do not act on it** — name the procedure the user should
 run and stop there. The one exception is housekeeping the user asks for: \`fraim clean\`
 closes the loose ends whose answer is computable (foundation behind the standard,
-investigations with an outcome, abandoned investigations, executed-but-unsealed tasks,
-an unsaved foundation) and deliberately touches nothing that needs judgement — stale
-plans, the queue, foundation drift. It prints its plan and asks before doing anything. Every mutating procedure in this system ends by asking the human,
+investigations with an outcome, abandoned investigations, tasks in the old format,
+an unsaved foundation) and deliberately touches nothing that needs judgement — the
+board, foundation drift. It prints its plan and asks before doing anything. Every mutating procedure in this system ends by asking the human,
 by design.
 
 ## Routing table
@@ -114,11 +114,9 @@ by design.
 | lay the foundation of a new authored project | \`/bootstrap\` | strong |
 | box a stack in Docker and write its passport | \`/docker-deploy\` | capable |
 | make a running service reachable from outside | \`/expose\` | capable |
-| hand an agreed plan to another session (the human asked) | \`/make-task\` | strong |
-| execute a prepared plan from the queue | \`/run-task\` | cheap |
+| put work on the board for later, or open a project (the human asked) | \`/make-task\` | cheap |
+| take a task from the board (the human asked) | \`/run-task\` | capable |
 | conduct: cheap workers, or a split across directions (the human asked) | \`/conductor\` | capable |
-| repair a plan the executor called defective | \`/revise-task\` | strong |
-| close a run that drifted into live debugging | \`/reconcile-task\` | capable |
 | find out where a bug is, or whether X is feasible | \`/investigate\` | strong |
 | reconcile the foundation with reality | \`/prune\` | strong |
 | re-enter a project after a break | \`/orient\` | any |
@@ -130,8 +128,8 @@ contain their text and must not paraphrase it.
 ## Working without a procedure
 
 Most sessions are not a planned task — a question, a small fix, a look around, a change
-whose shape appeared while doing it. **That is legitimate.** Do not force it into
-\`/make-task\`, and do not announce a procedure you are not running. What still holds:
+whose shape appeared while doing it. **That is legitimate.** Do not turn it into a task,
+and do not announce a procedure you are not running. What still holds:
 
 - invariant 0.4 — read the foundation first, fix it if the change made it wrong;
 - **behaviour changed → \`fraim decide "<title>"\`** with the body on stdin; pure cosmetics need
@@ -140,9 +138,9 @@ whose shape appeared while doing it. **That is legitimate.** Do not force it int
   \`fraim commit fix \"<what changed>\" <path> <path>\`. Those commits are the record of
   reactive work; there is no second log to keep.
 
-Reactive work has **no size limit**. \`/make-task\` is not for \"this got big\" — it is for
-**handing the work to someone outside this conversation** (a fresh chat, a cheaper
-executor, tomorrow's user). That call is the human's, never yours — and so is \`/conductor\`. You are about to
+Reactive work has **no size limit**. A task on the board is work **put aside for later**, or a
+project made of several tasks — and only the human puts it there; never propose it. The same
+goes for \`/conductor\`. You are about to
 change something you do not understand → \`/investigate\`.
 
 ## Deterministic verbs — call them, do not reproduce them
@@ -153,15 +151,12 @@ these, run it: the format, the paths, the timestamps and the commit are not your
 | Command | Replaces |
 |---|---|
 | \`fraim scaffold\` | hand-building the foundation files and \`ai/\` |
-| \`fraim task-new SLUG\` | creating a task folder and writing its provenance stamp |
-| \`fraim task-block SLUG\` | retyping the \`blockers.md\` shape |
-| \`fraim task-result SLUG\` | retyping the \`result.md\` shape (\`--reconcile\`, \`--reset\`) |
-| \`fraim task-revise SLUG DEFECT FIX\` | the revision record, the refreshed stamp, the consumed blocker |
-| \`fraim plan-seal SLUG\` | checking a finished plan before it goes to an executor — **it can refuse** |
+| \`fraim tasks\` | walking \`ai/tasks/\` by hand: the board, projects and their progress (\`--json\`) |
+| \`fraim task-new SLUG [--master \\| --parent M]\` | writing a task card: the card arrives on stdin, the verb owns frontmatter, place and commit |
+| \`fraim task-master SLUG\` | turning a task into a project — only on the human's word |
+| \`fraim task-seal SLUG "RESULT" [--dropped]\` | closing a card: into \`ai/archive/tasks/\` with one line of outcome |
 | \`fraim decide "TITLE"\` | writing an entry into \`DECISIONS.md\` (body on stdin, never argv) |
 | \`fraim pitfall "LINE"…\` | adding lessons to \`## Known Pitfalls / Lessons\` in \`CONVENTIONS.md\` |
-| \`fraim task-seal SLUG\` | archiving a finished task — **it can refuse** |
-| \`fraim reconcile-seal SLUG\` | archiving a drifted session — **it can refuse** |
 | \`fraim investigate-new SLUG\` | creating an investigation folder and its provenance stamp |
 | \`fraim investigate-seal SLUG\` | archiving a finished investigation — **it can refuse** |
 | \`fraim prune-mark\` | marking a completed prune by hand |
@@ -170,12 +165,9 @@ these, run it: the format, the paths, the timestamps and the commit are not your
 | \`fraim undo [HASH]\` | reaching for \`git reset\` / \`git revert\` |
 | \`fraim restore PATH…\` | \`git restore\` / deleting scratch files by hand |
 
-Four of them are **gates**: \`plan-seal\` will not release a plan with leftover placeholders, a
-phrase pointing back at the planning chat, an empty section, empty verification, or a path that
-does not exist; \`task-seal\` will not archive a task whose \`result.md\` leaves
-\`## Foundation updated\` empty or unfilled; \`reconcile-seal\` adds a filled
-\`## Divergence from plan\` to that; \`investigate-seal\` wants exactly one outcome branch and a
-report on the cleanup. A refusal is the check doing its job — fix what it names and run it again.
+Some of them **refuse**: \`task-new\` will not write a card without a title, «Что и зачем» and
+«Готово, когда»; \`task-seal\` will not close a project while its subtasks are open;
+\`investigate-seal\` wants exactly one outcome branch and a report on the cleanup. A refusal is the check doing its job — fix what it names and run it again.
 Never archive by hand instead.
 
 \`fraim commit\` and \`fraim restore\` take an explicit path list and have no \"everything\"

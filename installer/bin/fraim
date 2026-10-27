@@ -35,6 +35,7 @@ _libdir=$(cd -- "$(dirname -- "$_self")/../lib" 2>/dev/null && pwd -P) || {
 . "$_libdir/config.sh"
 . "$_libdir/scaffold.sh"
 . "$_libdir/verbs.sh"
+. "$_libdir/tasks.sh"
 . "$_libdir/watchman.sh"
 . "$_libdir/clean.sh"
 . "$_libdir/publish.sh"
@@ -77,15 +78,12 @@ fraim — эксплуатационный слой для проектов на
   fraim projects            реестр проектов (add ПУТЬ / rm ПУТЬ)
 
 Это зовут процедуры — тебе их помнить не нужно
-  fraim task-new СЛАГ       папка задачи + штамп provenance
-  fraim task-block СЛАГ     завести blockers.md по шаблону
-  fraim task-result СЛАГ    завести result.md (--reconcile / --reset)
-  fraim task-revise СЛАГ ДЕФЕКТ ИСПРАВЛЕНО   ревизия плана
-  fraim plan-seal СЛАГ      проверить план перед выдачей исполнителю
+  fraim tasks [--json]      доска: открытые задачи, проекты и их прогресс
+  fraim task-new СЛАГ [--master | --parent МАСТЕР]   поставить задачу (карточка потоком)
+  fraim task-master СЛАГ    сделать задачу проектом (мастер-задачей) — по слову человека
+  fraim task-seal СЛАГ "ИТОГ" [--dropped]   закрыть задачу: в архив со строкой итога
   fraim decide ЗАГОЛОВОК    запись в DECISIONS.md (тело — потоком)
   fraim pitfall СТРОКА...   грабли в CONVENTIONS.md
-  fraim task-seal СЛАГ      проверить и заархивировать исполненную задачу
-  fraim reconcile-seal СЛАГ то же для дрейфнувшей сессии
   fraim investigate-new СЛАГ   папка расследования + findings.md
   fraim investigate-seal СЛАГ  проверить исход и уборку, заархивировать
   fraim prune-mark          сбросить счётчик дрейфа маркером
@@ -94,6 +92,8 @@ fraim — эксплуатационный слой для проектов на
   fraim restore ПУТЬ...     вернуть перечисленные пути к последней точке
 
 Служебное
+  fraim task-block, task-result, task-revise, plan-seal, reconcile-seal —
+                            удалены вместе с планами: задача теперь карточка
   fraim show ИМЯ            напечатать текст процедуры
   fraim build               пересобрать артефакты репозитория
   fraim version             версия
@@ -303,33 +303,14 @@ cmd_status() {
 # adds what git cannot know: whether a runtime is answering, and whether something is
 # scheduled against this project.
 
-# Task counts for one checkout: runnable<TAB>blocked<TAB>unsealed
+# Open tasks in one checkout: cards on its board (tasks.sh).
 fleet_counts() {
-    _f_root=$1; _f_run=0; _f_blk=0; _f_uns=0
-    for _f_t in "$_f_root"/ai/tasks/*/; do
-        [ -d "$_f_t" ] || continue
-        [ -f "$_f_t/task.md" ] || continue
-        if   [ -f "$_f_t/blockers.md" ]; then _f_blk=$((_f_blk + 1))
-        elif [ -f "$_f_t/result.md" ];   then _f_uns=$((_f_uns + 1))
-        else _f_run=$((_f_run + 1))
-        fi
-    done
-    printf '%s\t%s\t%s\n' "$_f_run" "$_f_blk" "$_f_uns"
+    tasks_scan "$1" | grep -c . || true
 }
 
 fleet_state_words() {
-    _fs_run=$1; _fs_blk=$2; _fs_uns=$3; _fs_out=
-    [ "$_fs_blk" -gt 0 ] && _fs_out="$_fs_blk заблокировано"
-    if [ "$_fs_uns" -gt 0 ]; then
-        [ -n "$_fs_out" ] && _fs_out="$_fs_out, "
-        _fs_out="$_fs_out$_fs_uns не запечатано"
-    fi
-    if [ "$_fs_run" -gt 0 ]; then
-        [ -n "$_fs_out" ] && _fs_out="$_fs_out, "
-        _fs_out="$_fs_out$_fs_run в очереди"
-    fi
-    [ -n "$_fs_out" ] || _fs_out="чисто"
-    printf '%s\n' "$_fs_out"
+    if [ "$1" -gt 0 ]; then printf '%s %s на доске\n' "$1" "$(wm_plural "$1" задача задачи задач)"
+    else printf 'чисто\n'; fi
 }
 
 cmd_fleet() {
@@ -359,21 +340,18 @@ cmd_fleet() {
         [ -d "$_p" ] || continue
         _real=$(cd -- "$_p" 2>/dev/null && pwd -P) || continue
         set +f                      # fleet_counts globs; `set -f` above would mute it
-        _c=$(fleet_counts "$_real")
+        _open=$(fleet_counts "$_real")
         set -f
-        _run=$(printf '%s' "$_c" | cut -f1)
-        _blk=$(printf '%s' "$_c" | cut -f2)
-        _uns=$(printf '%s' "$_c" | cut -f3)
         _here=false; [ "$_real" = "$_root" ] && _here=true
         if [ "$_json" = 1 ]; then
             [ "$_first" = 1 ] || printf ','
             _first=0
-            printf '\n    { "path": "%s", "current": %s, "runnable": %s, "blocked": %s, "unsealed": %s }' \
-                "$(wm_json_escape "$_real")" "$_here" "$_run" "$_blk" "$_uns"
+            printf '\n    { "path": "%s", "current": %s, "open_tasks": %s }' \
+                "$(wm_json_escape "$_real")" "$_here" "$_open"
         else
             _mark='  '; [ "$_here" = true ] && _mark=' ▸'
             printf '%s %s  %s%s%s\n' "$_mark" "$(wm_pad "$_real" 48)" \
-                "$C_DIM" "$(fleet_state_words "$_run" "$_blk" "$_uns")" "$C_OFF"
+                "$C_DIM" "$(fleet_state_words "$_open")" "$C_OFF"
         fi
     done
     IFS=$_old_ifs
@@ -581,6 +559,7 @@ cmd_upgrade() {
     if [ "$SCAFFOLD_SECTIONS_ADDED" -gt 0 ]; then
         verb_commit "$_root" upgrade "фундамент доведён до стандарта" CONVENTIONS.md
     fi
+    tasks_upgrade "$_root" || die "не удалось перевести задачи старого формата"
     say ""
     ok "готово — проверить: fraim status"
 }
@@ -904,18 +883,18 @@ verb_root() {
     printf '%s\n' "$_root"
 }
 
-cmd_task_new()  { [ $# -ge 1 ] || die "нужен слаг задачи"; verb_task_new  "$(verb_root)" "$1"; }
-cmd_task_seal() { [ $# -ge 1 ] || die "нужен слаг задачи"; verb_task_seal "$(verb_root)" "$1"; }
-cmd_task_block() { [ $# -ge 1 ] || die "нужен слаг задачи"; verb_task_block "$(verb_root)" "$1"; }
-cmd_task_result() {
-    [ $# -ge 1 ] || die "нужен слаг задачи"
-    verb_task_result "$(verb_root)" "$1" "${2:-}"
+cmd_tasks()       { verb_tasks "$(verb_root)" "${1:-}"; }
+cmd_task_new()    { verb_task_new "$(verb_root)" "$@"; }
+cmd_task_master() { verb_task_master "$(verb_root)" "${1:-}"; }
+cmd_task_seal()   { verb_task_seal "$(verb_root)" "$@"; }
+
+# Verbs of the old plan handoff. A task is a card now, and nothing about it can go stale
+# or be blocked — but procedures from an older install and agents with a long memory will
+# still call these. They get one sentence saying where the thing went, never a silent
+# "unknown command" that reads like a broken install.
+cmd_retired_task_verb() {
+    die "fraim $1 больше нет: задача теперь карточка без плана — fraim tasks, task-new, task-seal (fraim help)"
 }
-cmd_task_revise() {
-    [ $# -ge 3 ] || die "нужно: fraim task-revise СЛАГ \"ДЕФЕКТ\" \"ЧТО ИСПРАВЛЕНО\""
-    verb_task_revise "$(verb_root)" "$1" "$2" "$3"
-}
-cmd_plan_seal() { [ $# -ge 1 ] || die "нужен слаг задачи"; verb_plan_seal "$(verb_root)" "$1"; }
 
 # The body of a decision arrives on stdin, never through argv: a multi-line entry
 # squeezed into a command-line argument is how a verb starts shortening content it
@@ -933,7 +912,6 @@ cmd_decide() {
 
 cmd_pitfall() { verb_pitfall "$(verb_root)" "$@"; }
 
-cmd_reconcile_seal() { [ $# -ge 1 ] || die "нужен слаг задачи"; verb_reconcile_seal "$(verb_root)" "$1"; }
 cmd_investigate_new()  { [ $# -ge 1 ] || die "нужен слаг расследования"; verb_investigate_new  "$(verb_root)" "$1"; }
 cmd_investigate_seal() { [ $# -ge 1 ] || die "нужен слаг расследования"; verb_investigate_seal "$(verb_root)" "$1"; }
 
@@ -1307,15 +1285,14 @@ case $_cmd in
     clean)         cmd_clean "$@" ;;
     publish)       cmd_publish "$@" ;;
     config)        cmd_config "$@" ;;
+    tasks)         cmd_tasks "$@" ;;
     task-new)      cmd_task_new "$@" ;;
-    task-block)    cmd_task_block "$@" ;;
-    task-result)   cmd_task_result "$@" ;;
-    task-revise)   cmd_task_revise "$@" ;;
+    task-master)   cmd_task_master "$@" ;;
     task-seal)     cmd_task_seal "$@" ;;
-    plan-seal)     cmd_plan_seal "$@" ;;
+    task-block|task-result|task-revise|plan-seal|reconcile-seal)
+                   cmd_retired_task_verb "$_cmd" ;;
     decide)        cmd_decide "$@" ;;
     pitfall)       cmd_pitfall "$@" ;;
-    reconcile-seal) cmd_reconcile_seal "$@" ;;
     investigate-new)  cmd_investigate_new "$@" ;;
     investigate-seal) cmd_investigate_seal "$@" ;;
     commit)        cmd_commit "$@" ;;

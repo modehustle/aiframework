@@ -3,7 +3,7 @@ name: conductor
 description: "Only when the human asks for it: act as the conductor — hand pieces of work to workers on cheaper models, or split work of different directions across a fleet; verify each against the tree rather than its own report, then accept the whole build yourself — check, clean up, write the trunk, and report back in words the human answers"
 metadata:
   tier: capable
-  order: 9
+  order: 7
 ---
 # Дирижёр: работа руками воркеров
 
@@ -34,6 +34,14 @@ metadata:
 | подзадач | часто **одна** — и это нормальная сборка | несколько, см. числа ниже |
 | воркеров | один, или цепочка волн по одному | по воркеру на направление |
 | условие | кусок можно описать сводкой и списком файлов | куски внутри волны не делят ни одного файла |
+
+### Откуда берётся работа
+
+Часто — с доски: человек говорит «отдай задачу X дешёвому» или «раздай проект Y». Карточка
+несёт только намерение — что, зачем, когда готово. **Бриф воркеру пишешь ты, сейчас**: читаешь
+фундамент и код, раскладываешь работу на подзадачи с путями и сразу раздаёшь. План сборки
+живёт минуты, от написания до раздачи, и потому не протухает — в очереди он не стоит.
+Принятая сборка закрывает карточку: `fraim task-seal <слаг> "<итог>"`.
 
 ### Правишь ли ты сам
 
@@ -562,6 +570,5 @@ fraim config set --machine modelcmd_devin "/model %s"
 ## Переходы
 
 → обычная работа в той же сессии — если раздавать нечего, скажи это человеку и делай сам
-→ [/run-task](run-task.md) — исполнить одну задачу
-→ [/reconcile-task](reconcile-task.md) — если исполнение ушло в отладку
+→ [/run-task](run-task.md) — его раздел «Воркер флота» — правила, по которым воркер исполняет бриф
 → [MODES.md](../MODES.md) — почему дирижёр устроен так

@@ -3,12 +3,12 @@
 #
 # Сторож показывает, что в проекте не так, и на живом проекте этого набирается тридцать
 # строк. Большая их часть — не работа, а хвосты: фундамент от старой версии, расследования,
-# доведённые до исхода и не заархивированные, исполненные и не запечатанные задачи,
-# несохранённые файлы фундамента. Каждый хвост закрывается известной командой, и человеку
+# доведённые до исхода и не заархивированные, задачи старого формата, несохранённые
+# файлы фундамента. Каждый хвост закрывается известной командой, и человеку
 # незачем набирать её тридцать раз.
 #
 # Граница проведена жёстко: чистка делает только то, у чего ответ один и он вычислим.
-# Протухшие планы, очередь, дрейф фундамента и отправку копии она не трогает — там нужно
+# Доску задач, дрейф фундамента и отправку копии она не трогает — там нужно
 # суждение, а действие без суждения в этих местах и есть тот самый дрейф.
 #
 # Ратификация остаётся: план показывается, вопрос задаётся один раз (B5). Под пайпом без
@@ -67,20 +67,6 @@ clean_scan() {
         fi
     done
 
-    # Исполненные и не запечатанные задачи. Гейт остаётся гейтом: он проверит отчёт о
-    # фундаменте и откажет, если его нет. Отказ — это ответ, а не сбой чистки.
-    # Обход без пайпа: `while read` за конвейером живёт в подоболочке, и всё, что он
-    # добавил бы в план, исчезло бы вместе с ней. Ни одного временного файла в чужом
-    # проекте чистка при этом не создаёт.
-    _clean_ifs=$IFS; IFS='
-'
-    for _line in $WM_TASKS; do
-        _slug=${_line%%	*}; _state=${_line##*	}
-        [ "$_state" = done ] || continue
-        clean_add task-seal "$_slug" "запечатать исполненную задачу «$_slug»"
-    done
-    IFS=$_clean_ifs
-
     # Несохранённый фундамент. Сохраняются ровно те пути, которые считает сторож, — у
     # чистки, как и у глагола, нет режима «сохрани всё» (B6).
     if verb_is_git "$_root" && config_is_on check_dirty "$_root"; then
@@ -96,9 +82,9 @@ clean_dirty_paths() {
     {
         git -C "$_root" status --porcelain --untracked-files=normal -- \
             ARCHITECTURE.md CONVENTIONS.md DECISIONS.md README.md \
-            AGENTS.md CLAUDE.md ai/archive 2>/dev/null
+            AGENTS.md CLAUDE.md ai/archive ai/tasks 2>/dev/null
         git -C "$_root" status --porcelain --untracked-files=no -- \
-            ai/tasks STACK.md 2>/dev/null
+            STACK.md 2>/dev/null
     } | sed 's/^...//' | sed 's/^.* -> //' | sort -u | tr '\n' ' '
 }
 
@@ -116,8 +102,8 @@ clean_show() {
     done
     IFS=$_clean_ifs
     say ""
-    dim "  не трогает: протухшие планы, очередь, дрейф фундамента, отправку копии —"
-    dim "  там нужно суждение, и это работа для /revise-task, /run-task и /prune."
+    dim "  не трогает: доску задач, дрейф фундамента, отправку копии —"
+    dim "  там нужно суждение, и это работа человека и /prune."
     return 0
 }
 
@@ -195,9 +181,6 @@ clean_apply() {
             investigate-abandon)
                 if clean_run "$_text" clean_investigate_abandon "$_root" "$_arg"; then _done=$((_done + 1))
                 else _refused=$((_refused + 1)); fi ;;
-            task-seal)
-                if clean_run "$_text" verb_task_seal "$_root" "$_arg"; then _done=$((_done + 1))
-                else _refused=$((_refused + 1)); dim "  гейт отказал — это ответ: допиши отчёт и запусти чистку снова"; fi ;;
             commit)
                 # shellcheck disable=SC2086
                 if clean_run "$_text" verb_commit "$_root" fix "чистка: сохранены изменения фундамента и ai/" $_arg; then
@@ -228,6 +211,7 @@ clean_upgrade() {
     _cu_root=$1
     scaffold_run "$_cu_root" >/dev/null 2>&1 || { printf 'не удалось развернуть скелет\n' >&2; return 1; }
     scaffold_sections "$_cu_root" >/dev/null 2>&1 || { printf 'не удалось дописать разделы\n' >&2; return 1; }
+    tasks_upgrade "$_cu_root" >/dev/null 2>&1 || { printf 'не удалось перевести задачи старого формата\n' >&2; return 1; }
     verb_commit "$_cu_root" upgrade "фундамент доведён до стандарта" \
         README.md ARCHITECTURE.md CONVENTIONS.md DECISIONS.md \
         AGENTS.md CLAUDE.md .gitignore ai >/dev/null 2>&1 || true

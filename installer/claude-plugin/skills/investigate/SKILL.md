@@ -1,6 +1,6 @@
 ---
 name: investigate
-description: "Investigate one unclear thing (a bug, a mechanism, a feasibility question) read-only under a strict hypothesis discipline — produce a durable finding for /make-task, never fix code here"
+description: "Investigate one unclear thing (a bug, a mechanism, a feasibility question) read-only under a strict hypothesis discipline — produce a durable finding for the next working session, never fix code here"
 metadata:
   tier: strong
   version: 0.10.0
@@ -8,13 +8,13 @@ metadata:
 ---
 # /investigate — Reconnaissance & Debugging
 
-You are the **scout**, not the builder. The rest of the family assumes you already know what to do: `/make-task` serializes a plan you agreed on, `/run-task` executes it, and a reactive session applies a fix you already understand. This workflow is for the state **before** that — **\"I don't know yet.\"** Where is this bug. How does this piece actually work. Is approach X even feasible. The product of this session is not code — it is **understanding**, captured as a durable finding.
+You are the **scout**, not the builder. The rest of the family assumes you already know what to do: a reactive session applies a fix you already understand, and `/make-task` puts work on the board for later when the human asks. This workflow is for the state **before** that — **\"I don't know yet.\"** Where is this bug. How does this piece actually work. Is approach X even feasible. The product of this session is not code — it is **understanding**, captured as a durable finding.
 
 > You belong to the read-and-reason class alongside `/orient`, `/prune`, and `design-session`: you load reality, produce an artifact, and hand the baton to the next workflow. Like them, **you do not leave code behind.** Unlike `/orient` (read-only), you MAY run and instrument code to reproduce and observe — but every byte of that is disposable and is reverted at the end. The only thing that survives this session is the finding.
 
-> **Terminal value: this feeds `/make-task`.** The whole point of a successful investigation is a root cause precise enough to plan against. The `DIAGNOSIS` section below is designed to drop straight into a future `context.md` (Decisions / Known Pitfalls) — the same way a Design Brief feeds bootstrap's Phase 1 Path A. Keep that in view: you are producing the raw material for the next planner, not fixing anything yourself.
+> **Terminal value: this feeds the next working session.** The whole point of a successful investigation is a root cause precise enough to act on. The archived `findings.md` is what that session reads — directly, or through a task card whose «Ссылки» point at it — the same way a Design Brief feeds bootstrap's Phase 1 Path A. Keep that in view: you are producing the raw material for whoever acts next, not fixing anything yourself.
 
-> Run this on a **strong model** — forming and eliminating hypotheses against real code is `/make-task`/`/prune`-grade reasoning, not work for a cheap executor.
+> Run this on a **strong model** — forming and eliminating hypotheses against real code is `/prune`-grade reasoning, not work for a cheap executor.
 
 > Paths are **repo-relative to the project root** (the folder the agent has open). Never hardcode an absolute project path.
 
@@ -27,7 +27,7 @@ You are the **scout**, not the builder. The rest of the family assumes you alrea
 An investigation ends in exactly one of two ways, and **both are legitimate, successful exits:**
 
 - **DIAGNOSIS** — you found the root cause. The finding routes onward to the right workflow.
-- **DEAD-END** — you could not crack it within the discipline. This is **not a failure of the workflow.** Exactly like `/run-task` writing `blockers.md` is the executor doing its job — declaring a dead-end is the scout doing its job. A dead-end that records *what was ruled out* and *where you got stuck* is valuable: it stops you (or a future session) from re-walking the same exhausted paths.
+- **DEAD-END** — you could not crack it within the discipline. This is **not a failure of the workflow.** Exactly like saying «this is not done» against a task's «Готово, когда» is the honest close of a working session — declaring a dead-end is the scout doing its job. A dead-end that records *what was ruled out* and *where you got stuck* is valuable: it stops you (or a future session) from re-walking the same exhausted paths.
 
 This framing exists to kill the failure mode this workflow is most prone to: an agent that will not admit a dead-end and instead **flails** — randomly changing timeouts, rewriting logic, guessing — precisely the unguarded behavior the whole system exists to prevent. Here, **declaring the dead-end is rewarded, not shameful.** There is no incentive to flail.
 
@@ -35,7 +35,7 @@ This framing exists to kill the failure mode this workflow is most prone to: an 
 
 | | code | report |
 |---|---|---|
-| `/run-task` | durable | durable |
+| a working session | durable | durable |
 | `/investigate` | **disposable** | durable |
 
 Everything you write to reproduce, instrument, or probe is thrown away at the end (the mandatory restore, Step 4). The finding in `ai/investigations/<slug>/findings.md` is the *only* thing that leaves this session — that is why it lives in `ai/`, not in `src/`, so the restore cannot eat it.
@@ -54,7 +54,7 @@ A read-only investigation touches neither. But the projects this workflow exists
   1. **Announce it before doing it** — tell the user exactly what you are about to write and where (e.g. \"I will insert 200 test tasks into `tasks`, and delete them at the end\"). This is a stop-signal-grade action; do not slip it in silently.
   2. **Record it in the State manifest** (in `findings.md`) the moment you do it — what you wrote/mutated, and the exact command that undoes it (`DELETE FROM tasks WHERE …`, release the lease, stop the worker).
   3. **Undo it in Step 4**, with the same discipline as reverting code. If you cannot articulate the undo command up front, you may not do the mutation.
-- **MAY NOT:** apply a fix. The moment you are editing code *to make the problem go away* rather than *to observe it*, you have left this workflow — that change belongs to a reactive session or to `/make-task`, routed via the finding. Do not \"leave the fix in since I already found it.\" Do not \"leave a regression test since I already wrote it\" — a test is planned by `/make-task`; the finding just records that the test must assert X.
+- **MAY NOT:** apply a fix. The moment you are editing code *to make the problem go away* rather than *to observe it*, you have left this workflow — that change belongs to a reactive session, routed via the finding. Do not \"leave the fix in since I already found it.\" Do not \"leave a regression test since I already wrote it\" — a test is written by whoever acts on the finding; the finding just records that the test must assert X.
 - **MAY NOT:** anything destructive or irreversible, or host-level. The deploy stop-signals hold in full — no deleting existing data, no container prune/rebuild, no writing to `/etc`, no opening ports. The line for world state is **reversibility**: seeding rows you will delete is allowed; deleting or overwriting data that was already there is not. Driving a live site to reproduce a bug is read-only observation — never submit, purchase, or mutate a real external resource.
 
 > **The user asking for it does not lift these obligations.** If the user says \"just insert 200 tasks,\" that is the seed-and-undo path above, announced and manifested — not a waiver of the restore. The whole point of the workflow is that the request to seed *is* the request to clean up afterward; they are one act, split across Step 2 and Step 4.
@@ -112,8 +112,7 @@ Fill exactly one outcome branch in `findings.md`:
 
 - **DIAGNOSIS** — state the root cause plainly. Then **route** it, and pre-classify so the next step is obvious:
   - **surgical** (a constant, a timeout, a wrong operator, one line, one file, no new branching) → just do it in a reactive session, with a save point.
-  - **structural** (new logic, a new wait strategy, a signature/contract change, multiple files) → a reactive session too, planned with the human as you go; `/make-task` only if the human wants to hand it to another session.
-  - the cause is a plan that went stale in the queue → `/revise-task`.
+  - **structural** (new logic, a new wait strategy, a signature/contract change, multiple files) → a reactive session too, planned with the human as you go; `/make-task` only if the human wants to put it on the board for later — with a link to this finding.
   - the cause is documentation diverged from code → `/prune`.
 - **DEAD-END** — record what you ruled out (the `excluded` rows are the gold here), where exactly you got stuck, and what the human must decide or provide to unblock a future attempt. Preserve this carefully — a well-recorded dead-end is what makes the *next* investigation cheaper.
 
@@ -141,10 +140,10 @@ Naming each restored thing out loud is what makes a silent skip visible — to y
 
 ## Step 5 — Report and hand off
 
-`findings.md` is a **file artifact, not chat output** — it is written to `ai/investigations/<slug>/findings.md` first; printing it in chat is a copy, never a substitute (same rule as `/run-task`'s `result.md`). Then report to the user in a tight briefing:
+`findings.md` is a **file artifact, not chat output** — it is written to `ai/investigations/<slug>/findings.md` first; printing it in chat is a copy, never a substitute (a report that lives only in chat is lost when the chat closes). Then report to the user in a tight briefing:
 
 - **Outcome:** DIAGNOSIS or DEAD-END, in one line.
-- If DIAGNOSIS: the root cause + the recommended route (reactive fix | `/revise-task` | `/prune`) + surgical/structural.
+- If DIAGNOSIS: the root cause + the recommended route (reactive fix | a task on the board, if the human wants it later | `/prune`) + surgical/structural.
 - If DEAD-END: what was ruled out, where you stuck, what you need from the human.
 - **Cleanup:** confirm both axes were restored to baseline — repo (every manifest path back or gone) and world (rows deleted, leases released, processes as found). Nothing left behind.
 - The next line:
@@ -166,7 +165,7 @@ afford to leave to good intentions: the cleanup is the only part whose absence n
 until a stray row or an unreleased lease bites weeks later.
 
 `findings.md` is not lost by this: it moves whole into `ai/archive/<timestamp>_investigate_<slug>/`
-and reads exactly the same, including when the very next thing you do is `/make-task` from it.
+and reads exactly the same, including when the very next thing is a task card that links to it.
 Sealing here — rather than leaving it for the user to ask — is deliberate: an investigation that
 has landed on an outcome has delivered everything it was going to deliver, and its ratification
 already happened one step earlier, at the *\"Baseline?\"* question. Folders left \"for later\" are

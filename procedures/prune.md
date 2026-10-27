@@ -3,7 +3,7 @@ name: prune
 description: "Reconcile the foundation files against ground truth (code + running stack), proposing diffs for human approval — never an autonomous rewrite"
 metadata:
   tier: strong
-  order: 11
+  order: 9
 ---
 # /prune — Garden the Foundation
 
@@ -13,7 +13,7 @@ This is the deferred verification the rest of the system skips. On each task the
 
 > **Read-only on truth sources. Propose, never apply blindly.** You produce a diff for each foundation file; the human approves item by item. You do not autonomously rewrite the authoritative files — an LLM rewrite drops important things silently, which is exactly what the foundation cannot afford.
 >
-> Run this on a **strong model** — re-deriving architecture from code is `/make-task`-grade reasoning, not work for a cheap executor.
+> Run this on a **strong model** — re-deriving architecture from code is strong-model reasoning, not work for a cheap executor.
 
 > Paths are **repo-relative to the project root** (the folder the agent has open). Never hardcode an absolute project path.
 
@@ -41,14 +41,14 @@ There is no wrong time to garden, but those are the triggers that catch drift be
    - Behaviour changed in reactive sessions (cross-check the save points since the last prune — `git log --grep='^fix: '` — against the `DECISIONS.md` entries) that never made it into `ARCHITECTURE.md`.
    - `DECISIONS.md` entries that are **superseded or dead** — the decision no longer reflects the code.
    - `Known Pitfalls / Lessons` that are stale, duplicated, or no longer apply.
-   - **Lessons that never got written down.** Walk the reactive save points since the last prune (`git log --grep='^fix: '`, with their diffs) and the `blockers.md` files in `ai/archive/`. A fix whose message or diff says *why* it was needed — a call that failed silently, a config that means the opposite of what it reads, an order of operations that could not be swapped — is a gotcha that will trap the next change too. Check each against `Known Pitfalls / Lessons` and propose the ones that are missing. You cannot recover what was never recorded anywhere; you can recover what the commit itself says, and that is most of it.
+   - **Lessons that never got written down.** Walk the reactive save points since the last prune (`git log --grep='^fix: '`, with their diffs) and the `blockers.md` files in `ai/archive/legacy-plans/`, if the project has any from the old task format. A fix whose message or diff says *why* it was needed — a call that failed silently, a config that means the opposite of what it reads, an order of operations that could not be swapped — is a gotcha that will trap the next change too. Check each against `Known Pitfalls / Lessons` and propose the ones that are missing. You cannot recover what was never recorded anywhere; you can recover what the commit itself says, and that is most of it.
 3. **Propose, by type:**
    - `ARCHITECTURE.md` / `CONVENTIONS.md` (not append-only): propose a concrete diff — what to change, add, or remove — grounded in the code you just read.
    - `DECISIONS.md` (**append-only — never delete**): propose **relocating** superseded/dead entries to `ai/archive/decisions_log.md`, leaving a one-line pointer in the root file. The root keeps only living decisions; history is preserved, not destroyed.
    - `Known Pitfalls`: propose collapsing duplicates, dropping ones that no longer apply, and **adding** the lessons you recovered from reactive work above. One line each, in the same voice as the existing entries — a rule, not a story.
 4. **Contradictions are a fork, not your call.** If the code contradicts a recorded decision, you do not silently \"fix the doc\". Flag it and let the user choose:
    - *the code is right, the doc is stale* → update the doc, and supersede the decision; or
-   - *the doc is right, the code drifted* → this is a **bug**; the user schedules a `/make-task`. You do not touch code here.
+   - *the doc is right, the code drifted* → this is a **bug**; the user decides whether to fix it now or put it on the board (`/make-task`). You do not touch code here.
 
 ---
 
@@ -75,6 +75,22 @@ There is no wrong time to garden, but those are the triggers that catch drift be
    ```
    It appends the `--- pruned <date> ---` marker the watchman counts from, and commits the
    gardening as one save point together with the foundation files and the decision archive.
-5. Report: which files changed, how many `DECISIONS` entries were archived, and any **forks left for the user** (doc-vs-code contradictions that may be bugs needing `/make-task`).
+5. Report: which files changed, how many `DECISIONS` entries were archived, and any **forks left for the user** (doc-vs-code contradictions that may be bugs to fix or put on the board).
 
-> You changed documentation and the decision archive only. You did not touch `src/` or the running stack. Anything that needs a code or infra change is handed to the user as a task, never done here.
+> You changed documentation and the decision archive only. You did not touch `src/` or the running stack. Anything that needs a code or infra change is handed to the user, never done here.
+
+---
+
+## Миграция формата
+
+Сюда приводит карточка `fraim-migration`, которую ставит `fraim upgrade`, когда механика
+разобрала не всё. Механическую часть он уже сделал; в карточке перечислено, что осталось.
+
+- **Задачи без нужных разделов.** Старый план лежит в `ai/archive/legacy-plans/<слаг>/`, а на
+  доске — карточка с пометкой «не разобрано механически». Прочитай старый план и перепиши
+  карточку: «Что и зачем» — намерение и причина, «Готово, когда» — проверяемый признак. Ни
+  путей, ни шагов, ни пересказа кода: это и есть новый формат. Задача больше не нужна —
+  предложи человеку закрыть её: `fraim task-seal <слаг> --dropped "<почему>"`.
+- Покажи переписанные карточки человеку списком, правь по его ответу, сохрани:
+  `fraim commit fix "карточки после миграции" ai/tasks/<слаг>.md …`.
+- Закрой саму карточку: `fraim task-seal fraim-migration "<что доделано>"`.
