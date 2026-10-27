@@ -32,7 +32,13 @@ hand from Step 2. The watchman makes this workflow exact; it is not a prerequisi
 
 ## Step 1 — Load the foundation
 
-Read whatever exists, in this order, and note what is missing:
+Run `fraim brief`: it prints the whole foundation in one stream — the map, the house rules
+with Known Pitfalls, the living decisions condensed, `STACK.md` if there is one, and the
+board — and ends with a mark that nothing was cut. Do not read the files one by one with a
+line limit; that is how a third of the map goes missing without anyone noticing. Read
+`README.md` separately for run instructions.
+
+Without the CLI, read whatever exists, in this order, whole, and note what is missing:
 1. `ARCHITECTURE.md` — what the project is, components, data model, interfaces.
 2. `CONVENTIONS.md` — how work is done here; the house rules; the `## Known Pitfalls / Lessons` accrued so far.
 3. `DECISIONS.md` — the decision trail (read at least the most recent entries).

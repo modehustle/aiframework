@@ -342,7 +342,7 @@ wm_check_shape() {
     for _f in README.md ARCHITECTURE.md CONVENTIONS.md DECISIONS.md ai/fraim.conf; do
         [ -e "$_root/$_f" ] || _missing="$_missing $_f"
     done
-    for _d in ai/tasks ai/archive ai/investigations; do
+    for _d in ai/tasks ai/backlog ai/archive ai/investigations; do
         [ -d "$_root/$_d" ] || _missing="$_missing $_d/"
     done
     # The repository has to describe itself to whoever clones it: AGENTS.md carries the

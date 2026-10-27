@@ -316,15 +316,41 @@ verb_decide() {
     _body=$(verb_read_body) ||
         die "тело решения приходит потоком:  fraim decide \"ЗАГОЛОВОК\" <<'EOF' … EOF"
     [ -n "$(printf '%s' "$_body" | tr -d '[:space:]')" ] || die "тело решения пустое"
+    _body=$(printf '%s\n' "$_body" | fnd_wrap)
+
+    # Superseding by name moves the old entry to the archive (foundation.sh). Resolved
+    # BEFORE anything is written: an ambiguous name is a refusal, not a guess, and the
+    # new entry must not be the one it matches.
+    _match=
+    if [ -n "$_supersedes" ]; then
+        _m=$(fnd_decision_matches "$_file" "$_supersedes")
+        _mn=$(printf '%s' "$_m" | grep -c . || true)
+        if [ "$_mn" -gt 1 ]; then
+            die "«$_supersedes» подходит к $_mn записям — уточни:
+$(printf '%s\n' "$_m" | sed 's/^## /  · /')"
+        fi
+        if [ "$_mn" -eq 1 ]; then
+            _match=$_m
+            _supersedes=${_m#\#\# }
+        fi
+    fi
 
     _date=$(date +%Y-%m-%d)
     _entry="## $_date — $_title"
     _tmp="$_file.fraim.tmp"
 
+    if [ -n "$_match" ]; then
+        fnd_move_decision "$_root" "$_match" || die "не удалось перенести заменённую запись в архив"
+    fi
+
     # Newest on top: the entry goes above the first existing one, and when there is
     # none yet, after the header block. The stub marker goes away with the first real
     # entry — a file with a decision in it is no longer an unfilled scaffold (D1).
-    awk -v entry="$_entry" -v body="$_body" -v sup="$_supersedes" -v stub="$SCAFFOLD_STUB" '
+    # Text travels through ENVIRON, not -v: awk -v expands backslash escapes, and a body
+    # that quotes a regex or a Windows path would be silently rewritten.
+    FND_ENTRY=$_entry FND_BODY=$_body FND_SUP=$_supersedes FND_STUB=$SCAFFOLD_STUB awk '
+        BEGIN { entry = ENVIRON["FND_ENTRY"]; body = ENVIRON["FND_BODY"]
+                sup = ENVIRON["FND_SUP"]; stub = ENVIRON["FND_STUB"] }
         index($0, stub) { next }
         !done && /^## / {
             print entry
@@ -348,7 +374,13 @@ verb_decide() {
     mv "$_tmp" "$_file" || die "не удалось записать DECISIONS.md"
 
     ok "DECISIONS.md ← $_entry"
-    dim "  запись не сохранена: добавь DECISIONS.md в свой fraim commit"
+    if [ -n "$_match" ]; then
+        ok "заменённая запись перенесена в ai/archive/decisions_log.md: ${_match#\#\# }"
+        dim "  запись не сохранена: добавь DECISIONS.md и ai/archive/decisions_log.md в свой fraim commit"
+    else
+        [ -n "$_supersedes" ] && dim "  «$_supersedes» не найдена среди заголовков — оставлена ссылкой, ничего не перенесено"
+        dim "  запись не сохранена: добавь DECISIONS.md в свой fraim commit"
+    fi
 }
 
 verb_pitfall() {
@@ -367,14 +399,15 @@ verb_pitfall() {
     [ -n "$(printf '%s' "$_lines" | tr -d '[:space:]')" ] || die "нечего добавлять"
 
     _tmp="$_file.fraim.tmp"
+    _items=$(printf '%s\n' "$_lines" | grep '[^[:space:]]' | sed 's/^/- /' | fnd_wrap)
     # Appended at the END of that one section, not at the end of the file: the
-    # section is what /make-task reads before planning, and a line that lands under
-    # the wrong heading is a lesson nobody will ever be shown again.
-    awk -v head="$_head" -v lines="$_lines" '
+    # section is what every session reads first, and a line that lands under the
+    # wrong heading is a lesson nobody will ever be shown again.
+    FND_HEAD=$_head FND_ITEMS=$_items awk '
+        BEGIN { head = ENVIRON["FND_HEAD"]; items = ENVIRON["FND_ITEMS"] }
         $0 == head { inside = 1; print; next }
         inside && /^## / {
-            n = split(lines, a, "\n")
-            for (i = 1; i <= n; i++) if (a[i] != "") print "- " a[i]
+            print items
             inside = 0; done = 1
             print ""
             print
@@ -382,12 +415,7 @@ verb_pitfall() {
         }
         inside && $0 == "- None yet." { next }
         { print }
-        END {
-            if (inside && !done) {
-                n = split(lines, a, "\n")
-                for (i = 1; i <= n; i++) if (a[i] != "") print "- " a[i]
-            }
-        }
+        END { if (inside && !done) print items }
     ' "$_file" > "$_tmp" || { rm -f "$_tmp"; die "не удалось записать CONVENTIONS.md"; }
     mv "$_tmp" "$_file" || die "не удалось записать CONVENTIONS.md"
 

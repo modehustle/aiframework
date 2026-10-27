@@ -107,11 +107,11 @@ scaffold_run() {
     fi
 
     # Empty directories git will not carry on its own.
-    mkdir -p "$_root/ai/tasks" "$_root/ai/archive" "$_root/ai/investigations"
-    for _d in tasks archive investigations; do
+    mkdir -p "$_root/ai/tasks" "$_root/ai/backlog" "$_root/ai/archive" "$_root/ai/investigations"
+    for _d in tasks backlog archive investigations; do
         [ -f "$_root/ai/$_d/.gitkeep" ] || : > "$_root/ai/$_d/.gitkeep"
     done
-    ok "ai/tasks/ ai/archive/ ai/investigations/"
+    ok "ai/tasks/ ai/backlog/ ai/archive/ ai/investigations/"
 
     # A project-level settings file, so thresholds travel with the repository.
     if [ ! -f "$_root/ai/fraim.conf" ]; then

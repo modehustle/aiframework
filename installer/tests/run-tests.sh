@@ -836,8 +836,23 @@ check "старое решение осталось" "$(grep -c '— storage eng
 
 printf 'Decision: postgres after all.\n' |
     "$FRAIM" decide "storage engine, take two" --supersedes "storage engine" >/dev/null 2>&1
-check "supersede записан, старое не удалено" \
-      "$(grep -c '^> Supersedes: storage engine$' "$PROJ2/DECISIONS.md")$(grep -c '— storage engine$' "$PROJ2/DECISIONS.md")" "11"
+# Заменённая запись уезжает в архив целиком: в корне остаются только действующие решения,
+# а новая запись называет заменённую полным заголовком.
+check "supersede записан полным заголовком" "$(grep -c '^> Supersedes: 20.* — storage engine$' "$PROJ2/DECISIONS.md")" "1"
+check "заменённая запись ушла из корня" "$(grep -c '^## .*— storage engine$' "$PROJ2/DECISIONS.md")" "0"
+check "и легла в архив решений, не удалена" "$(grep -c '— storage engine$' "$PROJ2/ai/archive/decisions_log.md")" "1"
+printf 'Decision: x.\n' | "$FRAIM" decide "ambiguous" --supersedes "20" >/dev/null 2>&1
+check "неоднозначная замена — отказ" "$?" "2"
+check "и ничего не записано" "$(grep -c '— ambiguous$' "$PROJ2/DECISIONS.md")" "0"
+printf 'Decision: y.\n' | "$FRAIM" decide "free text" --supersedes "an idea from a chat" >/dev/null 2>&1
+check "ненайденная замена остаётся ссылкой" "$(grep -c '^> Supersedes: an idea from a chat$' "$PROJ2/DECISIONS.md")" "1"
+# Тело приходит как есть: обратные слэши awk -v раскрыл бы молча.
+printf 'Decision: path C:\\new\\table stays.\n' | "$FRAIM" decide "backslashes" >/dev/null 2>&1
+check "обратные слэши в теле не тронуты" "$(grep -c 'C:\\new\\table' "$PROJ2/DECISIONS.md")" "1"
+LONG="Decision: $(printf 'слово %.0s' $(seq 1 40))конец."
+printf '%s\n' "$LONG" | "$FRAIM" decide "long line" >/dev/null 2>&1
+check "длинная строка решения перенесена" \
+      "$(awk '/— long line$/,/конец/' "$PROJ2/DECISIONS.md" | LC_ALL=C awk '{ t=$0; gsub(/[\200-\277]/,"",t); if (length(t) > 100) n++ } END { print n+0 }')" "0"
 
 "$FRAIM" decide "empty" </dev/null >/dev/null 2>&1
 check "decide отвергает пустое тело" "$?" "2"
@@ -857,6 +872,60 @@ check "заглушка «None yet» убрана" "$(grep -c '^- None yet\.$' "
 "$FRAIM" pitfall "Tests fail unless TZ=UTC." >/dev/null 2>&1
 check "вторая строка легла следом" \
       "$(sed -n '/^## Known Pitfalls/,$p' "$PROJ2/CONVENTIONS.md" | grep -c '^- ')" "2"
+"$FRAIM" pitfall "$(printf 'урок %.0s' $(seq 1 40))" >/dev/null 2>&1
+check "длинный урок перенесён под своим пунктом" \
+      "$([ "$(sed -n '/^## Known Pitfalls/,$p' "$PROJ2/CONVENTIONS.md" | grep -c '^  урок')" -ge 1 ] && echo yes)" "yes"
+
+# --- arch: раздел карты переписывается целиком -------------------------------
+printf '# A\n\n## Stack\nold stack\n\n## Data flow\nflow stays\n' > "$PROJ2/ARCHITECTURE.md"
+printf 'new stack line\n' | "$FRAIM" arch "Stack" >/dev/null 2>&1
+check "arch заменил тело раздела" "$(grep -c '^new stack line$' "$PROJ2/ARCHITECTURE.md")$(grep -c '^old stack$' "$PROJ2/ARCHITECTURE.md")" "10"
+check "соседний раздел цел" "$(grep -c '^flow stays$' "$PROJ2/ARCHITECTURE.md")" "1"
+printf 'x\n' | "$FRAIM" arch "Stak" >/dev/null 2>&1
+check "опечатка в разделе — отказ, а не новый раздел" "$?$(grep -c '^## Stak$' "$PROJ2/ARCHITECTURE.md")" "20"
+printf 'deploy notes\n' | "$FRAIM" arch "Deployment" --new >/dev/null 2>&1
+check "--new добавил раздел" "$(grep -c '^## Deployment$' "$PROJ2/ARCHITECTURE.md")" "1"
+printf '## Sneaky\nx\n' | "$FRAIM" arch "Stack" >/dev/null 2>&1
+check "заголовок в теле — отказ" "$?" "2"
+printf 'x\n' | "$FRAIM" arch "Anything" --in DECISIONS.md >/dev/null 2>&1
+check "DECISIONS.md через arch не правится" "$?" "2"
+mkdir -p "$PROJ2/src/deep"
+(cd "$PROJ2/src/deep" && printf 'from below\n' | "$FRAIM" arch "Stack" >/dev/null 2>&1)
+check "глагол находит корень проекта из подкаталога" "$(grep -c '^from below$' "$PROJ2/ARCHITECTURE.md")" "1"
+
+# --- brief и find: фундамент целиком и запись целиком ------------------------
+B=$("$FRAIM" brief 2>/dev/null)
+check "brief кончается меткой полноты" "$(printf '%s\n' "$B" | tail -1 | grep -c 'показано всё')" "1"
+check "brief открывается списком глаголов" "$(printf '%s\n' "$B" | grep -c '`fraim find КЛЮЧ…`')" "1"
+check "brief несёт карту" "$(printf '%s\n' "$B" | grep -c '^from below$')" "1"
+check "brief несёт решения в сжатом виде" "$(printf '%s\n' "$B" | grep -c '^Decision: retry with jitter.$')" "1"
+check "brief не даёт строк длиннее ширины" \
+      "$(printf '%s\n' "$B" | LC_ALL=C awk '{ t=$0; gsub(/[\200-\277]/,"",t); if (length(t) > 100) n++ } END { print n+0 }')" "0"
+F=$("$FRAIM" find jitter ДЖИТТЕР 2>/dev/null)
+check "find возвращает запись решения целиком с заголовком" \
+      "$(printf '%s\n' "$F" | grep -c 'DECISIONS.md › 20.* — retries')$(printf '%s\n' "$F" | grep -c 'retry with jitter')" "11"
+"$FRAIM" find nothing-like-this >/dev/null 2>&1
+check "find без совпадений — exit 1" "$?" "1"
+
+# --- бэклог: открытые вопросы ------------------------------------------------
+printf '# Нужен ли кэш?\n\n## В чём вопрос\nМедленно.\n\n## Почему важно\nХолодный старт.\n' |
+    "$FRAIM" backlog-new cache-q --from сессия >/dev/null 2>&1
+check "вопрос записан в бэклог" "$(sed -n 's/^from: //p' "$PROJ2/ai/backlog/cache-q.md")" "сессия"
+check "вопрос сохранён точкой" "$(git -C "$PROJ2" log --oneline -1 --format=%s)" "backlog: cache-q — записан"
+printf '# x\n' | "$FRAIM" backlog-new bare-q >/dev/null 2>&1
+check "вопрос без «В чём вопрос» и «Почему важно» — отказ" "$?" "2"
+"$FRAIM" backlog 2>/dev/null | grep -q 'cache-q — Нужен ли кэш?'
+check "fraim backlog показывает вопрос" "$?" "0"
+"$FRAIM" find кэш 2>/dev/null | grep -q 'ai/backlog/cache-q.md'
+check "find ищет и в бэклоге" "$?" "0"
+printf '# Сделать кэш\n\n## Что и зачем\nx\n\n## Готово, когда\nx\n' | "$FRAIM" task-new add-cache --from cache-q >/dev/null 2>&1
+check "вопрос стал задачей" "$([ -f "$PROJ2/ai/tasks/add-cache.md" ] && [ ! -f "$PROJ2/ai/backlog/cache-q.md" ] && echo yes || echo no)" "yes"
+check "архив вопроса называет задачу" "$(grep -c 'стал задачей add-cache' "$PROJ2"/ai/archive/backlog/*_cache-q.md)" "1"
+check "карточка ссылается на вопрос" "$(grep -c 'Из бэклога: `ai/archive/backlog/' "$PROJ2/ai/tasks/add-cache.md")" "1"
+printf '# Q\n\n## В чём вопрос\nq\n\n## Почему важно\nq\n' | "$FRAIM" backlog-new drop-q >/dev/null 2>&1
+"$FRAIM" backlog-drop drop-q "уже не важно" >/dev/null 2>&1
+check "снятый вопрос в архиве с причиной" "$(sed -n 's/^outcome: //p' "$PROJ2"/ai/archive/backlog/*_drop-q.md)" "dropped"
+"$FRAIM" task-seal add-cache "x" >/dev/null 2>&1
 
 # ---------------------------------------------------------------- version
 printf '\nfraim version (что именно стоит)\n'

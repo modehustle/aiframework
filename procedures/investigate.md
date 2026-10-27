@@ -79,7 +79,7 @@ the manifest is what says which files those are.
 
 **World baseline.** If the investigation will (or might) seed world state, snapshot the relevant slice *before* touching it, so you know what \"back to baseline\" means. A read-only count is enough: how many rows are in the table you will seed, which proxies are leased, is the worker running. Record it in `findings.md` under **State manifest → baseline**. Without this snapshot you cannot prove at the end that you undid exactly what you added and nothing more.
 
-2. Read the foundation (invariant 0.4): `ARCHITECTURE.md`, `CONVENTIONS.md` (including `## Known Pitfalls / Lessons` — the cause may already be a known gotcha), and the relevant part of `DECISIONS.md`. If they are missing, this project was never bootstrapped — say so, and continue only if the user confirms it is intentional.
+2. Read the foundation (invariant 0.4): `fraim brief` prints all of it in one stream — the map, the house rules with `## Known Pitfalls / Lessons` (the cause may already be a known gotcha), and the living decisions. Then `fraim find` with 2–4 keys, in both languages and as word stems, for the entries that touch the thing you are investigating — it returns whole entries, not lines. If they are missing, this project was never bootstrapped — say so, and continue only if the user confirms it is intentional.
 
 ## Step 2 — Frame the one unclear thing, open the finding
 

@@ -107,11 +107,12 @@ tasks_slug_ok() {
 # empty and filled later is a card that sits half-written in the board when a session dies.
 verb_task_new() {
     _root=$1; shift
-    _slug=; _kind=task; _parent=
+    _slug=; _kind=task; _parent=; _from=
     while [ $# -gt 0 ]; do
         case $1 in
             --master) _kind=master ;;
             --parent) [ $# -ge 2 ] || die "--parent требует слаг мастер-задачи"; _parent=$2; shift ;;
+            --from) [ $# -ge 2 ] || die "--from требует слаг вопроса из бэклога"; _from=$2; shift ;;
             -*) die "неизвестный флаг: $1" ;;
             *) [ -z "$_slug" ] || die "лишний аргумент: $1"; _slug=$1 ;;
         esac
@@ -124,6 +125,9 @@ verb_task_new() {
     [ -e "$_dir/$_slug.md" ] && die "задача уже существует: ai/tasks/$_slug.md"
     [ -e "$_dir/$_slug" ] && die "ai/tasks/$_slug/ — задача старого формата с тем же слагом; сначала fraim upgrade"
 
+    if [ -n "$_from" ] && [ ! -f "$(backlog_dir "$_root")/$_from.md" ]; then
+        die "в бэклоге нет вопроса «$_from»"
+    fi
     if [ -n "$_parent" ]; then
         [ "$_kind" = master ] && die "у мастер-задачи нет родителя: вложенность — один уровень"
         _pf="$_dir/$_parent.md"
@@ -140,7 +144,7 @@ verb_task_new() {
         die "у карточки нет заголовка — первая строка «# Что сделать»"
 
     _tmp="$_dir/.$_slug.md.$$"
-    printf '%s\n' "$_body" > "$_tmp" || die "не удалось записать карточку"
+    printf '%s\n' "$_body" | fnd_wrap > "$_tmp" || die "не удалось записать карточку"
     for _sec in "$TASK_WHAT" "$TASK_DONE"; do
         _rc=0; verb_section_filled "$_tmp" "$_sec" || _rc=$?
         case $_rc in
@@ -160,7 +164,11 @@ verb_task_new() {
 
     _what=задача; [ "$_kind" = master ] && _what=мастер-задача
     ok "ai/tasks/$_slug.md — $_what поставлена${_parent:+ (в проекте «$_parent»)}"
-    verb_commit "$_root" task "$_slug — поставлена" "ai/tasks/$_slug.md" || warn "коммит не удался"
+    if [ -n "$_from" ]; then
+        backlog_to_task "$_root" "$_from" "$_slug"
+        ok "вопрос «$_from» стал задачей — ушёл из бэклога в архив"
+    fi
+    verb_commit "$_root" task "$_slug — поставлена" "ai/tasks/$_slug.md" ai/backlog ai/archive/backlog || warn "коммит не удался"
 }
 
 # --- task-master ------------------------------------------------------------
@@ -217,26 +225,7 @@ verb_task_seal() {
             die "у мастер-задачи «$_slug» открыты подзадачи: $_open— сначала закрой или отмени их"
     fi
 
-    _dest_dir=$(tasks_closed "$_root")
-    mkdir -p "$_dest_dir" || die "не удалось создать ai/archive/tasks/"
-    _dest="$_dest_dir/$(date +%Y-%m-%d)_$_slug.md"
-    [ -e "$_dest" ] && die "в архиве уже есть $_dest"
-
-    _head=
-    verb_is_git "$_root" && _head=$(git -C "$_root" rev-parse --short HEAD 2>/dev/null)
-    _q=$(printf '%s' "$_result" | tr '\n' ' ' | sed 's/\\/\\\\/g; s/"/\\"/g')
-    awk -v closed="$(date +%Y-%m-%d)" -v outcome="$_outcome" -v result="$_q" -v head="$_head" '
-        NR == 1 { print; fm = 1; next }
-        fm && $0 == "---" {
-            print "closed: " closed
-            print "outcome: " outcome
-            print "result: \"" result "\""
-            if (head != "") print "commit: " head
-            fm = 0
-        }
-        { print }
-    ' "$_f" > "$_dest" || { rm -f "$_dest"; die "не удалось записать архив"; }
-    rm -f "$_f" || die "не удалось убрать карточку с доски"
+    _dest=$(tasks_archive_card "$_root" "$_f" "$(tasks_closed "$_root")" "$_slug" "$_outcome" "$_result") || exit 2
 
     _word=выполнена; [ "$_outcome" = dropped ] && _word=отменена
     ok "«$_slug» $_word → ai/archive/tasks/$(basename -- "$_dest")"
@@ -250,6 +239,32 @@ verb_task_seal() {
         [ "$_o" -eq 0 ] && dim "  открытых подзадач нет — закрыть сам проект решает человек"
     fi
     return 0
+}
+
+# Move a card into an archive folder with its outcome appended to the frontmatter:
+# closed, outcome, result, and the commit the work ended on. One implementation for
+# tasks and backlog questions. Prints the destination path.
+tasks_archive_card() {
+    _ac_root=$1; _ac_src=$2; _ac_dir=$3; _ac_slug=$4; _ac_outcome=$5; _ac_result=$6
+    mkdir -p "$_ac_dir" || die "не удалось создать ${_ac_dir#"$_ac_root"/}/"
+    _ac_dest="$_ac_dir/$(date +%Y-%m-%d)_$_ac_slug.md"
+    [ -e "$_ac_dest" ] && die "в архиве уже есть ${_ac_dest#"$_ac_root"/}"
+    _ac_head=
+    verb_is_git "$_ac_root" && _ac_head=$(git -C "$_ac_root" rev-parse --short HEAD 2>/dev/null)
+    _ac_q=$(printf '%s' "$_ac_result" | tr '\n' ' ' | sed 's/\\/\\\\/g; s/"/\\"/g')
+    FND_CLOSED=$(date +%Y-%m-%d) FND_OUTCOME=$_ac_outcome FND_RESULT=$_ac_q FND_HEAD=$_ac_head awk '
+        NR == 1 { print; fm = 1; next }
+        fm && $0 == "---" {
+            print "closed: " ENVIRON["FND_CLOSED"]
+            print "outcome: " ENVIRON["FND_OUTCOME"]
+            print "result: \"" ENVIRON["FND_RESULT"] "\""
+            if (ENVIRON["FND_HEAD"] != "") print "commit: " ENVIRON["FND_HEAD"]
+            fm = 0
+        }
+        { print }
+    ' "$_ac_src" > "$_ac_dest" || { rm -f "$_ac_dest"; die "не удалось записать архив"; }
+    rm -f "$_ac_src" || die "не удалось убрать карточку"
+    printf '%s\n' "$_ac_dest"
 }
 
 # --- tasks (the board) ------------------------------------------------------
@@ -326,8 +341,118 @@ verb_tasks() {
                 printf '  · %s — %s %s· %s%s%s\n' "$_s" "$_t" "$C_DIM" "$(tasks_age_words "$_cr")" "$_note" "$C_OFF"
             done
     fi
+    _bn=$(backlog_scan "$_root" | grep -c . || true)
+    if [ "$_bn" -gt 0 ]; then dim "  в бэклоге $_bn $(wm_plural "$_bn" вопрос вопроса вопросов) — fraim backlog"; fi
     [ -n "$_legacy" ] && warn "задачи старого формата (папки): $_legacy— перевести в карточки: fraim upgrade"
     return 0
+}
+
+# --- backlog: open questions ------------------------------------------------
+# Not tasks. A task is something we know we will do; a backlog entry is a question that
+# matters and that nobody wants to answer now — the «open questions» an agent lists at the
+# end of a session, which are gone the moment the chat closes unless they land somewhere.
+# Same shape as a card, own folder: `ai/backlog/<slug>.md`, frontmatter `created` and the
+# optional `from` (where it came up). Only the human decides what goes in.
+BACKLOG_WHAT='## В чём вопрос'
+BACKLOG_WHY='## Почему важно'
+
+backlog_dir()    { printf '%s/ai/backlog\n' "$1"; }
+backlog_closed() { printf '%s/ai/archive/backlog\n' "$1"; }
+
+# slug created from title, joined by TASK_SEP
+backlog_scan() {
+    for _bs_f in "$(backlog_dir "$1")"/*.md; do
+        [ -f "$_bs_f" ] || continue
+        [ -n "$(fm_get "$_bs_f" created 2>/dev/null)" ] || continue
+        printf "%s$TASK_SEP%s$TASK_SEP%s$TASK_SEP%s\n" "$(basename -- "$_bs_f" .md)" \
+            "$(fm_get "$_bs_f" created)" "$(fm_get "$_bs_f" from)" "$(tasks_title "$_bs_f")"
+    done
+}
+
+verb_backlog() {
+    _root=$1
+    _scan=$(backlog_scan "$_root")
+    _n=$(printf '%s' "$_scan" | grep -c . || true)
+    if [ "$_n" -eq 0 ]; then ok "бэклог пуст"; return 0; fi
+    say "${C_BLD}Бэклог · открытых вопросов $_n${C_OFF}"
+    printf '%s\n' "$_scan" | while IFS="$TASK_SEP" read -r _s _cr _from _t; do
+        printf '  ? %s — %s %s· %s%s%s\n' "$_s" "$_t" "$C_DIM" "$(tasks_age_words "$_cr")" \
+            "${_from:+ · из $_from}" "$C_OFF"
+    done
+    dim "  стал задачей — fraim task-new СЛАГ --from ВОПРОС; снят — fraim backlog-drop ВОПРОС \"почему\""
+}
+
+verb_backlog_new() {
+    _root=$1; shift
+    _slug=; _from=
+    while [ $# -gt 0 ]; do
+        case $1 in
+            --from) [ $# -ge 2 ] || die "--from требует, откуда вопрос (слаг задачи или «сессия»)"; _from=$2; shift ;;
+            -*) die "неизвестный флаг: $1" ;;
+            *) [ -z "$_slug" ] || die "лишний аргумент: $1"; _slug=$1 ;;
+        esac
+        shift
+    done
+    [ -n "$_slug" ] || die "нужен слаг вопроса"
+    tasks_slug_ok "$_slug"
+    _dir=$(backlog_dir "$_root")
+    mkdir -p "$_dir" || die "не удалось создать ai/backlog/"
+    [ -e "$_dir/$_slug.md" ] && die "вопрос уже в бэклоге: ai/backlog/$_slug.md"
+    _body=$(verb_read_body) ||
+        die "вопрос приходит потоком:  fraim backlog-new $_slug <<'EOF'  # Вопрос … EOF"
+    printf '%s\n' "$_body" | head -1 | grep -qx -- '---' &&
+        die "frontmatter пишет глагол — пришли вопрос начиная с «# Заголовок»"
+    printf '%s\n' "$_body" | grep -q '^# [^[:space:]]' || die "у вопроса нет заголовка — первая строка «# …»"
+    _tmp="$_dir/.$_slug.md.$$"
+    printf '%s\n' "$_body" | fnd_wrap > "$_tmp" || die "не удалось записать вопрос"
+    for _sec in "$BACKLOG_WHAT" "$BACKLOG_WHY"; do
+        _rc=0; verb_section_filled "$_tmp" "$_sec" || _rc=$?
+        case $_rc in
+            1) rm -f "$_tmp"; die "в вопросе нет раздела «$_sec»" ;;
+            2) rm -f "$_tmp"; die "раздел «$_sec» пуст" ;;
+            3) rm -f "$_tmp"; die "в разделе «$_sec» остался плейсхолдер <…>" ;;
+        esac
+    done
+    {
+        printf -- '---\ncreated: %s\n' "$(date +%Y-%m-%d)"
+        if [ -n "$_from" ]; then printf 'from: %s\n' "$_from"; fi
+        printf -- '---\n'
+        cat "$_tmp"
+    } > "$_dir/$_slug.md" || { rm -f "$_tmp"; die "не удалось записать вопрос"; }
+    rm -f "$_tmp"
+    ok "ai/backlog/$_slug.md — вопрос записан в бэклог"
+    verb_commit "$_root" backlog "$_slug — записан" "ai/backlog/$_slug.md" || warn "коммит не удался"
+}
+
+verb_backlog_drop() {
+    _root=$1; _slug=${2:-}; _why=${3:-}
+    [ -n "$_slug" ] || die "нужен слаг вопроса"
+    _f="$(backlog_dir "$_root")/$_slug.md"
+    [ -f "$_f" ] || die "нет такого вопроса: ai/backlog/$_slug.md"
+    [ -n "$(printf '%s' "$_why" | tr -d '[:space:]')" ] ||
+        die "нужна строка: fraim backlog-drop $_slug \"почему снят\""
+    _dest=$(tasks_archive_card "$_root" "$_f" "$(backlog_closed "$_root")" "$_slug" dropped "$_why") || exit 2
+    ok "«$_slug» снят → ai/archive/backlog/$(basename -- "$_dest")"
+    verb_commit "$_root" backlog "$_slug — снят" ai/backlog ai/archive/backlog || warn "коммит не удался"
+}
+
+# A question that became a task leaves the backlog the same way, with the task named.
+backlog_to_task() {
+    _root=$1; _q=$2; _task=$3
+    _f="$(backlog_dir "$_root")/$_q.md"
+    _dest=$(tasks_archive_card "$_root" "$_f" "$(backlog_closed "$_root")" "$_q" task "стал задачей $_task") || exit 2
+    _card="$(tasks_dir "$_root")/$_task.md"
+    _link="- Из бэклога: \`${_dest#"$_root"/}\`"
+    if grep -q '^## Ссылки$' "$_card"; then
+        FND_LINK=$_link awk '
+            $0 == "## Ссылки" { print; inside = 1; next }
+            inside && /^## / { print ENVIRON["FND_LINK"]; print ""; inside = 0 }
+            { print }
+            END { if (inside) print ENVIRON["FND_LINK"] }
+        ' "$_card" > "$_card.fraim.tmp" && mv "$_card.fraim.tmp" "$_card"
+    else
+        printf '\n## Ссылки\n%s\n' "$_link" >> "$_card"
+    fi
 }
 
 # --- migration from the old format ------------------------------------------

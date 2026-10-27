@@ -10,8 +10,12 @@
   routes itself into `/make-task` or `/conductor`, and never proposes them.
 - A task card carries an intent (what, why, done-when), never the code's context: no paths,
   patterns, steps or snapshots. Whoever takes it reads the foundation and the code fresh.
-- Before a task: read `ARCHITECTURE.md` + this file (including Known Pitfalls below).
-  After: update them if changed; append any non-obvious choice to `DECISIONS.md`.
+- Before a task: `fraim brief` (the whole foundation, uncut). After: write what changed
+  through the verbs — `fraim arch` for a map section, `fraim decide` for a decision,
+  `fraim pitfall` for a lesson. Hand-editing the foundation is for this repo's own
+  development of those verbs, not for agents working in a project.
+- Verb text travels through `ENVIRON`, never `awk -v` (which expands backslash escapes), and
+  helpers called from a verb prefix their variables (`_md_`, `_ac_`) — POSIX sh has no locals.
 - Language: this is a Russian-language product. Procedure text, commit messages, and
   user-facing CLI output are written in Russian; code identifiers and this foundation
   file's structural prose in English. Chat may be in another language.

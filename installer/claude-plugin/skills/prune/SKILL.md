@@ -68,8 +68,8 @@ There is no wrong time to garden, but those are the triggers that catch drift be
 
 1. Show the user **both sections' proposed diffs**, grouped per file, as an approve/edit/skip list. Nothing is applied yet.
 2. Apply only what the user approves:
-   - Edit `ARCHITECTURE.md` / `CONVENTIONS.md` / `STACK.md` per approved diffs.
-   - Move approved `DECISIONS.md` entries to `ai/archive/decisions_log.md` (append there, newest on top), leaving pointers in `DECISIONS.md`.
+   - Rewrite each approved section with `fraim arch "<section>" [--in CONVENTIONS.md|STACK.md]` (body on stdin): the verb replaces exactly that section, keeps every other heading and wraps the text.
+   - Move approved `DECISIONS.md` entries to `ai/archive/decisions_log.md` (append there, newest on top), leaving pointers in `DECISIONS.md`. When a decision is superseded by a NEW decision, there is nothing to move by hand: `fraim decide "<title>" --supersedes "<old heading>"` writes the new entry and moves the old one itself.
 3. **Reset the drift counter and commit** — one command does both:
    ```sh
    fraim prune-mark

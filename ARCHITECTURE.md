@@ -18,7 +18,7 @@ convenience in `install.sh`). Distribution: shell installer + Claude Code plugin
 ## Components & responsibilities
 | component / dir | responsibility |
 |---|---|
-| `installer/bin/fraim`, `installer/lib/*.sh` | the CLI: state, lifecycle, watchman, deterministic verbs, the task board (`tasks.sh`), fleet/ADE (plan → waves → per-wave launch → collect → the conductor's acceptance, trunk write included), scaffold, skills generation; the roles picker discovers agents from the harness table (`harness_detect`, independent of any execution environment) and models live from each agent's own source (native command, cache file, embedded binary catalogue); the fleet launch is an explicit lifecycle — worktree create → agent launch command (model in argv via `launchcmd_<agent>` or the devin built-in) → confirmed `tui-idle` → `worker-start --terminal` Dispatch binding, with best-effort cleanup of partial resources |
+| `installer/bin/fraim`, `installer/lib/*.sh` | the CLI: state, lifecycle, watchman, deterministic verbs, the task board and the backlog (`tasks.sh`), reading and writing the foundation (`foundation.sh`: `brief`, `find`, `arch`, line wrapping, moving superseded decisions), the one verb list (`verbtable.sh`), fleet/ADE (plan → waves → per-wave launch → collect → the conductor's acceptance, trunk write included), scaffold, skills generation; the roles picker discovers agents from the harness table (`harness_detect`, independent of any execution environment) and models live from each agent's own source (native command, cache file, embedded binary catalogue); the fleet launch is an explicit lifecycle — worktree create → agent launch command (model in argv via `launchcmd_<agent>` or the devin built-in) → confirmed `tui-idle` → `worker-start --terminal` Dispatch binding, with best-effort cleanup of partial resources |
 | `procedures/` (11 `.md` + `manifest.json`) | canonical, engine-agnostic methodology text; manifest holds versions, tiers, order |
 | `installer/install.sh` + `fraim init` | delivery: clone to `~/.fraim/src`, link binary, lay skills into detected harnesses |
 | `installer/templates/` | fixed templates: foundation, investigation, stack (a task card's shape is code, in `tasks.sh`) |
@@ -29,7 +29,20 @@ convenience in `install.sh`). Distribution: shell installer + Claude Code plugin
 
 ## Data model (key entities)
 - **project registry** (`~/.fraim/`): registered projects, install state, version.
-- **per-project state**: `ai/` tree (tasks, archive, investigations), foundation files, `fraim.conf`.
+- **per-project state**: `ai/` tree (tasks, backlog, archive, investigations), foundation files,
+  `fraim.conf`.
+- **foundation writes go through verbs**: `fraim decide` (newest on top; `--supersedes` naming one
+  existing heading moves that entry whole to `ai/archive/decisions_log.md`), `fraim pitfall`,
+  `fraim arch "<section>"` (replaces one `## ` section of ARCHITECTURE/CONVENTIONS/STACK, refuses
+  an unknown name, keeps every other heading). All of them wrap prose at 100 characters; tables,
+  code and headings are left alone on disk. `fraim brief` prints the whole foundation (decisions
+  condensed) with the verb list first and a completeness mark last; `fraim find KEY…` returns
+  whole entries (a decision, a card, a list item, a table row, a paragraph) with their heading.
+- **backlog question** (`ai/backlog/<slug>.md`) — an open question the human chose to keep, not a
+  task: frontmatter `created`, optional `from`; body `# title`, `## В чём вопрос`, `## Почему
+  важно`.
+  Closed into `ai/archive/backlog/` — dropped with a reason, or `outcome: task` when
+  `fraim task-new --from <q>` turned it into a card.
 - **task card** (`ai/tasks/<slug>.md`) — an intent, never a plan: frontmatter `kind`
   (`task` | `master`), `created`, optional `parent` (a master's slug, one level only); body:
   title, `## Что и зачем`, `## Готово, когда`, optional `## Ссылки`. The state is the file's
@@ -46,7 +59,8 @@ convenience in `install.sh`). Distribution: shell installer + Claude Code plugin
   disk; `fraim mode` only removes the old fleet mode's leftovers (the `mode` line, the
   conductor section in `AGENTS.md`, the SessionStart hook) and `fraim mode --hook` is a
   silent success so a leftover hook never breaks a session start.
-- **build** (`ai/builds/<id>/`) — started only on the human's request, one subtask is a valid build: plan copy, journal, `fleet.tsv` (a cache of the
+- **build** (`ai/builds/<id>/`) — started only on the human's request, one subtask is a valid build:
+  plan copy, journal, `fleet.tsv` (a cache of the
   environment's ids, one block per wave), `collected.tsv` (our truth: wave, subtask,
   merged sha, time), and — after `dispatch accept` — the marker `accepted` (who, when, which
   merge, how to undo it). Each build owns a branch `fraim/<id>` — workers branch from it and

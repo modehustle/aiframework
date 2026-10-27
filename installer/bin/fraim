@@ -36,6 +36,8 @@ _libdir=$(cd -- "$(dirname -- "$_self")/../lib" 2>/dev/null && pwd -P) || {
 . "$_libdir/scaffold.sh"
 . "$_libdir/verbs.sh"
 . "$_libdir/tasks.sh"
+. "$_libdir/foundation.sh"
+. "$_libdir/verbtable.sh"
 . "$_libdir/watchman.sh"
 . "$_libdir/clean.sh"
 . "$_libdir/publish.sh"
@@ -77,11 +79,15 @@ fraim — эксплуатационный слой для проектов на
   fraim config              что действует и откуда (set КЛЮЧ ЗНАЧЕНИЕ)
   fraim projects            реестр проектов (add ПУТЬ / rm ПУТЬ)
 
-Это зовут процедуры — тебе их помнить не нужно
+Это зовут агенты и процедуры — тебе их помнить не нужно
+  fraim brief               весь фундамент, доска и список глаголов одним выводом
+  fraim find КЛЮЧ…          найти запись целиком в фундаменте, задачах, бэклоге
   fraim tasks [--json]      доска: открытые задачи, проекты и их прогресс
   fraim task-new СЛАГ [--master | --parent МАСТЕР]   поставить задачу (карточка потоком)
   fraim task-master СЛАГ    сделать задачу проектом (мастер-задачей) — по слову человека
   fraim task-seal СЛАГ "ИТОГ" [--dropped]   закрыть задачу: в архив со строкой итога
+  fraim backlog             открытые вопросы (backlog-new СЛАГ — записать, backlog-drop — снять)
+  fraim arch РАЗДЕЛ [--new] переписать раздел ARCHITECTURE.md (тело потоком; --in ФАЙЛ)
   fraim decide ЗАГОЛОВОК    запись в DECISIONS.md (тело — потоком)
   fraim pitfall СТРОКА...   грабли в CONVENTIONS.md
   fraim investigate-new СЛАГ   папка расследования + findings.md
@@ -877,16 +883,27 @@ cmd_config() {
 # --- deterministic verbs ----------------------------------------------------
 # Each one replaces a block of prose that used to ask the model to perform a
 # mechanical action by hand. See installer/DETERMINISM.md.
+# The project root is the nearest directory upward that holds ai/ — an agent standing in
+# src/ is still in the project, and a verb that refused there would be retyped by hand.
 verb_root() {
-    _root=$(pwd -P)
-    [ -d "$_root/ai" ] || die "здесь нет ai/ — это не проект под системой (fraim scaffold)"
-    printf '%s\n' "$_root"
+    _vr=$(pwd -P)
+    while [ ! -d "$_vr/ai" ]; do
+        [ "$_vr" = / ] && die "здесь нет ai/ — это не проект под системой (fraim scaffold)"
+        _vr=$(dirname -- "$_vr")
+    done
+    printf '%s\n' "$_vr"
 }
 
 cmd_tasks()       { verb_tasks "$(verb_root)" "${1:-}"; }
 cmd_task_new()    { verb_task_new "$(verb_root)" "$@"; }
 cmd_task_master() { verb_task_master "$(verb_root)" "${1:-}"; }
 cmd_task_seal()   { verb_task_seal "$(verb_root)" "$@"; }
+cmd_backlog()      { verb_backlog "$(verb_root)"; }
+cmd_backlog_new()  { verb_backlog_new "$(verb_root)" "$@"; }
+cmd_backlog_drop() { verb_backlog_drop "$(verb_root)" "$@"; }
+cmd_brief()        { verb_brief "$(verb_root)"; }
+cmd_find()         { verb_find "$(verb_root)" "$@"; }
+cmd_arch()         { verb_arch "$(verb_root)" "$@"; }
 
 # Verbs of the old plan handoff. A task is a card now, and nothing about it can go stale
 # or be blocked — but procedures from an older install and agents with a long memory will
@@ -1289,6 +1306,12 @@ case $_cmd in
     task-new)      cmd_task_new "$@" ;;
     task-master)   cmd_task_master "$@" ;;
     task-seal)     cmd_task_seal "$@" ;;
+    backlog)       cmd_backlog "$@" ;;
+    backlog-new)   cmd_backlog_new "$@" ;;
+    backlog-drop)  cmd_backlog_drop "$@" ;;
+    brief)         cmd_brief "$@" ;;
+    find)          cmd_find "$@" ;;
+    arch)          cmd_arch "$@" ;;
     task-block|task-result|task-revise|plan-seal|reconcile-seal)
                    cmd_retired_task_verb "$_cmd" ;;
     decide)        cmd_decide "$@" ;;

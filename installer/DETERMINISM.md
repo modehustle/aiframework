@@ -64,10 +64,14 @@
 | Глагол | Заменил прозу в | Что делает детерминированно |
 |---|---|---|
 | `fraim scaffold` | bootstrap, onboard | 4 файла фундамента + `ai/` + `.gitignore` + `ai/fraim.conf` по шаблонам; никогда не перезаписывает |
+| `fraim brief` | orient 1, run-task 2.2, conductor, investigate 1 | весь фундамент одним выводом: список глаголов, карта, правила, решения в сжатом виде, `STACK.md`, доска; строки перенесены на 100 знаков; в конце метка «показано всё» |
+| `fraim find КЛЮЧ…` | run-task 2.3, investigate 1 | записи целиком (решение, карточка, пункт списка, строка таблицы, абзац) с заголовком; ключи через ИЛИ, без учёта регистра, по подстроке |
+| `fraim arch "РАЗДЕЛ" [--new] [--in ФАЙЛ]` | run-task 4.1, prune | тело одного раздела `## ` с потока; неизвестное имя — отказ со списком разделов; все прочие заголовки сохраняются; перенос строк |
+| `fraim backlog-new СЛАГ [--from ОТКУДА]` · `backlog-drop` | run-task 5.5 | вопрос `ai/backlog/<слаг>.md` с frontmatter; снятие — в `ai/archive/backlog/` с причиной |
 | `fraim tasks [--json]` | make-task 2.1, run-task 1.1, orient 2 | доска: открытые карточки, проекты с прогрессом, возраст; карточки старого формата |
 | `fraim task-new СЛАГ [--master \| --parent М]` | make-task 3 | карточка `ai/tasks/<слаг>.md`: frontmatter (`kind`, `created`, `parent`) + тело с потока; отказ без заголовка и двух разделов + коммит `task: <слаг>` |
 | `fraim task-master СЛАГ` | make-task 3.2 | `kind: master` у открытой задачи без родителя + коммит |
-| `fraim decide ЗАГОЛОВОК` | run-task 3.3, onboard 3, bootstrap | запись в `DECISIONS.md`: место (новое сверху), заголовок с датой, `--supersedes`; **тело приходит на stdin** |
+| `fraim decide ЗАГОЛОВОК` | run-task 3.3, onboard 3, bootstrap | запись в `DECISIONS.md`: место (новое сверху), заголовок с датой, перенос строк; `--supersedes`, совпавший ровно с одним заголовком, переносит ту запись в `ai/archive/decisions_log.md`; **тело приходит на stdin** |
 | `fraim pitfall СТРОКА…` | run-task 4.2 | строки в `## Known Pitfalls / Lessons` файла `CONVENTIONS.md` — в конец именно этого раздела |
 | `fraim task-seal СЛАГ "ИТОГ" [--dropped]` | run-task 5 | карточка → `ai/archive/tasks/<дата>_<слаг>.md` с `closed`, `outcome`, `result`, `commit`; проект с открытыми подзадачами — отказ + коммит `archive: <слаг>` |
 | `fraim investigate-new СЛАГ` | investigate 2.2 | папка расследования + `findings.md` по схеме + провенанс |

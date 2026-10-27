@@ -10,8 +10,9 @@
   The board (`ai/tasks/<slug>.md`, `fraim tasks`) holds work the human put aside for later
   or a project of several tasks; only the human puts a task there (`/make-task`) and only
   the human says to take one (`/run-task`). Other commands: `/orient`, `/prune`, `/investigate`.
-- Before a task: read `ARCHITECTURE.md` + this file (including Known Pitfalls below).
-  After: update them if changed; append any non-obvious choice to `DECISIONS.md`.
+- Before a task: `fraim brief` — the whole foundation in one stream, uncut. After: write what
+  changed through the verbs — `fraim arch` (a map section), `fraim decide` (a decision),
+  `fraim pitfall` (a lesson). The text is yours; place, format and line wrapping are theirs.
 - Code style: <formatter / linter / naming / structure rules>
 - Secrets: never commit `.env` or `data/` (see `.gitignore`).
 - Deploy: never hand-edit host/system; use `/docker-deploy`.
