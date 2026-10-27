@@ -527,31 +527,47 @@ tasks_migrate_legacy() {
 # What the mechanics could not read goes on the board as a task, not into a warning that
 # scrolls away: the next session sees it in `fraim tasks` and takes it like any other.
 tasks_migration_card() {
-    _root=$1; _list=$2
-    _card="$_root/ai/tasks/fraim-migration.md"
-    if [ -f "$_card" ]; then
-        printf -- '- задачи без нужных разделов:%s\n' "$_list" >> "$_card"
+    _mc_root=$1; _mc_item="- $2"
+    _mc_card="$_mc_root/ai/tasks/fraim-migration.md"
+    if [ -f "$_mc_card" ]; then
+        grep -qxF -- "$_mc_item" "$_mc_card" && return 0
+        FND_ITEM=$_mc_item awk '
+            /^Как это доделать/ && !done { print ENVIRON["FND_ITEM"]; print ""; done = 1 }
+            { print }
+        ' "$_mc_card" | awk 'NF || !blank { print } { blank = !NF }' > "$_mc_card.fraim.tmp" &&
+            mv "$_mc_card.fraim.tmp" "$_mc_card"
     else
         {
             printf -- '---\nkind: task\ncreated: %s\n---\n' "$(date +%Y-%m-%d)"
             printf '# Довести перевод на формат fraim %s\n\n' "$(fraim_version)"
             printf '## Что и зачем\n'
-            printf '`fraim upgrade` сделал механическую часть, но этого он прочитать не смог:\n'
-            printf -- '- задачи без нужных разделов:%s\n' "$_list"
+            printf '`fraim upgrade` сделал механическую часть, но этого он сам сделать не смог:\n'
+            printf '%s\n' "$_mc_item"
             printf '\nКак это доделать — раздел «Миграция формата» в /prune.\n\n'
-            printf '## Готово, когда\nУ каждой названной карточки осмысленные «Что и зачем» и «Готово, когда».\n'
-        } > "$_card"
+            printf '## Готово, когда\nКаждый пункт выше доделан: карточки и карта — в новом формате.\n'
+        } > "$_mc_card"
     fi
-    warn "не всё разобралось механически — на доске задача fraim-migration"
+    TASKS_CARD=1
+    warn "не всё разобралось механически — на доске задача fraim-migration: $2"
 }
 
 # The whole task half of `fraim upgrade` (and of the cleanup's upgrade step): migrate,
 # put what did not parse on the board, save it as one point.
+TASKS_CARD=0
 tasks_upgrade() {
     _root=$1
+    TASKS_CARD=0
     tasks_migrate_legacy "$_root" || return 1
-    [ "$TASKS_MIGRATED" -gt 0 ] || return 0
-    if [ -n "$TASKS_UNPARSED" ]; then tasks_migration_card "$_root" "$TASKS_UNPARSED"; fi
-    verb_commit "$_root" upgrade "задачи старого формата переведены в карточки" ai/tasks ai/archive ||
+    if [ -n "$TASKS_UNPARSED" ]; then
+        tasks_migration_card "$_root" "задачи без нужных разделов:$TASKS_UNPARSED"
+    fi
+    # A map with no `## ` sections cannot be written by `fraim arch`, and splitting it is
+    # judgement — which section a paragraph belongs to is not a fact the verb can compute.
+    _tu_a="$_root/ARCHITECTURE.md"
+    if [ -f "$_tu_a" ] && ! scaffold_is_stub "$_tu_a" && ! grep -q '^## ' "$_tu_a"; then
+        tasks_migration_card "$_root" "ARCHITECTURE.md без разделов «## » — fraim arch не может его править; разложи карту по разделам"
+    fi
+    [ "$TASKS_MIGRATED" -gt 0 ] || [ "$TASKS_CARD" = 1 ] || return 0
+    verb_commit "$_root" upgrade "задачи и карта переведены в новый формат" ai/tasks ai/archive ||
         warn "коммит не удался"
 }

@@ -1081,6 +1081,17 @@ check "после upgrade глагол pitfall работает" "$?" "0"
 check "после upgrade проверка стандарта молчит" "$("$FRAIM" status "$OLD" 2>/dev/null | grep -c 'отстал от стандарта')" "0"
 "$FRAIM" upgrade >/dev/null 2>&1
 check "upgrade идемпотентен" "$("$FRAIM" status "$OLD" 2>/dev/null | grep -c 'отстал от стандарта')" "0"
+# Суждение upgrade не делает, а ставит на доску: карта без разделов — пункт задачи миграции.
+check "карта без разделов — задача миграции" "$(grep -c 'ARCHITECTURE.md без разделов' "$OLD/ai/tasks/fraim-migration.md" 2>/dev/null)" "1"
+check "повторный upgrade пункт не дублирует" "$(grep -c 'ARCHITECTURE.md без разделов' "$OLD/ai/tasks/fraim-migration.md" 2>/dev/null)" "1"
+check "upgrade завёл бэклог" "$([ -d "$OLD/ai/backlog" ] && echo yes || echo no)" "yes"
+mkdir -p "$OLD/ai/tasks/empty-plan"; printf '# Task\n' > "$OLD/ai/tasks/empty-plan/task.md"
+"$FRAIM" upgrade >/dev/null 2>&1
+check "неразобранная задача — второй пункт той же карточки" \
+      "$(grep -c '^- ' "$OLD/ai/tasks/fraim-migration.md")$(grep -c 'empty-plan' "$OLD/ai/tasks/fraim-migration.md")" "21"
+check "пункты стоят в «Что и зачем», а не после «Готово, когда»" \
+      "$(sed -n '/^## Готово, когда/,$p' "$OLD/ai/tasks/fraim-migration.md" | grep -c '^- ')" "0"
+check "старый план сохранён" "$([ -f "$OLD/ai/archive/legacy-plans/empty-plan/task.md" ] && echo yes || echo no)" "yes"
 
 # --- очередь и фундамент как данные -----------------------------------------
 QP="$SANDBOX/queueproj"
