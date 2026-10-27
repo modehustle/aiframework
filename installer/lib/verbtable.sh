@@ -22,11 +22,11 @@ work ;; changed what the program does ;; fraim decide "TITLE" [--supersedes "OLD
 work ;; changed structure, components or data flow ;; fraim arch "SECTION" [--new] [--in FILE] ;; переписать раздел карты (тело потоком) ;; rewrites one section of ARCHITECTURE.md (or CONVENTIONS.md / STACK.md); body on stdin
 work ;; something bit you that would trap the next change ;; fraim pitfall "LINE"… ;; грабли в CONVENTIONS.md ;; propose the line first; write it only on the human's yes
 work ;; need to undo your own uncommitted edit ;; fraim restore PATH… ;; вернуть пути к последней точке ;; back to the last save point; a created file is removed
-end ;; open questions remain, important but not for now ;; fraim backlog-new SLUG [--from WHERE] ;; записать вопрос в бэклог (потоком) ;; list them, ask; only approved ones; body on stdin: # title, ## В чём вопрос, ## Почему важно
+end ;; open questions remain, important but not for now ;; fraim backlog-new SLUG [--from WHERE] ;; записать вопрос в бэклог (потоком) ;; list them, ask; only approved ones; body on stdin: # title, ## Question, ## Why it matters
 end ;; finished a task taken from the board ;; fraim task-seal SLUG "RESULT" [--dropped] ;; закрыть задачу строкой итога ;; closes the card into the archive with one line of outcome; a master task only on the human's word
 human ;; wants to know where things stand ;; fraim status ;; вердикт сторожа по проекту ;; the watchman's verdict; report it, do not act on it
 human ;; wants to know what is planned ;; fraim tasks ;; доска задач и проектов ;; open tasks, projects with progress, age of each card
-human ;; wants work set aside, or a project opened ;; fraim task-new SLUG [--master | --parent M | --from Q] ;; поставить задачу (карточка потоком) ;; via /make-task; body on stdin: # title, ## Что и зачем, ## Готово, когда, ## Ссылки
+human ;; wants work set aside, or a project opened ;; fraim task-new SLUG [--master | --parent M | --from Q] ;; поставить задачу (карточка потоком) ;; via /make-task; body on stdin: # title, ## What and why, ## Done when, ## Links
 human ;; says a task is really a project ;; fraim task-master SLUG ;; сделать задачу проектом ;; turns an open task into a master task
 human ;; wants to review open questions ;; fraim backlog ;; открытые вопросы ;; the backlog; a question that stops mattering → fraim backlog-drop
 human ;; drops an open question ;; fraim backlog-drop SLUG "WHY" ;; снять вопрос из бэклога ;; closes it into the archive with the reason

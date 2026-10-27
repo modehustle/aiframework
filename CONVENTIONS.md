@@ -3,7 +3,6 @@
 > **AGENT DIRECTIVE — load every session, follow it.**
 > Register this as your agent's workspace rule so it auto-loads.
 
-- Language: code, comments, docs in English. Chat may be in another language.
 - Workflow: reactive work in the session by default — almost always the answer. The board
   (`ai/tasks/<slug>.md`, `fraim tasks`) holds work the human put aside or a project; only the
   human puts a task there (`/make-task`) or says to take one (`/run-task`). The agent never
@@ -16,9 +15,14 @@
   development of those verbs, not for agents working in a project.
 - Verb text travels through `ENVIRON`, never `awk -v` (which expands backslash escapes), and
   helpers called from a verb prefix their variables (`_md_`, `_ac_`) — POSIX sh has no locals.
-- Language: this is a Russian-language product. Procedure text, commit messages, and
-  user-facing CLI output are written in Russian; code identifiers and this foundation
-  file's structural prose in English. Chat may be in another language.
+- Language: the product is English inside — code, comments, procedures, data formats (card
+  headings), everything the CLI writes into a project (cards, journals, briefs, commit
+  messages) and everything addressed to the agent (brief, skills, AGENTS.md block). Russian is
+  the operator's locale only: what the CLI says to the human (messages, refusals, the
+  watchman's verdict, `fraim help`). It is still hardcoded in the code and will move into a
+  message catalog (`locale/ru`) so other languages can be added. Project docs (README, MODES,
+  PRINCIPLES, AUDIT*, DESIGN*, BACKLOG, installer/*.md) may stay Russian during development
+  and are translated before a public release. The human talks to the agent in any language.
 - Two-layer split: `procedures/` is the canonical engine-agnostic methodology —
   never import harness specifics there. `installer/` is delivery code; harness
   knowledge lives only there.

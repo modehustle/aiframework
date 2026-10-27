@@ -18,9 +18,9 @@
 #   parent: <slug of a master>      (optional, children only)
 #   ---
 #   # Title
-#   ## Что и зачем
-#   ## Готово, когда
-#   ## Ссылки                       (optional)
+#   ## What and why
+#   ## Done when
+#   ## Links                        (optional)
 #
 # The state is WHERE the file is, never a field: `ai/tasks/` is open, `ai/archive/tasks/`
 # is closed. A status field is a second answer to the same question, and the two would
@@ -31,8 +31,9 @@
 # branches can arrive after every current child is done. One level only: a master has
 # no parent.
 
-TASK_WHAT='## Что и зачем'
-TASK_DONE='## Готово, когда'
+TASK_WHAT='## What and why'
+TASK_DONE='## Done when'
+TASK_LINKS='## Links'
 
 tasks_dir()    { printf '%s/ai/tasks\n' "$1"; }
 tasks_closed() { printf '%s/ai/archive/tasks\n' "$1"; }
@@ -168,7 +169,7 @@ verb_task_new() {
         backlog_to_task "$_root" "$_from" "$_slug"
         ok "вопрос «$_from» стал задачей — ушёл из бэклога в архив"
     fi
-    verb_commit "$_root" task "$_slug — поставлена" "ai/tasks/$_slug.md" ai/backlog ai/archive/backlog || warn "коммит не удался"
+    verb_commit "$_root" task "$_slug — added" "ai/tasks/$_slug.md" ai/backlog ai/archive/backlog || warn "коммит не удался"
 }
 
 # --- task-master ------------------------------------------------------------
@@ -188,7 +189,7 @@ verb_task_master() {
          fm && $0 == "---" { fm = 0 }
          { print }' "$_f" > "$_tmp" && mv "$_tmp" "$_f" || die "не удалось записать карточку"
     ok "«$_slug» теперь мастер-задача — подзадачи: fraim task-new СЛАГ --parent $_slug"
-    verb_commit "$_root" task "$_slug — стала мастер-задачей" "ai/tasks/$_slug.md" || warn "коммит не удался"
+    verb_commit "$_root" task "$_slug — became a master task" "ai/tasks/$_slug.md" || warn "коммит не удался"
 }
 
 # --- task-seal --------------------------------------------------------------
@@ -228,8 +229,9 @@ verb_task_seal() {
     _dest=$(tasks_archive_card "$_root" "$_f" "$(tasks_closed "$_root")" "$_slug" "$_outcome" "$_result") || exit 2
 
     _word=выполнена; [ "$_outcome" = dropped ] && _word=отменена
+    _cword=done; [ "$_outcome" = dropped ] && _cword=dropped
     ok "«$_slug» $_word → ai/archive/tasks/$(basename -- "$_dest")"
-    verb_commit "$_root" archive "$_slug — $_word" "ai/tasks" "ai/archive/tasks" || warn "коммит не удался"
+    verb_commit "$_root" archive "$_slug — $_cword" "ai/tasks" "ai/archive/tasks" || warn "коммит не удался"
 
     _parent=$(fm_get "$_dest" parent)
     if [ -n "$_parent" ]; then
@@ -353,8 +355,8 @@ verb_tasks() {
 # end of a session, which are gone the moment the chat closes unless they land somewhere.
 # Same shape as a card, own folder: `ai/backlog/<slug>.md`, frontmatter `created` and the
 # optional `from` (where it came up). Only the human decides what goes in.
-BACKLOG_WHAT='## В чём вопрос'
-BACKLOG_WHY='## Почему важно'
+BACKLOG_WHAT='## Question'
+BACKLOG_WHY='## Why it matters'
 
 backlog_dir()    { printf '%s/ai/backlog\n' "$1"; }
 backlog_closed() { printf '%s/ai/archive/backlog\n' "$1"; }
@@ -421,7 +423,7 @@ verb_backlog_new() {
     } > "$_dir/$_slug.md" || { rm -f "$_tmp"; die "не удалось записать вопрос"; }
     rm -f "$_tmp"
     ok "ai/backlog/$_slug.md — вопрос записан в бэклог"
-    verb_commit "$_root" backlog "$_slug — записан" "ai/backlog/$_slug.md" || warn "коммит не удался"
+    verb_commit "$_root" backlog "$_slug — added" "ai/backlog/$_slug.md" || warn "коммит не удался"
 }
 
 verb_backlog_drop() {
@@ -433,32 +435,32 @@ verb_backlog_drop() {
         die "нужна строка: fraim backlog-drop $_slug \"почему снят\""
     _dest=$(tasks_archive_card "$_root" "$_f" "$(backlog_closed "$_root")" "$_slug" dropped "$_why") || exit 2
     ok "«$_slug» снят → ai/archive/backlog/$(basename -- "$_dest")"
-    verb_commit "$_root" backlog "$_slug — снят" ai/backlog ai/archive/backlog || warn "коммит не удался"
+    verb_commit "$_root" backlog "$_slug — dropped" ai/backlog ai/archive/backlog || warn "коммит не удался"
 }
 
 # A question that became a task leaves the backlog the same way, with the task named.
 backlog_to_task() {
     _root=$1; _q=$2; _task=$3
     _f="$(backlog_dir "$_root")/$_q.md"
-    _dest=$(tasks_archive_card "$_root" "$_f" "$(backlog_closed "$_root")" "$_q" task "стал задачей $_task") || exit 2
+    _dest=$(tasks_archive_card "$_root" "$_f" "$(backlog_closed "$_root")" "$_q" task "became task $_task") || exit 2
     _card="$(tasks_dir "$_root")/$_task.md"
-    _link="- Из бэклога: \`${_dest#"$_root"/}\`"
-    if grep -q '^## Ссылки$' "$_card"; then
-        FND_LINK=$_link awk '
-            $0 == "## Ссылки" { print; inside = 1; next }
+    _link="- From the backlog: \`${_dest#"$_root"/}\`"
+    if grep -qx "$TASK_LINKS" "$_card"; then
+        FND_LINK=$_link FND_LINKS=$TASK_LINKS awk '
+            $0 == ENVIRON["FND_LINKS"] { print; inside = 1; next }
             inside && /^## / { print ENVIRON["FND_LINK"]; print ""; inside = 0 }
             { print }
             END { if (inside) print ENVIRON["FND_LINK"] }
         ' "$_card" > "$_card.fraim.tmp" && mv "$_card.fraim.tmp" "$_card"
     else
-        printf '\n## Ссылки\n%s\n' "$_link" >> "$_card"
+        printf '\n%s\n%s\n' "$TASK_LINKS" "$_link" >> "$_card"
     fi
 }
 
 # --- migration from the old format ------------------------------------------
 # A folder task carried a plan, and its sections were guaranteed by plan-seal — so the
 # intent can be lifted out of it mechanically: Summary → title, Goal + Why → «Что и
-# зачем», Acceptance Criteria → «Готово, когда». The plan itself is kept, whole, in the
+# зачем», Acceptance Criteria → «Done when». The plan itself is kept, whole, in the
 # archive, and the card links to it. A folder with a result.md was executed and never
 # sealed: it is archived as it is. What cannot be read mechanically is still turned into
 # a card — with the gap said in words — and named in TASKS_UNPARSED for the caller.
@@ -506,14 +508,14 @@ tasks_migrate_legacy() {
                 if [ -n "$_goal" ]; then printf '%s\n' "$_goal"; fi
                 if [ -n "$_why" ]; then printf '\n%s\n' "$_why"; fi
             else
-                printf 'Не разобрано механически — см. старый план.\n'
+                printf 'Not parsed mechanically — see the old plan.\n'
             fi
             printf '\n%s\n' "$TASK_DONE"
             if [ -n "$(printf '%s' "$_acc" | tr -d '[:space:]')" ]; then printf '%s\n' "$_acc"
-            else printf 'Не разобрано механически — см. старый план.\n'; fi
-            printf '\n## Ссылки\n- Старый план: `ai/archive/legacy-plans/%s/`\n' "$_s"
+            else printf 'Not parsed mechanically — see the old plan.\n'; fi
+            printf '\n%s\n- Old plan: `ai/archive/legacy-plans/%s/`\n' "$TASK_LINKS" "$_s"
             if [ -f "$_d/blockers.md" ]; then
-                printf -- '- План был заблокирован исполнителем: `blockers.md` там же.\n'
+                printf -- '- The executor had blocked this plan: `blockers.md` in the same folder.\n'
             fi
         } > "$_card" || return 1
         mv "$_d" "$_lp/$_s" || return 1
@@ -532,19 +534,19 @@ tasks_migration_card() {
     if [ -f "$_mc_card" ]; then
         grep -qxF -- "$_mc_item" "$_mc_card" && return 0
         FND_ITEM=$_mc_item awk '
-            /^Как это доделать/ && !done { print ENVIRON["FND_ITEM"]; print ""; done = 1 }
+            /^How to finish them/ && !done { print ENVIRON["FND_ITEM"]; print ""; done = 1 }
             { print }
         ' "$_mc_card" | awk 'NF || !blank { print } { blank = !NF }' > "$_mc_card.fraim.tmp" &&
             mv "$_mc_card.fraim.tmp" "$_mc_card"
     else
         {
             printf -- '---\nkind: task\ncreated: %s\n---\n' "$(date +%Y-%m-%d)"
-            printf '# Довести перевод на формат fraim %s\n\n' "$(fraim_version)"
-            printf '## Что и зачем\n'
-            printf '`fraim upgrade` сделал механическую часть, но этого он сам сделать не смог:\n'
+            printf '# Finish the move to the fraim %s format\n\n' "$(fraim_version)"
+            printf '%s\n' "$TASK_WHAT"
+            printf '`fraim upgrade` did the mechanical part; these it could not do on its own:\n'
             printf '%s\n' "$_mc_item"
-            printf '\nКак это доделать — раздел «Миграция формата» в /prune.\n\n'
-            printf '## Готово, когда\nКаждый пункт выше доделан: карточки и карта — в новом формате.\n'
+            printf '\nHow to finish them — the «Format migration» section of /prune.\n\n'
+            printf '%s\nEvery item above is done: the cards and the map are in the new format.\n' "$TASK_DONE"
         } > "$_mc_card"
     fi
     TASKS_CARD=1
@@ -553,21 +555,40 @@ tasks_migration_card() {
 
 # The whole task half of `fraim upgrade` (and of the cleanup's upgrade step): migrate,
 # put what did not parse on the board, save it as one point.
+# Cards written before the format went English carry Russian section headings. The verbs
+# check those headings by exact text, so they are renamed in place — the heading line only,
+# never the body.
+TASKS_RENAMED=0
+tasks_rename_headings() {
+    TASKS_RENAMED=0
+    # The Russian headings below are the OLD format, kept only as the source of this rename.
+    for _rh_f in "$1"/ai/tasks/*.md "$1"/ai/backlog/*.md "$1"/ai/archive/tasks/*.md "$1"/ai/archive/backlog/*.md; do
+        [ -f "$_rh_f" ] || continue
+        grep -qx '## Что и зачем\|## Готово, когда\|## Ссылки\|## В чём вопрос\|## Почему важно' "$_rh_f" || continue
+        sed -e 's/^## Что и зачем$/## What and why/' -e 's/^## Готово, когда$/## Done when/' \
+            -e 's/^## Ссылки$/## Links/' -e 's/^## В чём вопрос$/## Question/' \
+            -e 's/^## Почему важно$/## Why it matters/' "$_rh_f" > "$_rh_f.fraim.tmp" &&
+            mv "$_rh_f.fraim.tmp" "$_rh_f"
+        TASKS_RENAMED=$((TASKS_RENAMED + 1))
+    done
+}
+
 TASKS_CARD=0
 tasks_upgrade() {
     _root=$1
     TASKS_CARD=0
     tasks_migrate_legacy "$_root" || return 1
+    tasks_rename_headings "$_root"
     if [ -n "$TASKS_UNPARSED" ]; then
-        tasks_migration_card "$_root" "задачи без нужных разделов:$TASKS_UNPARSED"
+        tasks_migration_card "$_root" "tasks without the required sections:$TASKS_UNPARSED"
     fi
     # A map with no `## ` sections cannot be written by `fraim arch`, and splitting it is
     # judgement — which section a paragraph belongs to is not a fact the verb can compute.
     _tu_a="$_root/ARCHITECTURE.md"
     if [ -f "$_tu_a" ] && ! scaffold_is_stub "$_tu_a" && ! grep -q '^## ' "$_tu_a"; then
-        tasks_migration_card "$_root" "ARCHITECTURE.md без разделов «## » — fraim arch не может его править; разложи карту по разделам"
+        tasks_migration_card "$_root" "ARCHITECTURE.md has no «## » sections — fraim arch cannot edit it; split the map into sections"
     fi
-    [ "$TASKS_MIGRATED" -gt 0 ] || [ "$TASKS_CARD" = 1 ] || return 0
-    verb_commit "$_root" upgrade "задачи и карта переведены в новый формат" ai/tasks ai/archive ||
+    [ "$TASKS_MIGRATED" -gt 0 ] || [ "$TASKS_CARD" = 1 ] || [ "$TASKS_RENAMED" -gt 0 ] || return 0
+    verb_commit "$_root" upgrade "tasks and map moved to the new format" ai/tasks ai/archive ai/backlog ||
         warn "коммит не удался"
 }

@@ -550,7 +550,7 @@ cmd_upgrade() {
     scaffold_run "$_root" || die "не удалось обновить фундамент"
     scaffold_sections "$_root" || die "не удалось дописать разделы"
     if [ "$SCAFFOLD_SECTIONS_ADDED" -gt 0 ]; then
-        verb_commit "$_root" upgrade "фундамент доведён до стандарта" CONVENTIONS.md
+        verb_commit "$_root" upgrade "foundation brought up to the standard" CONVENTIONS.md
     fi
     tasks_upgrade "$_root" || die "не удалось перевести задачи старого формата"
     say ""

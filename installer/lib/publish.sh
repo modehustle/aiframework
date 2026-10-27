@@ -842,10 +842,10 @@ publish_refuse_secret() {
 publish_brief_secret() {
     _pub_root=$1
     publish_brief_open
-    printf 'Проект: %s\n' "$_pub_root"
-    printf 'Задача: убрать из истории git то, что нельзя публиковать, и довести проект\n'
-    printf 'до первой публикации.\n\n'
-    printf 'Что нашёл `fraim publish` (смотрел всю историю, а не только рабочую папку):\n'
+    printf 'Project: %s\n' "$_pub_root"
+    printf 'Task: remove from the git history what must not be published, and bring the\n'
+    printf 'project to its first publication.\n\n'
+    printf 'What `fraim publish` found (it read the whole history, not just the working tree):\n'
     _pub_ifs=$IFS; IFS='
 '
     for _pub_line in $PUB_STOP; do
@@ -855,20 +855,20 @@ publish_brief_secret() {
     IFS=$_pub_ifs
     cat <<'BRIEF'
 
-Порядок работы:
-1. Перечисли, какие именно ключи нужно отозвать и где это делается. Отзываю и
-   меняю их я сам — ты только называешь, что и где.
-2. Посмотри, публиковался ли репозиторий: git remote -v, git ls-remote.
-3. Предложи, как вычистить найденное из ВСЕЙ истории (git filter-repo или BFG).
-   Покажи команду и скажи, что именно она затрёт. Не запускай без моего «да»:
-   это переписывание истории, откатить его нельзя.
-4. После чистки прогони `fraim publish --check` — он должен сказать «чисто».
+Steps:
+1. List exactly which keys must be revoked and where that is done. I revoke and
+   replace them myself — you only name what and where.
+2. Check whether the repository was ever published: git remote -v, git ls-remote.
+3. Propose how to remove the findings from the WHOLE history (git filter-repo or BFG).
+   Show the command and say exactly what it will erase. Do not run it without my yes:
+   it rewrites history and cannot be undone.
+4. After the cleanup run `fraim publish --check` — it must report clean.
 
-Границы:
-- ничего не публиковать и не пушить;
-- `fraim publish --force` не предлагать: он отправит найденное как есть;
-- `fraim commit`, `fraim undo` и `fraim restore` историю не переписывают,
-  для этой задачи они не подходят.
+Limits:
+- publish nothing and push nothing;
+- do not suggest `fraim publish --force`: it would send the findings as they are;
+- `fraim commit`, `fraim undo` and `fraim restore` do not rewrite history and do
+  not fit this task.
 BRIEF
     publish_brief_close
     return 0
@@ -885,20 +885,20 @@ publish_refuse_diverged() {
     say "  единственный способ сделать это «одной кнопкой» затёр бы чью-то работу."
 
     publish_brief_open
-    printf 'Проект: %s\n' "$_pub_root"
-    printf 'Задача: свести расхождение между этой машиной и удалённой копией.\n\n'
-    printf 'Состояние (по `fraim publish`):\n'
-    printf -- '  адрес:    %s\n' "$_pub_url"
-    printf -- '  ветка:    %s\n' "$_pub_br"
-    printf -- '  здесь:    %s\n' "$_pub_local"
-    printf -- '  на хосте: %s — этого коммита здесь нет\n' "$PUB_HOST_SHA"
-    printf '\nПорядок работы:\n'
-    printf '1. Покажи, что там: git fetch origin, затем git log --oneline HEAD..origin/%s\n' "$_pub_br"
+    printf 'Project: %s\n' "$_pub_root"
+    printf 'Task: reconcile the divergence between this machine and the remote copy.\n\n'
+    printf 'State (as `fraim publish` sees it):\n'
+    printf -- '  url:     %s\n' "$_pub_url"
+    printf -- '  branch:  %s\n' "$_pub_br"
+    printf -- '  here:    %s\n' "$_pub_local"
+    printf -- '  remote:  %s — this commit is not here\n' "$PUB_HOST_SHA"
+    printf '\nSteps:\n'
+    printf '1. Show what is there: git fetch origin, then git log --oneline HEAD..origin/%s\n' "$_pub_br"
     cat <<'BRIEF'
-2. Скажи словами, откуда это взялось и что будет потеряно в каждом варианте:
-   взять ту работу сюда или отправить эту туда.
-3. Ничего не сводить без моего «да». force-push не предлагать вовсе.
-4. Когда сведено — я запущу `fraim publish`, он сверится с хостом сам.
+2. Say in words where it came from and what each option would lose:
+   bring that work here, or send this work there.
+3. Reconcile nothing without my yes. Never suggest a force-push.
+4. Once reconciled, I run `fraim publish` — it checks against the remote itself.
 BRIEF
     publish_brief_close
     return 0

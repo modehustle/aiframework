@@ -265,7 +265,7 @@ rm -f "$PROJ/ai/fraim.conf"
 
 # The board: an open card is information, never alarm. Nothing on a card can go stale or
 # be blocked — it carries an intent, not a snapshot of the code.
-printf -- '---\nkind: task\ncreated: 2026-01-01\n---\n# Сделать X\n\n## Что и зачем\nx\n\n## Готово, когда\nx\n' \
+printf -- '---\nkind: task\ncreated: 2026-01-01\n---\n# Сделать X\n\n## What and why\nx\n\n## Done when\nx\n' \
     > "$PROJ/ai/tasks/do-x.md"
 git -C "$PROJ" add -A >/dev/null 2>&1; git -C "$PROJ" commit -qm "task: do-x" >/dev/null 2>&1
 "$FRAIM" status "$PROJ" >/dev/null 2>&1
@@ -608,13 +608,13 @@ printf '\nдетерминированные глаголы\n'
 
 # --- доска: карточки задач ------------------------------------------------
 card() { # title — тело карточки, как его присылает агент
-    printf '# %s\n\n## Что и зачем\nНужно, потому что нужно.\n\n## Готово, когда\nРаботает.\n' "$1"
+    printf '# %s\n\n## What and why\nНужно, потому что нужно.\n\n## Done when\nРаботает.\n' "$1"
 }
 card "Добавить вход" | "$FRAIM" task-new add-auth >/dev/null 2>&1
 check "task-new поставил карточку" "$([ -f "$PROJ2/ai/tasks/add-auth.md" ] && echo yes || echo no)" "yes"
 check "frontmatter: вид" "$(sed -n 's/^kind: //p' "$PROJ2/ai/tasks/add-auth.md")" "task"
 check "frontmatter: дата" "$(grep -c '^created: 20' "$PROJ2/ai/tasks/add-auth.md")" "1"
-check "карточка сохранена точкой" "$(git -C "$PROJ2" log --oneline -1 --format=%s)" "task: add-auth — поставлена"
+check "карточка сохранена точкой" "$(git -C "$PROJ2" log --oneline -1 --format=%s)" "task: add-auth — added"
 # В карточке нет ничего, что могло бы протухнуть: ни провенанса, ни плана.
 check "в карточке нет провенанса" "$(grep -c 'Based on\|Plan provenance' "$PROJ2/ai/tasks/add-auth.md")" "0"
 card "x" | "$FRAIM" task-new add-auth >/dev/null 2>&1
@@ -624,7 +624,7 @@ check "task-new требует kebab-case" "$?" "2"
 "$FRAIM" task-new no-body </dev/null >/dev/null 2>&1
 check "без тела карточки — отказ" "$?" "2"
 printf '# Только заголовок\n' | "$FRAIM" task-new no-sections >/dev/null 2>&1
-check "без «Что и зачем» и «Готово, когда» — отказ" "$?" "2"
+check "без «What and why» и «Done when» — отказ" "$?" "2"
 printf -- '---\nkind: master\n---\n# x\n' | "$FRAIM" task-new own-fm >/dev/null 2>&1
 check "frontmatter от агента — отказ" "$?" "2"
 check "отказы ничего не оставили" "$(ls "$PROJ2/ai/tasks" | grep -c 'no-body\|no-sections\|own-fm\|^\.')" "0"
@@ -659,7 +659,7 @@ ARCH=$(find "$PROJ2/ai/archive/tasks" -name '*_web-login.md')
 check "карточка в архиве" "$([ -n "$ARCH" ] && echo yes || echo no)" "yes"
 check "архив: исход" "$(sed -n 's/^outcome: //p' "$ARCH")" "done"
 check "архив: итог" "$(sed -n 's/^result: //p' "$ARCH")" '"вход работает"'
-check "закрытие сохранено точкой" "$(git -C "$PROJ2" log --oneline -1 --format=%s)" "archive: web-login — выполнена"
+check "закрытие сохранено точкой" "$(git -C "$PROJ2" log --oneline -1 --format=%s)" "archive: web-login — done"
 "$FRAIM" tasks 2>/dev/null | grep -q 'в работе, 1 из 1'
 check "проект в работе — вычислено" "$?" "0"
 "$FRAIM" task-seal add-auth --dropped "передумали" >/dev/null 2>&1
@@ -928,21 +928,21 @@ check "find возвращает запись решения целиком с �
 check "find без совпадений — exit 1" "$?" "1"
 
 # --- бэклог: открытые вопросы ------------------------------------------------
-printf '# Нужен ли кэш?\n\n## В чём вопрос\nМедленно.\n\n## Почему важно\nХолодный старт.\n' |
+printf '# Нужен ли кэш?\n\n## Question\nМедленно.\n\n## Why it matters\nХолодный старт.\n' |
     "$FRAIM" backlog-new cache-q --from сессия >/dev/null 2>&1
 check "вопрос записан в бэклог" "$(sed -n 's/^from: //p' "$PROJ2/ai/backlog/cache-q.md")" "сессия"
-check "вопрос сохранён точкой" "$(git -C "$PROJ2" log --oneline -1 --format=%s)" "backlog: cache-q — записан"
+check "вопрос сохранён точкой" "$(git -C "$PROJ2" log --oneline -1 --format=%s)" "backlog: cache-q — added"
 printf '# x\n' | "$FRAIM" backlog-new bare-q >/dev/null 2>&1
-check "вопрос без «В чём вопрос» и «Почему важно» — отказ" "$?" "2"
+check "вопрос без «Question» и «Why it matters» — отказ" "$?" "2"
 "$FRAIM" backlog 2>/dev/null | grep -q 'cache-q — Нужен ли кэш?'
 check "fraim backlog показывает вопрос" "$?" "0"
 "$FRAIM" find кэш 2>/dev/null | grep -q 'ai/backlog/cache-q.md'
 check "find ищет и в бэклоге" "$?" "0"
-printf '# Сделать кэш\n\n## Что и зачем\nx\n\n## Готово, когда\nx\n' | "$FRAIM" task-new add-cache --from cache-q >/dev/null 2>&1
+printf '# Сделать кэш\n\n## What and why\nx\n\n## Done when\nx\n' | "$FRAIM" task-new add-cache --from cache-q >/dev/null 2>&1
 check "вопрос стал задачей" "$([ -f "$PROJ2/ai/tasks/add-cache.md" ] && [ ! -f "$PROJ2/ai/backlog/cache-q.md" ] && echo yes || echo no)" "yes"
-check "архив вопроса называет задачу" "$(grep -c 'стал задачей add-cache' "$PROJ2"/ai/archive/backlog/*_cache-q.md)" "1"
-check "карточка ссылается на вопрос" "$(grep -c 'Из бэклога: `ai/archive/backlog/' "$PROJ2/ai/tasks/add-cache.md")" "1"
-printf '# Q\n\n## В чём вопрос\nq\n\n## Почему важно\nq\n' | "$FRAIM" backlog-new drop-q >/dev/null 2>&1
+check "архив вопроса называет задачу" "$(grep -c 'became task add-cache' "$PROJ2"/ai/archive/backlog/*_cache-q.md)" "1"
+check "карточка ссылается на вопрос" "$(grep -c 'From the backlog: `ai/archive/backlog/' "$PROJ2/ai/tasks/add-cache.md")" "1"
+printf '# Q\n\n## Question\nq\n\n## Why it matters\nq\n' | "$FRAIM" backlog-new drop-q >/dev/null 2>&1
 "$FRAIM" backlog-drop drop-q "уже не важно" >/dev/null 2>&1
 check "снятый вопрос в архиве с причиной" "$(sed -n 's/^outcome: //p' "$PROJ2"/ai/archive/backlog/*_drop-q.md)" "dropped"
 "$FRAIM" task-seal add-cache "x" >/dev/null 2>&1
@@ -982,7 +982,7 @@ mkdir -p "$CL/ai/tasks/old-plan"
 printf '# Task Context\n\n## Goal\nСделать Y.\n\n## Why\nНадо.\n' > "$CL/ai/tasks/old-plan/context.md"
 printf '# Task\n\n## Summary\nДобавить Y.\n\n## Acceptance Criteria\n- [ ] Y есть\n' > "$CL/ai/tasks/old-plan/task.md"
 # открытая карточка — доску чистка НЕ трогает
-printf '# Открытая\n\n## Что и зачем\nx\n\n## Готово, когда\nx\n' | "$FRAIM" task-new open-card >/dev/null 2>&1
+printf '# Открытая\n\n## What and why\nx\n\n## Done when\nx\n' | "$FRAIM" task-new open-card >/dev/null 2>&1
 for i in 1 2 3; do
     printf 'c%s\n' "$i" >> "$CL/app.py"
     git -C "$CL" add app.py >/dev/null; git -C "$CL" commit -qm "fix: c$i" >/dev/null
@@ -1044,7 +1044,7 @@ check "брошенное расследование заархивирован�
 check "в архиве записано, что расследование брошено" \
       "$(cat "$CL"/ai/archive/*investigate_abandoned-one/findings.md | grep -c '^## Abandoned$')" "1"
 check "и что уборка не проверялась" \
-      "$(cat "$CL"/ai/archive/*investigate_abandoned-one/findings.md | grep -c 'Уборка не проверялась')" "1"
+      "$(cat "$CL"/ai/archive/*investigate_abandoned-one/findings.md | grep -c 'Cleanup was never checked')" "1"
 check "задача старого формата стала карточкой" "$(sed -n 's/^kind: //p' "$CL/ai/tasks/old-plan.md" 2>/dev/null)" "task"
 check "в карточку перенесено намерение" "$(grep -c '^Сделать Y.$' "$CL/ai/tasks/old-plan.md" 2>/dev/null)" "1"
 check "старый план сохранён в архиве" "$([ -f "$CL/ai/archive/legacy-plans/old-plan/task.md" ] && echo yes || echo no)" "yes"
@@ -1102,16 +1102,21 @@ check "после upgrade проверка стандарта молчит" "$("
 "$FRAIM" upgrade >/dev/null 2>&1
 check "upgrade идемпотентен" "$("$FRAIM" status "$OLD" 2>/dev/null | grep -c 'отстал от стандарта')" "0"
 # Суждение upgrade не делает, а ставит на доску: карта без разделов — пункт задачи миграции.
-check "карта без разделов — задача миграции" "$(grep -c 'ARCHITECTURE.md без разделов' "$OLD/ai/tasks/fraim-migration.md" 2>/dev/null)" "1"
-check "повторный upgrade пункт не дублирует" "$(grep -c 'ARCHITECTURE.md без разделов' "$OLD/ai/tasks/fraim-migration.md" 2>/dev/null)" "1"
+check "карта без разделов — задача миграции" "$(grep -c 'ARCHITECTURE.md has no' "$OLD/ai/tasks/fraim-migration.md" 2>/dev/null)" "1"
+check "повторный upgrade пункт не дублирует" "$(grep -c 'ARCHITECTURE.md has no' "$OLD/ai/tasks/fraim-migration.md" 2>/dev/null)" "1"
 check "upgrade завёл бэклог" "$([ -d "$OLD/ai/backlog" ] && echo yes || echo no)" "yes"
 mkdir -p "$OLD/ai/tasks/empty-plan"; printf '# Task\n' > "$OLD/ai/tasks/empty-plan/task.md"
 "$FRAIM" upgrade >/dev/null 2>&1
 check "неразобранная задача — второй пункт той же карточки" \
       "$(grep -c '^- ' "$OLD/ai/tasks/fraim-migration.md")$(grep -c 'empty-plan' "$OLD/ai/tasks/fraim-migration.md")" "21"
-check "пункты стоят в «Что и зачем», а не после «Готово, когда»" \
-      "$(sed -n '/^## Готово, когда/,$p' "$OLD/ai/tasks/fraim-migration.md" | grep -c '^- ')" "0"
+check "пункты стоят в «What and why», а не после «Done when»" \
+      "$(sed -n '/^## Done when/,$p' "$OLD/ai/tasks/fraim-migration.md" | grep -c '^- ')" "0"
 check "старый план сохранён" "$([ -f "$OLD/ai/archive/legacy-plans/empty-plan/task.md" ] && echo yes || echo no)" "yes"
+# Cards from before the English format: their headings are renamed in place, the body kept.
+printf -- '---\nkind: task\ncreated: 2026-10-01\n---\n# Старая\n\n## Что и зачем\nтело\n\n## Готово, когда\nготово\n' > "$OLD/ai/tasks/ru-card.md"
+"$FRAIM" upgrade >/dev/null 2>&1
+check "старые заголовки карточки переименованы" \
+      "$(grep -c '^## What and why$' "$OLD/ai/tasks/ru-card.md")$(grep -c '^## Done when$' "$OLD/ai/tasks/ru-card.md")$(grep -c '^тело$' "$OLD/ai/tasks/ru-card.md")" "111"
 
 # --- очередь и фундамент как данные -----------------------------------------
 QP="$SANDBOX/queueproj"
@@ -1119,8 +1124,8 @@ mkdir -p "$QP"
 git -C "$QP" init -q; git -C "$QP" config user.email t@t; git -C "$QP" config user.name t
 cd "$QP" || exit 1
 "$FRAIM" scaffold >/dev/null 2>&1
-printf '# Проект\n\n## Что и зачем\nx\n\n## Готово, когда\nx\n' | "$FRAIM" task-new proj-one --master >/dev/null 2>&1
-printf '# Часть\n\n## Что и зачем\nx\n\n## Готово, когда\nx\n' | "$FRAIM" task-new part-one --parent proj-one >/dev/null 2>&1
+printf '# Проект\n\n## What and why\nx\n\n## Done when\nx\n' | "$FRAIM" task-new proj-one --master >/dev/null 2>&1
+printf '# Часть\n\n## What and why\nx\n\n## Done when\nx\n' | "$FRAIM" task-new part-one --parent proj-one >/dev/null 2>&1
 J=$("$FRAIM" status --json 2>/dev/null)
 check "json: вид и родитель каждой карточки" \
       "$(printf '%s' "$J" | grep -c '"slug": "proj-one", "kind": "master", "parent": ""')$(printf '%s' "$J" | grep -c '"slug": "part-one", "kind": "task", "parent": "proj-one"')" "11"
@@ -1217,11 +1222,11 @@ check "отказ называет обход" "$(printf '%s' "$OUT" | grep -c '
 check "отказ печатает задание агенту" \
       "$(printf '%s' "$OUT" | grep -c 'Отдай это агенту')" "1"
 check "задание самодостаточно: в нём путь проекта" \
-      "$(printf '%s' "$OUT" | grep -c "Проект: $PUBS")" "1"
+      "$(printf '%s' "$OUT" | grep -c "Project: $PUBS")" "1"
 check "задание называет найденное поимённо" "$(printf '%s' "$OUT" | grep -c '  - \.env')" "1"
-check "задание ставит границы агенту" "$(printf '%s' "$OUT" | grep -c 'Границы:')" "1"
+check "задание ставит границы агенту" "$(printf '%s' "$OUT" | grep -c 'Limits:')" "1"
 check "задание не советует переписывать историю молча" \
-      "$(printf '%s' "$OUT" | grep -c 'Не запускай без моего')" "1"
+      "$(printf '%s' "$OUT" | grep -c 'Do not run it without my yes')" "1"
 
 git init -q --bare "$SANDBOX/pub-remote2.git"
 OUT=$("$FRAIM" publish --url "$SANDBOX/pub-remote2.git" --yes --force 2>&1); RC=$?
@@ -1298,7 +1303,7 @@ check "и что публикация после этого продолжитс
       "$(printf '%s' "$CANC" | grep -c 'без находок')" "1"
 # Границы задания те же, что и при отказе системы: агент чистит, но не публикует.
 check "задание по-прежнему запрещает публиковать" \
-      "$(printf '%s' "$CANC" | grep -c 'ничего не публиковать и не пушить')" "1"
+      "$(printf '%s' "$CANC" | grep -c 'publish nothing and push nothing')" "1"
 
 # Класс, а не случай: если ветку отказа однажды упростят обратно до say «отменено»,
 # задание исчезнет молча — на терминале, куда тесты не заходят.
@@ -1390,8 +1395,8 @@ check "на хосте ничего не затёрто" \
 check "расхождение объяснено, а не названо ошибкой" \
       "$(printf '%s' "$OUT" | grep -c 'работа, которой нет здесь')" "1"
 check "расхождение отдаёт задание агенту" \
-      "$(printf '%s' "$OUT" | grep -c 'свести расхождение')" "1"
-check "задание запрещает force-push" "$(printf '%s' "$OUT" | grep -c 'force-push не предлагать')" "1"
+      "$(printf '%s' "$OUT" | grep -c 'reconcile the divergence')" "1"
+check "задание запрещает force-push" "$(printf '%s' "$OUT" | grep -c 'Never suggest a force-push')" "1"
 
 # Провайдер, которого нет, отвечает инструкцией и полом — а не «нельзя». Проект здесь
 # чистый нарочно: иначе до провайдера дело не дойдёт, его остановит гейт безопасности.
@@ -2368,7 +2373,7 @@ check "рабочее дерево дирижёра не тронуто" \
       "$(git -C "$CB" rev-parse --abbrev-ref HEAD)" "master"
 check "временных чекаутов не осталось" \
       "$(git -C "$CB" worktree list --porcelain | grep -c 'fraim-collect')" "0"
-check "журнал получил запись о сборе" "$(grep -c 'Сбор волны 1' "$BDIR/journal.md")" "1"
+check "журнал получил запись о сборе" "$(grep -c 'Wave 1 collected' "$BDIR/journal.md")" "1"
 check "collected.tsv помнит, что вернулось" "$(grep -c "	one	" "$BDIR/collected.tsv")" "1"
 
 # Повтор: собранное не собирается дважды.
@@ -2522,8 +2527,8 @@ check "собранное действительно в стволе" \
       "$(git -C "$AB" show main:two.py | tail -1)" "two"
 check "слияние помечено как наше" \
       "$(git -C "$AB" log -1 --format=%B main | grep -c '^fraim: ')" "1"
-check "сборка помечена принятой" "$(grep -c '^Принял: дирижёр' "$ABDIR/accepted")" "1"
-check "журнал знает про ствол" "$(grep -c 'увёл в ствол дирижёр' "$ABDIR/journal.md")" "1"
+check "сборка помечена принятой" "$(grep -c '^Accepted by: conductor' "$ABDIR/accepted")" "1"
+check "журнал знает про ствол" "$(grep -c 'merged into the trunk by the conductor' "$ABDIR/journal.md")" "1"
 check "список знает, что сборка в стволе" \
       "$(sh -c "$DLIB"'; build_list "$AB"' | grep -c 'в стволе')" "1"
 

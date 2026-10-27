@@ -12,7 +12,7 @@ You are the **scout**, not the builder. The rest of the family assumes you alrea
 
 > You belong to the read-and-reason class alongside `/orient`, `/prune`, and `design-session`: you load reality, produce an artifact, and hand the baton to the next workflow. Like them, **you do not leave code behind.** Unlike `/orient` (read-only), you MAY run and instrument code to reproduce and observe — but every byte of that is disposable and is reverted at the end. The only thing that survives this session is the finding.
 
-> **Terminal value: this feeds the next working session.** The whole point of a successful investigation is a root cause precise enough to act on. The archived `findings.md` is what that session reads — directly, or through a task card whose «Ссылки» point at it — the same way a Design Brief feeds bootstrap's Phase 1 Path A. Keep that in view: you are producing the raw material for whoever acts next, not fixing anything yourself.
+> **Terminal value: this feeds the next working session.** The whole point of a successful investigation is a root cause precise enough to act on. The archived `findings.md` is what that session reads — directly, or through a task card whose «Links» point at it — the same way a Design Brief feeds bootstrap's Phase 1 Path A. Keep that in view: you are producing the raw material for whoever acts next, not fixing anything yourself.
 
 > Run this on a **strong model** — forming and eliminating hypotheses against real code is `/prune`-grade reasoning, not work for a cheap executor.
 
@@ -27,7 +27,7 @@ You are the **scout**, not the builder. The rest of the family assumes you alrea
 An investigation ends in exactly one of two ways, and **both are legitimate, successful exits:**
 
 - **DIAGNOSIS** — you found the root cause. The finding routes onward to the right workflow.
-- **DEAD-END** — you could not crack it within the discipline. This is **not a failure of the workflow.** Exactly like saying «this is not done» against a task's «Готово, когда» is the honest close of a working session — declaring a dead-end is the scout doing its job. A dead-end that records *what was ruled out* and *where you got stuck* is valuable: it stops you (or a future session) from re-walking the same exhausted paths.
+- **DEAD-END** — you could not crack it within the discipline. This is **not a failure of the workflow.** Exactly like saying «this is not done» against a task's «Done when» is the honest close of a working session — declaring a dead-end is the scout doing its job. A dead-end that records *what was ruled out* and *where you got stuck* is valuable: it stops you (or a future session) from re-walking the same exhausted paths.
 
 This framing exists to kill the failure mode this workflow is most prone to: an agent that will not admit a dead-end and instead **flails** — randomly changing timeouts, rewriting logic, guessing — precisely the unguarded behavior the whole system exists to prevent. Here, **declaring the dead-end is rewarded, not shameful.** There is no incentive to flail.
 

@@ -39,13 +39,13 @@ convenience in `install.sh`). Distribution: shell installer + Claude Code plugin
   condensed) with the verb list first and a completeness mark last; `fraim find KEY…` returns
   whole entries (a decision, a card, a list item, a table row, a paragraph) with their heading.
 - **backlog question** (`ai/backlog/<slug>.md`) — an open question the human chose to keep, not a
-  task: frontmatter `created`, optional `from`; body `# title`, `## В чём вопрос`, `## Почему
+  task: frontmatter `created`, optional `from`; body `# title`, `## Question`, `## Почему
   важно`.
   Closed into `ai/archive/backlog/` — dropped with a reason, or `outcome: task` when
   `fraim task-new --from <q>` turned it into a card.
 - **task card** (`ai/tasks/<slug>.md`) — an intent, never a plan: frontmatter `kind`
   (`task` | `master`), `created`, optional `parent` (a master's slug, one level only); body:
-  title, `## Что и зачем`, `## Готово, когда`, optional `## Ссылки`. The state is the file's
+  title, `## What and why`, `## Done when`, optional `## Links`. The state is the file's
   place: on the board = open, `ai/archive/tasks/<date>_<slug>.md` = closed (the verb adds
   `closed`, `outcome: done|dropped`, `result`, `commit`). A master's «in progress» is computed
   from its closed children; only the human closes a master. Only the human puts a card on the

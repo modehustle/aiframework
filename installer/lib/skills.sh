@@ -166,8 +166,8 @@ these, run it: the format, the paths, the timestamps and the commit are not your
 $(vt_skill)
 | \`fraim scaffold\` | lay the foundation files and \`ai/\` — never by hand |
 
-Some of them **refuse**: \`task-new\` will not write a card without a title, «Что и зачем» and
-«Готово, когда»; \`task-seal\` will not close a project while its subtasks are open;
+Some of them **refuse**: \`task-new\` will not write a card without a title, «What and why» and
+«Done when»; \`task-seal\` will not close a project while its subtasks are open;
 \`investigate-seal\` wants exactly one outcome branch and a report on the cleanup. A refusal is the check doing its job — fix what it names and run it again.
 Never archive by hand instead.
 

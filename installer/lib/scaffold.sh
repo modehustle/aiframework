@@ -116,10 +116,10 @@ scaffold_run() {
     # A project-level settings file, so thresholds travel with the repository.
     if [ ! -f "$_root/ai/fraim.conf" ]; then
         {
-            printf '# fraim — настройки этого проекта. Едут в git вместе с репозиторием.\n'
-            printf '# Показать, что действует и откуда: fraim config\n#\n'
+            printf '# fraim — settings of this project. They travel in git with the repository.\n'
+            printf '# What is in effect and where it came from, with descriptions: fraim config\n#\n'
             config_table | while IFS='|' read -r _k _v _d; do
-                printf '# %s\n# %s = %s\n' "$_d" "$_k" "$_v"
+                printf '# %s = %s\n' "$_k" "$_v"
             done
         } > "$_root/ai/fraim.conf"
         _created=$((_created + 1)); ok "ai/fraim.conf"
@@ -154,7 +154,7 @@ scaffold_run() {
     # The skeleton is only a save point if it is committed — an uncommitted skeleton
     # leaves `fraim undo` with nothing to show and the invariant "every save point is a
     # commit" false on the very first command a project runs.
-    verb_commit "$_root" scaffold "разворачиваю фундамент" \
+    verb_commit "$_root" scaffold "lay down the foundation" \
         README.md ARCHITECTURE.md CONVENTIONS.md DECISIONS.md \
         AGENTS.md CLAUDE.md .gitignore ai
 

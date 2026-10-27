@@ -122,11 +122,11 @@ these, run it: the format, the paths, the timestamps and the commit are not your
 | changed structure, components or data flow | `fraim arch "SECTION" [--new] [--in FILE]` | rewrites one section of ARCHITECTURE.md (or CONVENTIONS.md / STACK.md); body on stdin |
 | something bit you that would trap the next change | `fraim pitfall "LINE"…` | propose the line first; write it only on the human's yes |
 | need to undo your own uncommitted edit | `fraim restore PATH…` | back to the last save point; a created file is removed |
-| open questions remain, important but not for now | `fraim backlog-new SLUG [--from WHERE]` | list them, ask; only approved ones; body on stdin: # title, ## В чём вопрос, ## Почему важно |
+| open questions remain, important but not for now | `fraim backlog-new SLUG [--from WHERE]` | list them, ask; only approved ones; body on stdin: # title, ## Question, ## Why it matters |
 | finished a task taken from the board | `fraim task-seal SLUG "RESULT" [--dropped]` | closes the card into the archive with one line of outcome; a master task only on the human's word |
 | wants to know where things stand | `fraim status` | the watchman's verdict; report it, do not act on it |
 | wants to know what is planned | `fraim tasks` | open tasks, projects with progress, age of each card |
-| wants work set aside, or a project opened | `fraim task-new SLUG [--master \| --parent M \| --from Q]` | via /make-task; body on stdin: # title, ## Что и зачем, ## Готово, когда, ## Ссылки |
+| wants work set aside, or a project opened | `fraim task-new SLUG [--master \| --parent M \| --from Q]` | via /make-task; body on stdin: # title, ## What and why, ## Done when, ## Links |
 | says a task is really a project | `fraim task-master SLUG` | turns an open task into a master task |
 | wants to review open questions | `fraim backlog` | the backlog; a question that stops mattering → fraim backlog-drop |
 | drops an open question | `fraim backlog-drop SLUG "WHY"` | closes it into the archive with the reason |
@@ -137,8 +137,8 @@ these, run it: the format, the paths, the timestamps and the commit are not your
 | a prune is finished | `fraim prune-mark` | inside /prune |
 | `fraim scaffold` | lay the foundation files and `ai/` — never by hand |
 
-Some of them **refuse**: `task-new` will not write a card without a title, «Что и зачем» and
-«Готово, когда»; `task-seal` will not close a project while its subtasks are open;
+Some of them **refuse**: `task-new` will not write a card without a title, «What and why» and
+«Done when»; `task-seal` will not close a project while its subtasks are open;
 `investigate-seal` wants exactly one outcome branch and a report on the cleanup. A refusal is the check doing its job — fix what it names and run it again.
 Never archive by hand instead.
 

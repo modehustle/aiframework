@@ -1,6 +1,6 @@
 # INVESTIGATION — {{SLUG}}
 
-<!-- fraim:stub — /investigate заполняет разделы ниже и удаляет эту строку. -->
+<!-- fraim:stub — /investigate fills in the sections below and deletes this line. -->
 
 ## Baseline / provenance
 {{PROVENANCE}}

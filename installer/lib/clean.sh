@@ -127,12 +127,12 @@ clean_investigate_abandon() {
     fi
     {
         printf '\n## Abandoned\n'
-        printf -- '- Закрыто чисткой %s: исход не записан, расследование не двигалось %s %s.\n' \
-            "$(date +%Y-%m-%d)" "$_age" "$(wm_plural "$_age" день дня дней)"
-        printf -- '- Уборка не проверялась: раздел «## Restored to baseline» остался незаполненным.\n'
-        printf -- '- Это не диагноз и не тупик. Если вопрос ещё жив — заводи расследование заново.\n'
+        printf -- '- Closed by fraim clean on %s: no outcome recorded; the investigation had not moved for %s days.\n' \
+            "$(date +%Y-%m-%d)" "$_age"
+        printf -- '- Cleanup was never checked: «## Restored to baseline» was left unfilled.\n'
+        printf -- '- This is neither a diagnosis nor a dead end. If the question is still alive, open a new investigation.\n'
     } >> "$_f" || return 1
-    verb_archive "$_root" "$_dir" "investigate_$_slug" abandon "investigate $_slug — брошено"
+    verb_archive "$_root" "$_dir" "investigate_$_slug" abandon "investigate $_slug — abandoned"
 }
 
 # Одно действие: выполнить, показать его вывод и — если оно отказало — запомнить, ЧЕМ
@@ -183,7 +183,7 @@ clean_apply() {
                 else _refused=$((_refused + 1)); fi ;;
             commit)
                 # shellcheck disable=SC2086
-                if clean_run "$_text" verb_commit "$_root" fix "чистка: сохранены изменения фундамента и ai/" $_arg; then
+                if clean_run "$_text" verb_commit "$_root" fix "clean: saved foundation and ai/ changes" $_arg; then
                     _done=$((_done + 1))
                 else _refused=$((_refused + 1)); fi ;;
         esac
@@ -212,7 +212,7 @@ clean_upgrade() {
     scaffold_run "$_cu_root" >/dev/null 2>&1 || { printf 'не удалось развернуть скелет\n' >&2; return 1; }
     scaffold_sections "$_cu_root" >/dev/null 2>&1 || { printf 'не удалось дописать разделы\n' >&2; return 1; }
     tasks_upgrade "$_cu_root" >/dev/null 2>&1 || { printf 'не удалось перевести задачи старого формата\n' >&2; return 1; }
-    verb_commit "$_cu_root" upgrade "фундамент доведён до стандарта" \
+    verb_commit "$_cu_root" upgrade "foundation brought up to the standard" \
         README.md ARCHITECTURE.md CONVENTIONS.md DECISIONS.md \
         AGENTS.md CLAUDE.md .gitignore ai >/dev/null 2>&1 || true
     ok "готово"

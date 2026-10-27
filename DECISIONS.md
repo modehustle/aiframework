@@ -3,6 +3,29 @@
 > Newest on top. One entry per decision. Never rewrite history — supersede with a new
 > entry, or relocate stale entries to `ai/archive/decisions_log.md` via `/prune`.
 
+## 2026-10-27 — the product is English inside; Russian is only the operator's locale
+
+Context: the owner's model — fraim is an English product, because agents work better in English; the
+human talks to the agent in any language and uses fraim in the locale they set. An audit found
+Russian far beyond the operator's messages: card headings checked by the verbs, text the CLI writes
+into projects (migration card, backlog link, abandoned-investigation note, build journal, accepted
+marker, worker brief, publish briefs, fraim.conf header), commit messages, ~565 lines of procedures
+and ~300 lines of code comments. CONVENTIONS.md even required procedure text and commit messages in
+Russian.
+Decision: (1) Everything inside the product is English: code, comments, procedures, data formats,
+everything written into a project or into git history, everything addressed to the agent. (2) Card
+headings become `## What and why`, `## Done when`, `## Links`; backlog: `## Question`, `## Why it
+matters`; `fraim upgrade` renames the old Russian headings in place (heading lines only). (3) Build
+journals are written in English; `build_base_sha` still reads the old «- База:» line. (4) Russian
+stays only as the operator's locale — messages, refusals, the watchman's verdict, `fraim help` — for
+now hardcoded; it moves to a message catalog (`locale/ru`) together with the review of the
+deterministic layer. (5) Project docs may stay Russian until a public release. This supersedes the
+CONVENTIONS rule «procedure text, commit messages and user-facing CLI output in Russian». Procedures
+and code comments are translated in the following commits.
+Alternatives: translating the operator's messages now rejected — they move into a catalog first,
+otherwise they are rewritten twice; keeping Russian card headings rejected — a data format in one
+human language is part of the product, not a locale.
+
 ## 2026-10-27 — справочник глаголов — по ситуациям и по-английски для агента
 
 Decision: таблица `vt_table` упорядочена по моменту сессии — начало, по ходу работы, в конце куска,

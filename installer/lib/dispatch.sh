@@ -417,32 +417,31 @@ dispatch_write_task() {
     mkdir -p "$_wt_dir" || return 1
 
     {
-        printf '# Подзадача %s\n\n' "$_wt_id"
+        printf '# Subtask %s\n\n' "$_wt_id"
         printf '## Summary\n%s\n\n' "$_wt_sum"
         printf '## Files to Change\n'
         printf '%s\n' "$_wt_paths" | tr ',' '\n' | while read -r _p; do
             [ -n "$_p" ] && printf -- '- `%s`\n' "$_p"
         done
         printf '\n## Executor Rules\n'
-        printf -- '- Роль этой подзадачи: %s\n' "$_wt_role"
-        printf -- '- Меняй только файлы из Files to Change. Всё остальное дерево принадлежит\n'
-        printf -- '  другим воркерам этой сборки: правка вне списка сольётся молча и без конфликта.\n'
-        printf -- '- Нужен файл вне списка — не трогай его, а останови работу и скажи об этом.\n'
-        printf -- '  Дирижёр перепланирует сборку; это дешевле молчаливого пересечения.\n'
+        printf -- '- This subtask runs as: %s (the «Fleet worker» rules of /run-task).\n' "$_wt_role"
+        printf -- '- Change only the files in Files to Change. The rest of the tree belongs to the\n'
+        printf -- '  other workers of this build: an edit outside the list merges silently, with no conflict.\n'
+        printf -- '- Need a file outside the list? Do not touch it — stop and say so. The conductor\n'
+        printf -- '  replans the build; that is cheaper than a silent overlap.\n'
         printf -- '\n'
-        printf -- '- **Фундамент проекта в этой подзадаче не твой.** `DECISIONS.md`,\n'
-        printf -- '  `ARCHITECTURE.md`, `CONVENTIONS.md` не трогай, даже если `AGENTS.md` проекта\n'
-        printf -- '  велит обновлять их после изменения. Здесь это правило отменено: под\n'
-        printf -- '  параллелизмом фундамент пишет сборка, один раз, после приёмки\n'
-        printf -- '  (MODES.md §2, инвариант 0.4). Два воркера, дописавшие DECISIONS.md\n'
-        printf -- '  каждый от себя, дают конфликт слияния на ровном месте.\n'
-        printf -- '- Что стоило бы записать в фундамент — напиши словами в свой отчёт. Дирижёр\n'
-        printf -- '  соберёт это со всей сборки и внесёт одной записью.\n'
+        printf -- '- **The project foundation is not yours in this subtask.** Do not touch `DECISIONS.md`,\n'
+        printf -- '  `ARCHITECTURE.md` or `CONVENTIONS.md`, even if the project AGENTS.md says to update\n'
+        printf -- '  them after a change. That rule is suspended here: under parallelism the build writes\n'
+        printf -- '  the foundation once, after acceptance (invariant 0.4). Two workers each appending to\n'
+        printf -- '  DECISIONS.md produce a merge conflict out of nothing.\n'
+        printf -- '- Whatever belongs in the foundation — write it in words in your report. The conductor\n'
+        printf -- '  gathers it from the whole build and records it once.\n'
         printf -- '\n'
-        printf -- '- **Закоммить свою работу.** Не оставляй сделанное незакоммиченным: сборку\n'
-        printf -- '  собирают слиянием веток, и то, что не в коммите, до неё не доедет —\n'
-        printf -- '  сбор откажется собирать твою подзадачу и назовёт незакоммиченные файлы.\n'
-        printf -- '- Сборка %s. Приёмка одна на всю сборку, отдельной приёмки этой подзадачи нет.\n' "$_wt_build"
+        printf -- '- **Commit your work.** Do not leave it uncommitted: the build is assembled by merging\n'
+        printf -- '  branches, and what is not committed never reaches it — collect will refuse your\n'
+        printf -- '  subtask and name the uncommitted files.\n'
+        printf -- '- Build %s. There is one acceptance for the whole build, none per subtask.\n' "$_wt_build"
     } > "$_wt_dir/task.md" || return 1
 
     printf '%s\n' "$_wt_dir"
@@ -635,7 +634,7 @@ dispatch_launch() {
     # Appended, not truncated: a second wave must not erase the first wave's ids, which are
     # the only record of who ran what if the environment forgets.
     _dl_file=$(build_fleet_file "$_dl_root" "$_dl_build")
-    printf '# сборка %s · волна %s · run %s · снято %s\n' \
+    printf '# build %s · wave %s · run %s · taken %s\n' \
         "$_dl_build" "$_dl_wave" "$_dl_run" "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" >> "$_dl_file"
 
     _dl_bad=0
@@ -739,19 +738,19 @@ build_seal() {
     fi
 
     {
-        printf '# Журнал сборки %s\n\n' "$_bs_id"
-        printf '## Состав\n\n'
-        printf -- '- Заведена: %s\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
-        printf -- '- База: %s\n' "$(cd "$_bs_root" && git rev-parse --short HEAD 2>/dev/null || echo '—')"
-        printf -- '- План: ai/builds/%s/plan.md\n\n' "$_bs_id"
-        printf '| подзадача | роль | исход | вне своих путей |\n'
+        printf '# Build journal %s\n\n' "$_bs_id"
+        printf '## Contents\n\n'
+        printf -- '- Created: %s\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+        printf -- '- Base: %s\n' "$(cd "$_bs_root" && git rev-parse --short HEAD 2>/dev/null || echo '—')"
+        printf -- '- Plan: ai/builds/%s/plan.md\n\n' "$_bs_id"
+        printf '| subtask | role | outcome | outside its paths |\n'
         printf '|---|---|---|---|\n'
         dispatch_parse_plan "$_bs_plan" | while IFS='|' read -r _id _role _sum _paths; do
             [ -n "$_id" ] && printf '| %s | %s | — | — |\n' "$_id" "$_role"
         done
-        printf '\n## Уроки дирижёра\n\n'
-        printf '<!-- Заполняется после приёмки. MODES.md §11.4: класс уроков, которого нет\n'
-        printf '     у воркера — грабли раздачи, а не грабли кода. -->\n'
+        printf '\n## Conductor lessons\n\n'
+        printf '<!-- Filled in after acceptance. MODES.md §11.4: a class of lessons no worker\n'
+        printf '     has — the traps of dispatching, not the traps of the code. -->\n'
     } > "$_bs_dir/journal.md" || return 1
 
     printf '%s\n' "$_bs_dir/journal.md"
@@ -883,7 +882,7 @@ dispatch_collect() {
         fi
 
         if _co_merged=$(dispatch_merge_one "$_co_root" "$_co_branch" "$_co_sha" \
-                            "сборка $_co_build: подзадача $_co_id"); then
+                            "build $_co_build: subtask $_co_id"); then
             printf '  %-12s слита → %s\n' "$_co_id" "$_co_merged"
             printf '%s\t%s\t%s\t%s\n' "$_co_wave" "$_co_id" "$_co_merged" \
                 "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" >> "$_co_file"
@@ -905,11 +904,11 @@ dispatch_collect() {
     fi
 
     {
-        printf '\n## Сбор волны %s — %s\n\n' "$_co_wave" "$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+        printf '\n## Wave %s collected — %s\n\n' "$_co_wave" "$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
         if [ -f "$_co_file" ]; then
             awk -F'\t' -v w="$_co_wave" '$1 == w { printf "- %s → %s\n", $2, $3 }' "$_co_file"
         fi
-        [ "$_co_bad" -eq 0 ] || printf -- '- собрана не полностью: часть подзадач отклонена\n'
+        [ "$_co_bad" -eq 0 ] || printf -- '- collected partially: some subtasks were refused\n'
     } >> "$_co_dir/journal.md"
 
     [ "$_co_bad" -eq 0 ]
@@ -949,7 +948,8 @@ build_accepted_file() { printf '%s/accepted\n' "$(build_dir "$1" "$2")"; }
 # is missing or no longer resolves do we ask git for the fork point.
 build_base_sha() {
     _bb_root=$1; _bb_build=$2
-    _bb_s=$(sed -n 's/^- База: //p' "$(build_dir "$_bb_root" "$_bb_build")/journal.md" 2>/dev/null |
+    # «База» is how journals written before the English format name the line.
+    _bb_s=$(sed -n 's/^- Base: //p; s/^- База: //p' "$(build_dir "$_bb_root" "$_bb_build")/journal.md" 2>/dev/null |
             head -1 | tr -d ' ')
     if [ -n "$_bb_s" ] && [ "$_bb_s" != "—" ] &&
        git -C "$_bb_root" rev-parse --verify --quiet "$_bb_s^{commit}" >/dev/null 2>&1; then
@@ -1091,7 +1091,7 @@ build_land() {
     # Without it the undo of a trunk write would have to be hand-rolled git, which is the
     # one thing the human must never be handed.
     if ! git -C "$_bl_root" merge --no-ff \
-             -m "build: сборка $_bl_build" -m "fraim: $(fraim_version)" \
+             -m "build: $_bl_build" -m "fraim: $(fraim_version)" \
              "$_bl_branch" >/dev/null 2>&1; then
         git -C "$_bl_root" merge --abort >/dev/null 2>&1 || :
         printf >&2 'слияние в ствол не прошло — ствол ушёл вперёд, разрешай руками\n'
@@ -1240,20 +1240,20 @@ build_accept() {
     printf '  в ствол: %s ← %s (слияние %s)\n' "$_ba_trunk" "$_ba_branch" "$_ba_merge"
 
     {
-        printf 'Принял: дирижёр\n'
-        printf 'Когда: %s\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
-        printf 'Ветка сборки: %s\n' "$_ba_branch"
-        printf 'В ствол: %s, слияние %s\n' "$_ba_trunk" "$_ba_merge"
-        printf 'Отменить: fraim undo %s\n' "$_ba_merge"
+        printf 'Accepted by: conductor\n'
+        printf 'When: %s\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+        printf 'Build branch: %s\n' "$_ba_branch"
+        printf 'Into the trunk: %s, merge %s\n' "$_ba_trunk" "$_ba_merge"
+        printf 'Undo: fraim undo %s\n' "$_ba_merge"
     } > "$(build_accepted_file "$_ba_root" "$_ba_id")" || :
 
     {
-        printf '\n## Приёмка — %s\n\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
-        printf -- '- Проверил и увёл в ствол дирижёр: %s ← %s, слияние %s\n' \
+        printf '\n## Acceptance — %s\n\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+        printf -- '- Checked and merged into the trunk by the conductor: %s ← %s, merge %s\n' \
             "$_ba_trunk" "$_ba_branch" "$_ba_merge"
-        printf -- '- Мастер-проверка: %s\n' "$_ba_mc"
+        printf -- '- Project check: %s\n' "$_ba_mc"
         [ -n "$_ba_say" ] && printf '%s' "$_ba_say" | sed 's/^  */- /'
-        printf -- '- Отменить одной командой: fraim undo %s\n' "$_ba_merge"
+        printf -- '- Undo with one command: fraim undo %s\n' "$_ba_merge"
     } >> "$_ba_dir/journal.md"
 
     [ -n "$_ba_say" ] && printf '\n  на что посмотреть:\n%s' "$_ba_say"
