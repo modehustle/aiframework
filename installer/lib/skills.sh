@@ -99,7 +99,8 @@ empty scaffold: reading it means guessing, so stop); \`tasks\` — every open ca
 
 A \`shape\` finding means the project's foundation predates the current standard — laid down
 before \`AGENTS.md\`/\`CLAUDE.md\`, before \`ai/fraim.conf\`, or before a section the verbs write
-into. \`fraim upgrade\` brings it up to standard: additive, never overwriting content.
+into. \`fraim upgrade .\` brings it up to standard: additive, never overwriting content (bare
+\`fraim upgrade\` does every project registered on the machine).
 
 Exit codes: \`0\` healthy · \`1\` something needs the human · \`2\` project is not
 under the system.
@@ -191,7 +192,7 @@ A deterministic action has exactly one implementation.
 |---|---|
 | \`fraim init\` | lay the skills out again / pick up a newly installed harness |
 | \`fraim update\` | bring in a new version and lay it out (\`--check\` only reports) |
-| \`fraim upgrade\` | bring an existing project's foundation up to the current standard |
+| \`fraim upgrade [PATH]\` | bring every registered project (or the one at PATH) up to the current standard |
 | \`fraim clean\` | close every loose end whose answer is computable, in one pass |
 | \`fraim config\` | what settings are in effect and where each came from |
 | \`fraim projects\` | list, add or remove projects in the registry |

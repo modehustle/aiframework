@@ -1280,7 +1280,7 @@ cd "$OLD" || exit 1
 "$FRAIM" pitfall "verb has nowhere to write" >/dev/null 2>&1
 check "before upgrade the pitfall verb refuses" "$?" "2"
 
-"$FRAIM" upgrade >/dev/null 2>&1
+"$FRAIM" upgrade . >/dev/null 2>&1
 check "upgrade succeeded" "$?" "0"
 check "upgrade created AGENTS.md with the block" "$(grep -c 'fraim:begin' "$OLD/AGENTS.md")" "1"
 check "upgrade created CLAUDE.md with the pointer" "$(grep -c 'AGENTS.md' "$OLD/CLAUDE.md")" "2"
@@ -1290,14 +1290,14 @@ check "old file contents untouched" "$(grep -c '^rules$' "$OLD/CONVENTIONS.md")"
 check "after upgrade the pitfall verb works" "$?" "0"
 "$FRAIM" status "$OLD" >/dev/null 2>&1
 check "after upgrade the standard check is silent" "$("$FRAIM" status "$OLD" 2>/dev/null | grep -c 'отстал от стандарта')" "0"
-"$FRAIM" upgrade >/dev/null 2>&1
+"$FRAIM" upgrade . >/dev/null 2>&1
 check "upgrade is idempotent" "$("$FRAIM" status "$OLD" 2>/dev/null | grep -c 'отстал от стандарта')" "0"
 # upgrade makes no judgement calls, it puts them on the board: a map without sections is an item of the migration task.
 check "map without sections — a migration task" "$(grep -c 'ARCHITECTURE.md has no' "$OLD/ai/tasks/fraim-migration.md" 2>/dev/null)" "1"
 check "repeated upgrade does not duplicate the item" "$(grep -c 'ARCHITECTURE.md has no' "$OLD/ai/tasks/fraim-migration.md" 2>/dev/null)" "1"
 check "upgrade created the backlog" "$([ -d "$OLD/ai/backlog" ] && echo yes || echo no)" "yes"
 mkdir -p "$OLD/ai/tasks/empty-plan"; printf '# Task\n' > "$OLD/ai/tasks/empty-plan/task.md"
-"$FRAIM" upgrade >/dev/null 2>&1
+"$FRAIM" upgrade . >/dev/null 2>&1
 check "unsorted task — a second item on the same card" \
       "$(grep -c '^- ' "$OLD/ai/tasks/fraim-migration.md")$(grep -c 'empty-plan' "$OLD/ai/tasks/fraim-migration.md")" "21"
 check "items sit in «What and why», not after «Done when»" \
@@ -1305,9 +1305,36 @@ check "items sit in «What and why», not after «Done when»" \
 check "old plan kept" "$([ -f "$OLD/ai/archive/legacy-plans/empty-plan/task.md" ] && echo yes || echo no)" "yes"
 # Cards from before the English format: their headings are renamed in place, the body kept.
 printf -- '---\nkind: task\ncreated: 2026-10-01\n---\n# Старая\n\n## Что и зачем\nтело\n\n## Готово, когда\nготово\n' > "$OLD/ai/tasks/ru-card.md"
-"$FRAIM" upgrade >/dev/null 2>&1
+"$FRAIM" upgrade . >/dev/null 2>&1
 check "old card headings renamed" \
       "$(grep -c '^## What and why$' "$OLD/ai/tasks/ru-card.md")$(grep -c '^## Done when$' "$OLD/ai/tasks/ru-card.md")$(grep -c '^тело$' "$OLD/ai/tasks/ru-card.md")" "111"
+
+# With no path, upgrade is a machine command: every registered project, plus the one the
+# human stands in. A registry of its own, so the sandbox's other projects are not touched.
+UPH="$SANDBOX/uphome"; mkdir -p "$UPH"
+mkold() { # dir — a project laid down before AGENTS.md and the Known Pitfalls section
+    mkdir -p "$1/ai/tasks"; git -C "$1" init -q
+    git -C "$1" config user.email t@t; git -C "$1" config user.name t
+    printf '# ARCHITECTURE\nmap\n' > "$1/ARCHITECTURE.md"; printf '# CONVENTIONS\nrules\n' > "$1/CONVENTIONS.md"
+    printf '# DECISIONS\n' > "$1/DECISIONS.md"; printf '# README\n' > "$1/README.md"
+    git -C "$1" add -A >/dev/null 2>&1; git -C "$1" commit -qm base >/dev/null 2>&1
+}
+mkold "$SANDBOX/up a"; mkold "$SANDBOX/up-b"; mkold "$SANDBOX/up-here"
+mkdir -p "$SANDBOX/up-plain"
+printf '%s\n' "$SANDBOX/up a" "$SANDBOX/up-gone" "$SANDBOX/up-plain" "$SANDBOX/up-b" > "$UPH/projects"
+cd "$SANDBOX/up-here" || exit 1
+UPOUT=$(FRAIM_HOME="$UPH" "$FRAIM" upgrade </dev/null 2>&1)
+check "sweep: exit 0 when nothing failed" "$?" "0"
+check "sweep: every registered project upgraded, a path with a space too" \
+      "$(grep -c '^## Known Pitfalls / Lessons$' "$SANDBOX/up a/CONVENTIONS.md" "$SANDBOX/up-b/CONVENTIONS.md" | grep -c ':1$')" "2"
+check "sweep: the project the human stands in is upgraded" "$(grep -c 'fraim:begin' "$SANDBOX/up-here/AGENTS.md" 2>/dev/null)" "1"
+check "sweep: and registered" "$(grep -cxF "$SANDBOX/up-here" "$UPH/projects")" "1"
+check "sweep: a missing directory and a plain one are skipped, not failed" \
+      "$(printf '%s' "$UPOUT" | grep -c 'доведено 3, пропущено 2, с ошибкой 0')" "1"
+check "sweep: a folder not under the system is left alone" "$([ -e "$SANDBOX/up-plain/AGENTS.md" ] && echo yes || echo no)" "no"
+: > "$UPH/projects"; cd "$SANDBOX" || exit 1
+FRAIM_HOME="$UPH" "$FRAIM" upgrade </dev/null >/dev/null 2>&1
+check "sweep: an empty registry outside a project — refused" "$?" "2"
 
 # --- the queue and the foundation as data ------------------------------------
 QP="$SANDBOX/queueproj"

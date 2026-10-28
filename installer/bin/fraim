@@ -59,7 +59,8 @@ fraim — эксплуатационный слой для проектов на
   fraim fleet [ПУТЬ]        где живёт работа: чекауты проекта и среда флота
   fraim undo [ХЕШ]          показать точки сохранения / вернуть, как было
   fraim scaffold [ПУТЬ]     завести проект под систему
-  fraim upgrade [ПУТЬ]      довести существующий фундамент до стандарта
+  fraim upgrade [ПУТЬ]      довести все проекты реестра до стандарта этой версии
+                            (ПУТЬ — только этот проект)
   fraim clean [--yes]       прибрать всё, что чинится без суждения
   fraim publish [--check]   копия проекта вне этой машины: создать, отправить, сверить
                             (--brief — задание агенту вычистить найденное)
@@ -151,6 +152,14 @@ cmd_init() {
     fi
 
     claude_permission_hint
+
+    # Init lays out the machine; the projects follow with one command of their own, because
+    # bringing them up commits into each of them — that is the human's call, not a side
+    # effect of an update.
+    _n_proj=$(registry_list | wc -l | tr -d ' ')
+    if [ "$_n_proj" -gt 0 ]; then
+        dim "  проектов в реестре: $_n_proj — довести их до этой версии: fraim upgrade"
+    fi
 
     # The only place in init that touches the network, and it is optional: find out whether
     # something newer has already shipped. Silently and no more than once per
@@ -542,10 +551,51 @@ cmd_scaffold() {
 # machinery — nothing existing is ever overwritten — plus the repair of sections the
 # system reads by code. Separate name because the situations differ for the human:
 # `scaffold` is "start a project", `upgrade` is "this one exists, bring it up to standard".
+#
+# A new release reaches the machine once (`fraim update`), and every project on it then lags
+# behind until somebody walks into each one. So with no path `upgrade` is a machine command:
+# every project in the registry, plus the one the human stands in if it is under the system
+# and not registered yet (it is registered on the way — that is how the watchman's «fraim
+# upgrade» keeps working from inside an unregistered project). With a path it is that one
+# project only.
 cmd_upgrade() {
-    _path=${1:-$(pwd -P)}
-    _root=$(cd -- "$_path" 2>/dev/null && pwd -P) || die "нет такого каталога: $_path"
-    project_is_managed "$_root" || wm_managed "$_root" ||
+    if [ $# -gt 0 ]; then upgrade_project "$1"; return; fi
+    registry_init
+    _cwd=$(pwd -P)
+    if project_is_managed "$_cwd" && ! registry_list | grep -qxF "$_cwd"; then
+        registry_add "$_cwd" && dim "  проект зарегистрирован: $_cwd"
+    fi
+    _all=$(registry_list)
+    [ -n "$_all" ] || die "реестр проектов пуст — 'fraim upgrade ПУТЬ' для одного проекта или 'fraim init' в проекте"
+    _ok=0; _skip=0; _fail=0
+    # Each project in its own subshell: a refusal (die) in one must not end the sweep,
+    # and a path with spaces must survive — hence a line at a time, not a word list.
+    _old_ifs=$IFS
+    IFS='
+'
+    for _p in $_all; do
+        IFS=$_old_ifs
+        say ""
+        say "${C_BLD}== $_p${C_OFF}"
+        if [ ! -d "$_p" ]; then
+            warn "каталога нет — пропущен; убрать из реестра: fraim projects rm $_p"
+            _skip=$((_skip + 1)); continue
+        fi
+        if ! project_is_managed "$_p" && ! wm_managed "$_p"; then
+            warn "не под системой — пропущен"
+            _skip=$((_skip + 1)); continue
+        fi
+        if ( upgrade_project "$_p" ); then _ok=$((_ok + 1)); else _fail=$((_fail + 1)); fi
+    done
+    IFS=$_old_ifs
+    say ""
+    say "Проектов: доведено $_ok, пропущено $_skip, с ошибкой $_fail"
+    [ "$_fail" -eq 0 ] || return 1
+}
+
+upgrade_project() {
+    _path=$1
+    _root=$(cd -- "$_path" 2>/dev/null && pwd -P) || die "нет такого каталога: $_path"    project_is_managed "$_root" || wm_managed "$_root" ||
         die "здесь нечего обновлять: это не проект под системой. Завести — fraim scaffold"
     say "Довожу фундамент до стандарта fraim $(fraim_version) в $_root"
     say ""
