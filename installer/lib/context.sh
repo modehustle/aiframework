@@ -53,6 +53,9 @@ task, and do not announce a procedure you are not running. Two things still hold
   with the same save point. This is the only way a lesson from a session with no procedure
   ever reaches the next one — every session reads that section first, and nothing else in
   reactive work writes to it.
+- **English inside.** What you write into the project — foundation, cards, commit
+  messages, comments — is English, whatever language you speak with the human; fraim's
+  verbs refuse another language.
 - **Save as you go.** When a coherent piece is done — not at the end of the session, a
   session can die — put down a save point naming the paths you changed:
   `fraim commit fix "<what changed>" <path> <path>`. Those commits **are** the record of
@@ -172,6 +175,11 @@ and line wrapping are theirs:
 - something bit you that would trap the next change too — fails silently, reads as the
   opposite of what it does, must happen in an order nobody would guess → propose one line,
   and on the human's yes `fraim pitfall "<line>"`.
+
+**English inside.** Everything you write into the project — the foundation, task cards,
+backlog questions, commit messages, code comments — is English, whatever language you speak
+with the human. The verbs check it and refuse another language; a name or the human's own
+words in another language go in quotes («…») or backticks.
 
 **Save as you go.** When a coherent piece is done — not at the end, a session can die —
 `fraim commit <kind> "<what changed>" <path>…` over the paths you actually touched. Never

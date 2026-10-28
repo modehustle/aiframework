@@ -143,6 +143,7 @@ verb_task_new() {
         die "frontmatter пишет глагол, не ты — пришли карточку начиная с «# Заголовок»"
     printf '%s\n' "$_body" | grep -q '^# [^[:space:]]' ||
         die "у карточки нет заголовка — первая строка «# Что сделать»"
+    lang_check "the task card" "$_body"
 
     _tmp="$_dir/.$_slug.md.$$"
     printf '%s\n' "$_body" | fnd_wrap > "$_tmp" || die "не удалось записать карточку"
@@ -218,6 +219,7 @@ verb_task_seal() {
     fi
     [ -n "$(printf '%s' "$_result" | tr -d '[:space:]')" ] ||
         die "нужна строка итога: fraim task-seal $_slug \"что сделано\"  (или --dropped \"почему отменена\")"
+    lang_check "the result line" "$_result"
 
     _kind=$(fm_get "$_f" kind)
     if [ "$_kind" = master ]; then
@@ -405,6 +407,7 @@ verb_backlog_new() {
     printf '%s\n' "$_body" | head -1 | grep -qx -- '---' &&
         die "frontmatter пишет глагол — пришли вопрос начиная с «# Заголовок»"
     printf '%s\n' "$_body" | grep -q '^# [^[:space:]]' || die "у вопроса нет заголовка — первая строка «# …»"
+    lang_check "the backlog question" "$_body"
     _tmp="$_dir/.$_slug.md.$$"
     printf '%s\n' "$_body" | fnd_wrap > "$_tmp" || die "не удалось записать вопрос"
     for _sec in "$BACKLOG_WHAT" "$BACKLOG_WHY"; do
@@ -433,6 +436,7 @@ verb_backlog_drop() {
     [ -f "$_f" ] || die "нет такого вопроса: ai/backlog/$_slug.md"
     [ -n "$(printf '%s' "$_why" | tr -d '[:space:]')" ] ||
         die "нужна строка: fraim backlog-drop $_slug \"почему снят\""
+    lang_check "the reason" "$_why"
     _dest=$(tasks_archive_card "$_root" "$_f" "$(backlog_closed "$_root")" "$_slug" dropped "$_why") || exit 2
     ok "«$_slug» снят → ai/archive/backlog/$(basename -- "$_dest")"
     verb_commit "$_root" backlog "$_slug — dropped" ai/backlog ai/archive/backlog || warn "коммит не удался"

@@ -248,6 +248,8 @@ verb_arch() {
     [ -n "$(printf '%s' "$_body" | tr -d '[:space:]')" ] || die "тело раздела пустое"
     printf '%s\n' "$_body" | grep -q '^#' &&
         die "в теле раздела не должно быть заголовков — один раздел за вызов"
+    if [ "$_new" = 1 ]; then lang_check "the section name" "$_sec"; fi
+    lang_check "the section body" "$_body"
 
     _have=$(grep -c "^## $(printf '%s' "$_sec" | sed 's/[][\.*^$/]/\\&/g')\$" "$_p" || true)
     if [ "$_new" = 1 ]; then

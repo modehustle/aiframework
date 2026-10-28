@@ -120,6 +120,7 @@ verb_investigate_seal() {
     [ -f "$_f" ] || die "нет findings.md — архивировать нечего"
     grep -q "$SCAFFOLD_STUB" "$_f" &&
         die "findings.md — незаполненная заготовка (маркер $SCAFFOLD_STUB на месте)"
+    lang_check "findings.md" "$(cat "$_f")"
 
     # Exactly one outcome branch. None means the investigation was abandoned; both
     # means it was never landed — and a dead-end recorded honestly is a success here.
@@ -343,6 +344,8 @@ verb_decide() {
     _body=$(verb_read_body) ||
         die "тело решения приходит потоком:  fraim decide \"ЗАГОЛОВОК\" <<'EOF' … EOF"
     [ -n "$(printf '%s' "$_body" | tr -d '[:space:]')" ] || die "тело решения пустое"
+    lang_check "the decision title" "$_title"
+    lang_check "the decision body" "$_body"
     _body=$(printf '%s\n' "$_body" | fnd_wrap)
 
     # Superseding by name moves the old entry to the archive (foundation.sh). Resolved
@@ -424,6 +427,7 @@ verb_pitfall() {
             die "строки приходят аргументами или потоком: fraim pitfall \"СТРОКА\" [\"СТРОКА\"…]"
     fi
     [ -n "$(printf '%s' "$_lines" | tr -d '[:space:]')" ] || die "нечего добавлять"
+    lang_check "the pitfall" "$_lines"
 
     _tmp="$_file.fraim.tmp"
     _items=$(printf '%s\n' "$_lines" | grep '[^[:space:]]' | sed 's/^/- /' | fnd_wrap)

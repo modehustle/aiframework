@@ -26,6 +26,11 @@ and line wrapping are theirs:
   opposite of what it does, must happen in an order nobody would guess → propose one line,
   and on the human's yes `fraim pitfall "<line>"`.
 
+**English inside.** Everything you write into the project — the foundation, task cards,
+backlog questions, commit messages, code comments — is English, whatever language you speak
+with the human. The verbs check it and refuse another language; a name or the human's own
+words in another language go in quotes («…») or backticks.
+
 **Save as you go.** When a coherent piece is done — not at the end, a session can die —
 `fraim commit <kind> "<what changed>" <path>…` over the paths you actually touched. Never
 "everything": secrets, data and unfinished work do not belong in the history.

@@ -608,9 +608,9 @@ printf '\ndeterministic verbs\n'
 
 # --- board: task cards -------------------------------------------------------
 card() { # title — the card body, as the agent sends it
-    printf '# %s\n\n## What and why\nНужно, потому что нужно.\n\n## Done when\nРаботает.\n' "$1"
+    printf '# %s\n\n## What and why\nNeeded because it is needed.\n\n## Done when\nIt works.\n' "$1"
 }
-card "Добавить вход" | "$FRAIM" task-new add-auth >/dev/null 2>&1
+card "Add login" | "$FRAIM" task-new add-auth >/dev/null 2>&1
 check "task-new created a card" "$([ -f "$PROJ2/ai/tasks/add-auth.md" ] && echo yes || echo no)" "yes"
 check "frontmatter: kind" "$(sed -n 's/^kind: //p' "$PROJ2/ai/tasks/add-auth.md")" "task"
 check "frontmatter: date" "$(grep -c '^created: 20' "$PROJ2/ai/tasks/add-auth.md")" "1"
@@ -623,24 +623,24 @@ card "x" | "$FRAIM" task-new "Not Kebab" >/dev/null 2>&1
 check "task-new requires kebab-case" "$?" "2"
 "$FRAIM" task-new no-body </dev/null >/dev/null 2>&1
 check "no card body — refused" "$?" "2"
-printf '# Только заголовок\n' | "$FRAIM" task-new no-sections >/dev/null 2>&1
+printf '# Title only\n' | "$FRAIM" task-new no-sections >/dev/null 2>&1
 check "no «What and why» and «Done when» — refused" "$?" "2"
 printf -- '---\nkind: master\n---\n# x\n' | "$FRAIM" task-new own-fm >/dev/null 2>&1
 check "frontmatter from the agent — refused" "$?" "2"
 check "refusals left nothing behind" "$(ls "$PROJ2/ai/tasks" | grep -c 'no-body\|no-sections\|own-fm\|^\.')" "0"
 
 # Project: a master task and subtasks, one level.
-card "Веб-версия" | "$FRAIM" task-new web --master >/dev/null 2>&1
+card "Web version" | "$FRAIM" task-new web --master >/dev/null 2>&1
 check "master task created" "$(sed -n 's/^kind: //p' "$PROJ2/ai/tasks/web.md")" "master"
-card "Логин" | "$FRAIM" task-new web-login --parent web >/dev/null 2>&1
+card "Login" | "$FRAIM" task-new web-login --parent web >/dev/null 2>&1
 check "subtask knows its project" "$(sed -n 's/^parent: //p' "$PROJ2/ai/tasks/web-login.md")" "web"
 card "x" | "$FRAIM" task-new bad-child --parent add-auth >/dev/null 2>&1
 check "parent must be a master task" "$?" "2"
 card "x" | "$FRAIM" task-new bad-master --master --parent web >/dev/null 2>&1
 check "master task has no parent" "$?" "2"
-"$FRAIM" tasks 2>/dev/null | grep -q '◆ web — Веб-версия'
+"$FRAIM" tasks 2>/dev/null | grep -q '◆ web — Web version'
 check "board shows the project" "$?" "0"
-"$FRAIM" tasks 2>/dev/null | grep -q '      · web-login — Логин'
+"$FRAIM" tasks 2>/dev/null | grep -q '      · web-login — Login'
 check "subtask is under the project" "$?" "0"
 "$FRAIM" tasks 2>/dev/null | grep -q 'не начата, 0 из 1'
 check "project progress before the first closed one" "$?" "0"
@@ -648,27 +648,27 @@ python3 -c "import json,sys;json.load(sys.stdin)" < "$("$FRAIM" tasks --json > "
 check "tasks --json is valid JSON" "$?" "0"
 
 # Closing: the card moves to the archive with an outcome line.
-"$FRAIM" task-seal web "всё" >/dev/null 2>&1
+"$FRAIM" task-seal web "all of it" >/dev/null 2>&1
 check "project with open subtasks cannot be closed" "$?" "2"
 "$FRAIM" task-seal web-login >/dev/null 2>&1
 check "no outcome line — refused" "$?" "2"
-"$FRAIM" task-seal web-login "вход работает" >/dev/null 2>&1
+"$FRAIM" task-seal web-login "login works" >/dev/null 2>&1
 check "subtask closed" "$?" "0"
 check "card left the board" "$([ -f "$PROJ2/ai/tasks/web-login.md" ] && echo yes || echo no)" "no"
 ARCH=$(find "$PROJ2/ai/archive/tasks" -name '*_web-login.md')
 check "card in the archive" "$([ -n "$ARCH" ] && echo yes || echo no)" "yes"
 check "archive: outcome" "$(sed -n 's/^outcome: //p' "$ARCH")" "done"
-check "archive: result" "$(sed -n 's/^result: //p' "$ARCH")" '"вход работает"'
+check "archive: result" "$(sed -n 's/^result: //p' "$ARCH")" '"login works"'
 check "closing saved with a save point" "$(git -C "$PROJ2" log --oneline -1 --format=%s)" "archive: web-login — done"
 "$FRAIM" tasks 2>/dev/null | grep -q 'в работе, 1 из 1'
 check "project in progress — computed" "$?" "0"
-"$FRAIM" task-seal add-auth --dropped "передумали" >/dev/null 2>&1
+"$FRAIM" task-seal add-auth --dropped "changed our mind" >/dev/null 2>&1
 check "dropping is closing too" "$(sed -n 's/^outcome: //p' "$(find "$PROJ2/ai/archive/tasks" -name '*_add-auth.md')")" "dropped"
-"$FRAIM" task-seal web "веб-версия готова" >/dev/null 2>&1
+"$FRAIM" task-seal web "web version done" >/dev/null 2>&1
 check "project without open subtasks closes" "$?" "0"
 
 # An ordinary task becomes a project only through a verb — at the human's word.
-card "Большое" | "$FRAIM" task-new big >/dev/null 2>&1
+card "A big one" | "$FRAIM" task-new big >/dev/null 2>&1
 "$FRAIM" task-master big >/dev/null 2>&1
 check "task-master makes a project" "$(sed -n 's/^kind: //p' "$PROJ2/ai/tasks/big.md")" "master"
 "$FRAIM" task-seal big "x" >/dev/null 2>&1
@@ -741,6 +741,11 @@ t = t.replace("| 1 | <hypothesis> | open / confirmed / excluded | <what was obse
 t = t.replace("- <what was run or instrumented, and what it showed>", "- instrumented the observer")
 p.write_text(t)
 PY2
+cp "$FIND" "$SANDBOX/findings.bak"
+printf '\nСелектор мигает, потому что наблюдатель висит на отсоединённом узле.\n' >> "$FIND"
+"$FRAIM" investigate-seal selector-flicker >/dev/null 2>&1
+check "investigate-seal refuses findings not in English" "$?" "2"
+cp "$SANDBOX/findings.bak" "$FIND"
 "$FRAIM" investigate-seal selector-flicker >/dev/null 2>&1
 check "investigate-seal archives an investigation with an outcome" "$?" "0"
 check "investigation in the archive" \
@@ -755,19 +760,19 @@ check "investigation in progress raises no alarm" "$?" "0"
 rm -rf "$PROJ2/ai/investigations/open-one"
 
 # --- fraim commit -----------------------------------------------------------
-"$FRAIM" commit test "нет путей" >/dev/null 2>&1
+"$FRAIM" commit test "no paths" >/dev/null 2>&1
 check "commit without paths refuses" "$?" "2"
-"$FRAIM" commit BAD "вид не тот" README.md >/dev/null 2>&1
+"$FRAIM" commit BAD "wrong kind" README.md >/dev/null 2>&1
 check "commit checks the kind" "$?" "2"
 printf 'x\n' >> "$PROJ2/README.md"
-"$FRAIM" commit task "точка сохранения" README.md >/dev/null 2>&1
-check "commit puts a save point" "$(git -C "$PROJ2" log --oneline -1 --format=%s)" "task: точка сохранения"
+"$FRAIM" commit task "save point" README.md >/dev/null 2>&1
+check "commit puts a save point" "$(git -C "$PROJ2" log --oneline -1 --format=%s)" "task: save point"
 
 # --- undo / restore ---------------------------------------------------------
 # The promise «work boldly, there is a save point» is empty if getting back to it is possible
 # only via git reset. Undo is a reverting commit: we do not rewrite history.
 printf 'undo-me\n' >> "$PROJ2/README.md"
-"$FRAIM" commit task "правка, которую отменим" README.md >/dev/null 2>&1
+"$FRAIM" commit task "an edit we will undo" README.md >/dev/null 2>&1
 UNDO_REF=$(git -C "$PROJ2" rev-parse --short HEAD)
 "$FRAIM" undo >/dev/null 2>&1
 check "undo without an argument shows, does not act" \
@@ -788,7 +793,7 @@ check "foreign commit is not undone" "$?" "2"
 
 # Refusal when the point's own files are being edited right now: there is nothing to merge the undo with.
 printf 'again\n' >> "$PROJ2/README.md"
-"$FRAIM" commit task "вторая правка" README.md >/dev/null 2>&1
+"$FRAIM" commit task "second edit" README.md >/dev/null 2>&1
 UNDO_REF2=$(git -C "$PROJ2" rev-parse --short HEAD)
 printf 'dirty\n' >> "$PROJ2/README.md"
 "$FRAIM" undo "$UNDO_REF2" >/dev/null 2>&1
@@ -892,9 +897,9 @@ check "«None yet» placeholder removed" "$(grep -c '^- None yet\.$' "$PROJ2/CON
 "$FRAIM" pitfall "Tests fail unless TZ=UTC." >/dev/null 2>&1
 check "second line landed next" \
       "$(sed -n '/^## Known Pitfalls/,$p' "$PROJ2/CONVENTIONS.md" | grep -c '^- ')" "2"
-"$FRAIM" pitfall "$(printf 'урок %.0s' $(seq 1 40))" >/dev/null 2>&1
+"$FRAIM" pitfall "$(printf 'lesson of %.0s' $(seq 1 40))" >/dev/null 2>&1
 check "long lesson wrapped under its bullet" \
-      "$([ "$(sed -n '/^## Known Pitfalls/,$p' "$PROJ2/CONVENTIONS.md" | grep -c '^  урок')" -ge 1 ] && echo yes)" "yes"
+      "$([ "$(sed -n '/^## Known Pitfalls/,$p' "$PROJ2/CONVENTIONS.md" | grep -c '^  [a-z]')" -ge 1 ] && echo yes)" "yes"
 
 # --- arch: a map section is rewritten whole ---------------------------------
 printf '# A\n\n## Stack\nold stack\n\n## Data flow\nflow stays\n' > "$PROJ2/ARCHITECTURE.md"
@@ -928,24 +933,78 @@ check "find returns the whole decision entry with its heading" \
 check "find with no matches — exit 1" "$?" "1"
 
 # --- backlog: open questions -------------------------------------------------
-printf '# Нужен ли кэш?\n\n## Question\nМедленно.\n\n## Why it matters\nХолодный старт.\n' |
+printf '# Do we need a cache?\n\n## Question\nIt is slow.\n\n## Why it matters\nCold start.\n' |
     "$FRAIM" backlog-new cache-q --from сессия >/dev/null 2>&1
 check "question written to the backlog" "$(sed -n 's/^from: //p' "$PROJ2/ai/backlog/cache-q.md")" "сессия"
 check "question saved with a save point" "$(git -C "$PROJ2" log --oneline -1 --format=%s)" "backlog: cache-q — added"
 printf '# x\n' | "$FRAIM" backlog-new bare-q >/dev/null 2>&1
 check "question without «Question» and «Why it matters» — refused" "$?" "2"
-"$FRAIM" backlog 2>/dev/null | grep -q 'cache-q — Нужен ли кэш?'
+"$FRAIM" backlog 2>/dev/null | grep -q 'cache-q — Do we need a cache?'
 check "fraim backlog shows the question" "$?" "0"
-"$FRAIM" find кэш 2>/dev/null | grep -q 'ai/backlog/cache-q.md'
+"$FRAIM" find cache 2>/dev/null | grep -q 'ai/backlog/cache-q.md'
 check "find searches the backlog too" "$?" "0"
-printf '# Сделать кэш\n\n## What and why\nx\n\n## Done when\nx\n' | "$FRAIM" task-new add-cache --from cache-q >/dev/null 2>&1
+printf '# Build the cache\n\n## What and why\nx\n\n## Done when\nx\n' | "$FRAIM" task-new add-cache --from cache-q >/dev/null 2>&1
 check "question became a task" "$([ -f "$PROJ2/ai/tasks/add-cache.md" ] && [ ! -f "$PROJ2/ai/backlog/cache-q.md" ] && echo yes || echo no)" "yes"
 check "question archive names the task" "$(grep -c 'became task add-cache' "$PROJ2"/ai/archive/backlog/*_cache-q.md)" "1"
 check "card references the question" "$(grep -c 'From the backlog: `ai/archive/backlog/' "$PROJ2/ai/tasks/add-cache.md")" "1"
 printf '# Q\n\n## Question\nq\n\n## Why it matters\nq\n' | "$FRAIM" backlog-new drop-q >/dev/null 2>&1
-"$FRAIM" backlog-drop drop-q "уже не важно" >/dev/null 2>&1
+"$FRAIM" backlog-drop drop-q "no longer matters" >/dev/null 2>&1
 check "dropped question archived with a reason" "$(sed -n 's/^outcome: //p' "$PROJ2"/ai/archive/backlog/*_drop-q.md)" "dropped"
 "$FRAIM" task-seal add-cache "x" >/dev/null 2>&1
+
+# --- language: what the verbs write into a project is English -----------------
+# Models that talk to the human in Russian drift into Russian in the foundation. The verbs are
+# the only door into it, so the door refuses — and says so in English, to the agent.
+printf '\nlanguage of what the verbs write\n'
+cp "$PROJ2/DECISIONS.md" "$SANDBOX/dec.before"
+OUTL=$(printf 'Решение: храним сессии в sqlite, потому что так проще.\n' | "$FRAIM" decide "sessions" 2>&1)
+check "decide refuses a body in Russian" "$?" "2"
+check "the refusal tells the agent to rewrite in English" \
+      "$(printf '%s' "$OUTL" | grep -c 'not in English\|Rewrite it in English')" "2"
+printf 'Decision: sessions live in sqlite.\n' | "$FRAIM" decide "сессии" >/dev/null 2>&1
+check "decide refuses a title in Russian" "$?" "2"
+printf 'Decision: el agente guarda las sesiones en sqlite porque es más simple y no necesita un servidor aparte para nada en este proyecto pequeño de prueba.\n' |
+    "$FRAIM" decide "sessions" >/dev/null 2>&1
+check "decide refuses a Latin-script language that is not English" "$?" "2"
+check "refusals wrote nothing" "$(cmp -s "$PROJ2/DECISIONS.md" "$SANDBOX/dec.before" && echo same)" "same"
+printf 'Decision: sessions live in sqlite; the owner said «так проще» and `кэш` stays a name.\n' |
+    "$FRAIM" decide "sessions" >/dev/null 2>&1
+check "quoted words in another language are not measured" "$?" "0"
+cp "$PROJ2/CONVENTIONS.md" "$SANDBOX/conv.before"
+"$FRAIM" pitfall "кэш не сбрасывается после деплоя" >/dev/null 2>&1
+check "pitfall refuses Russian" "$?" "2"
+check "pitfall refusal wrote nothing" "$(cmp -s "$PROJ2/CONVENTIONS.md" "$SANDBOX/conv.before" && echo same)" "same"
+printf 'стек поменялся\n' | "$FRAIM" arch "Stack" >/dev/null 2>&1
+check "arch refuses a body in Russian" "$?" "2"
+printf 'notes\n' | "$FRAIM" arch "Развёртывание" --new >/dev/null 2>&1
+check "arch refuses a new section name in Russian" "$?" "2"
+printf '# Добавить кэш\n\n## What and why\nМедленно.\n\n## Done when\nБыстро.\n' | "$FRAIM" task-new ru-card >/dev/null 2>&1
+check "task-new refuses a card in Russian" "$?" "2"
+check "no card left behind" "$(ls -a "$PROJ2/ai/tasks" | grep -c 'ru-card')" "0"
+card "Language probe" | "$FRAIM" task-new lang-probe >/dev/null 2>&1
+"$FRAIM" task-seal lang-probe "готово" >/dev/null 2>&1
+check "task-seal refuses a result in Russian" "$?" "2"
+check "the card stays on the board" "$([ -f "$PROJ2/ai/tasks/lang-probe.md" ] && echo yes)" "yes"
+"$FRAIM" task-seal lang-probe "done" >/dev/null 2>&1
+printf '# Нужен ли кэш?\n\n## Question\nМедленно.\n\n## Why it matters\nХолодный старт.\n' | "$FRAIM" backlog-new ru-q >/dev/null 2>&1
+check "backlog-new refuses a question in Russian" "$?" "2"
+printf '# Probe\n\n## Question\nq\n\n## Why it matters\nq\n' | "$FRAIM" backlog-new probe-q >/dev/null 2>&1
+"$FRAIM" backlog-drop probe-q "уже не важно" >/dev/null 2>&1
+check "backlog-drop refuses a reason in Russian" "$?" "2"
+"$FRAIM" backlog-drop probe-q "no longer matters" >/dev/null 2>&1
+printf 'lang\n' >> "$PROJ2/README.md"
+LHEAD=$(git -C "$PROJ2" rev-parse HEAD)
+"$FRAIM" commit docs "поправил ридми" README.md >/dev/null 2>&1
+check "commit refuses a message in Russian" "$?" "2"
+check "nothing was committed" "$(git -C "$PROJ2" rev-parse HEAD)" "$LHEAD"
+"$FRAIM" commit docs "readme touched" README.md >/dev/null 2>&1
+LM=$(sh -c '. "'"$REPO"'/installer/lib/core.sh"; . "'"$REPO"'/installer/lib/lang.sh"
+    for t in "这破坏了项目的纯洁性" "Ο πράκτορας γράφει" \
+             "Der Agent schreibt das Fundament in der Sprache des Operators, was die Reinheit bricht, deshalb soll das Werkzeug die Sprache prüfen, bevor es einen Eintrag in die Entscheidungen schreibt und dann ablehnt." \
+             "short terse line: cache key ttl" "| a | b |"; do
+        printf "%s\n" "$t" | lang_measure >/dev/null; printf "%s" "$?"
+    done')
+check "other scripts and German refused; terse English and tables pass" "$LM" "11100"
 
 # ---------------------------------------------------------------- version
 printf '\nfraim version (what exactly is installed)\n'
@@ -982,7 +1041,7 @@ mkdir -p "$CL/ai/tasks/old-plan"
 printf '# Task Context\n\n## Goal\nСделать Y.\n\n## Why\nНадо.\n' > "$CL/ai/tasks/old-plan/context.md"
 printf '# Task\n\n## Summary\nДобавить Y.\n\n## Acceptance Criteria\n- [ ] Y есть\n' > "$CL/ai/tasks/old-plan/task.md"
 # an open card — clean does NOT touch the board
-printf '# Открытая\n\n## What and why\nx\n\n## Done when\nx\n' | "$FRAIM" task-new open-card >/dev/null 2>&1
+printf '# Open one\n\n## What and why\nx\n\n## Done when\nx\n' | "$FRAIM" task-new open-card >/dev/null 2>&1
 for i in 1 2 3; do
     printf 'c%s\n' "$i" >> "$CL/app.py"
     git -C "$CL" add app.py >/dev/null; git -C "$CL" commit -qm "fix: c$i" >/dev/null
@@ -1124,8 +1183,8 @@ mkdir -p "$QP"
 git -C "$QP" init -q; git -C "$QP" config user.email t@t; git -C "$QP" config user.name t
 cd "$QP" || exit 1
 "$FRAIM" scaffold >/dev/null 2>&1
-printf '# Проект\n\n## What and why\nx\n\n## Done when\nx\n' | "$FRAIM" task-new proj-one --master >/dev/null 2>&1
-printf '# Часть\n\n## What and why\nx\n\n## Done when\nx\n' | "$FRAIM" task-new part-one --parent proj-one >/dev/null 2>&1
+printf '# Project\n\n## What and why\nx\n\n## Done when\nx\n' | "$FRAIM" task-new proj-one --master >/dev/null 2>&1
+printf '# Part\n\n## What and why\nx\n\n## Done when\nx\n' | "$FRAIM" task-new part-one --parent proj-one >/dev/null 2>&1
 J=$("$FRAIM" status --json 2>/dev/null)
 check "json: kind and parent of every card" \
       "$(printf '%s' "$J" | grep -c '"slug": "proj-one", "kind": "master", "parent": ""')$(printf '%s' "$J" | grep -c '"slug": "part-one", "kind": "task", "parent": "proj-one"')" "11"

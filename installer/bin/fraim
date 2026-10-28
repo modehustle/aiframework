@@ -34,6 +34,7 @@ _libdir=$(cd -- "$(dirname -- "$_self")/../lib" 2>/dev/null && pwd -P) || {
 . "$_libdir/context.sh"
 . "$_libdir/config.sh"
 . "$_libdir/scaffold.sh"
+. "$_libdir/lang.sh"
 . "$_libdir/verbs.sh"
 . "$_libdir/tasks.sh"
 . "$_libdir/foundation.sh"
@@ -933,6 +934,7 @@ cmd_commit() {
     shift 2
     printf '%s' "$_kind" | grep -qE '^[a-z][a-z-]*$' ||
         die "вид должен быть одним словом в нижнем регистре: task, deploy, onboard, archive…"
+    lang_check "the commit message" "$_text"
     _root=$(pwd -P)
     verb_is_git "$_root" || die "здесь нет git — точку сохранения поставить не во что"
     verb_commit "$_root" "$_kind" "$_text" "$@" || die "коммит не удался"

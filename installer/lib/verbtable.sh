@@ -43,7 +43,9 @@ VT
 vt_brief() {
     printf 'The foundation is written only through these verbs: the text is yours; place, format\n'
     printf 'and line wrapping are theirs. Tasks and the backlog are filled by the human only — the\n'
-    printf 'work in front of you is done here and now. No fraim on the machine: do the same with git.\n'
+    printf 'work in front of you is done here and now. Everything written into the project is English,\n'
+    printf 'whatever language you speak with the human — the verbs refuse another language. No fraim\n'
+    printf 'on the machine: do the same with git.\n'
     vt_table | awk -F' ;; ' '
         BEGIN {
             title["start"] = "Start of a session"; title["work"] = "While working"
