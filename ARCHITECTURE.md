@@ -44,8 +44,16 @@ convenience in `install.sh`). Distribution: shell installer + Claude Code plugin
   Closed into `ai/archive/backlog/` — dropped with a reason, or `outcome: task` when
   `fraim task-new --from <q>` turned it into a card.
 - **task card** (`ai/tasks/<slug>.md`) — an intent, never a plan: frontmatter `kind`
-  (`task` | `master`), `created`, optional `parent` (a master's slug, one level only); body:
-  title, `## What and why`, `## Done when`, optional `## Links`. The state is the file's
+  (`task` | `master`), `created`, optional `parent` (a master's slug, one level only) and
+  `after` (siblings it waits for); body: title, `## What and why`, `## Done when`, optional
+  `## Links`. The kind is never a default: `task-new` refuses without `--task`, `--master` or
+  `--parent`. A master may bring its children in the same call — a `## Subtasks` section, one
+  `### <slug> — <title>` block each with `What and why:`, `Done when:`, optional `After:`
+  naming blocks above it (so no cycle can be written); every card is checked before any is
+  written, the section is not kept on the master, one save point for all. The queue of a
+  project (`tasks_queue`) is computed: a child waits while any card in its `after` is open;
+  the board and `task-seal` name the children nobody waits on («можно брать»), ordered by
+  dependency depth then slug — no position numbers. The state is the file's
   place: on the board = open, `ai/archive/tasks/<date>_<slug>.md` = closed (the verb adds
   `closed`, `outcome: done|dropped`, `result`, `commit`). A master's «in progress» is computed
   from its closed children; only the human closes a master. Only the human puts a card on the

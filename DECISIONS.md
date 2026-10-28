@@ -3,6 +3,40 @@
 > Newest on top. One entry per decision. Never rewrite history — supersede with a new
 > entry, or relocate stale entries to `ai/archive/decisions_log.md` via `/prune`.
 
+## 2026-10-28 — a task's kind is required; a project is laid down with its subtasks; after orders the queue
+
+Context: a live test in Devin CLI on a cheap model. The human asked for a project; the model went
+through fraim, put down one ordinary card and wrote the project's breakdown into a folder of the
+project of its own choosing. Three things allowed it: `task-new` defaulted to `kind: task`, so
+missing the word `--master` cost nothing; the rules forbade making a master on one's own but said
+nothing about the opposite mistake; and a project was laid down empty — its breakdown waited for
+`/run-task`, so a model that had already split the work had no sanctioned place to put the split.
+The board also had no queue: children were listed alphabetically with nothing saying what comes
+first.
+Decision: (1) `task-new` refuses without `--task`, `--master` or `--parent` (a child is always a
+task); the refusal says how to choose and to ask the human one question when unsure. (2) A master
+may bring its children in the same call: a `## Subtasks` section, one `### <slug> — <title>` block
+per child with `What and why:`, `Done when:` and an optional `After:`. Every child is checked
+(slug, both fields, no placeholder, not already on the board) before any card is written; the
+section is removed from the master, since the cards are the breakdown; the project and its
+children are one save point. /make-task proposes the breakdown for the human to approve and puts it
+down in that call; /run-task still breaks down a master that came alone. (3) A child may carry
+`after:` — siblings it waits for. In a `## Subtasks` block `After` may name only blocks above it,
+and `--after` (with `--parent`) only existing children of that project, so a cycle cannot be
+written through the verbs. A child waits while any card in its `after` is still open; `fraim tasks`
+lists a project's children by dependency depth, marks a waiting one with what it waits for, and
+names on the master line the ones nobody waits on; `task-seal` names them after closing a child,
+and warns when a dropped card was waited on. `fraim tasks --json` carries `after`, `waiting_on`
+and the master's `ready`.
+Alternatives: a position number per child rejected — it needs a reorder verb and says nothing a
+dependency does not; independent children are equal and the human picks. Inferring the kind from
+the size of the request rejected — it is the agent deciding what N3 reserves for the human. Keeping
+the breakdown as a list on the master rejected — a second copy of the board that goes stale with
+the first closed child. A watchman finding for plan-like files outside `ai/` rejected for now —
+heuristic, and the sanctioned place removes the reason to write them.
+Consequences: every caller of `task-new` names the kind; existing cards are untouched (no `after`
+means no wait). A cycle written by hand cannot hang the board: the depth passes are bounded.
+
 ## 2026-10-28 — fraim commit checks what it adds; the watchman checks the foundation's language
 
 Context: the verbs check only the text they are handed. A foundation file edited by hand bypasses
