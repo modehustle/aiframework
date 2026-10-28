@@ -1,6 +1,6 @@
 ---
 name: make-task
-description: "Only when the human wants work set aside for later or a project opened (judge the intent, in any language): formulate WHAT and WHY and how we will know it is done, and save it as a card in ai/tasks/ — an intent, never a plan with the code's context"
+description: "Only when the human wants work set aside for later or a project opened (judge the intent, in any language): formulate WHAT and WHY and how we will know it is done, and save it as a card in ai/tasks/ (a project together with its subtasks) — an intent, never a plan with the code's context"
 metadata:
   tier: cheap
   order: 5
@@ -27,7 +27,11 @@ gather it — from the tree as it will be on that day.
   the code. It has: what, why, the sign of done, links to materials. (why: N2)
 - **R3 — A master task only on the human's intent.** A project (master task) is started when the
   human themselves speaks of the work as a big undertaking made of many tasks. You do not turn a
-  task into a project yourself, even if it seems big. (why: N3)
+  task into a project yourself, even if it seems big. Unsure whether the human means one task or
+  a project — ask one question; do not fall back to an ordinary task. (why: N3)
+- **R5 — A project's breakdown lives on the board.** The parts of a project are its subtasks,
+  put on the board together with it — each an intent like any card. The breakdown has no other
+  home. (why: N4)
 - **R4 — Do not execute.** Put it on the board — stop. Taking a task is `/run-task`, and the human
   decides that.
 
@@ -48,16 +52,23 @@ gather it — from the tree as it will be on that day.
 
 2.1 Look at the board: `fraim tasks`.
 2.2 The human wants to start a project → it is a master task (`--master`). Its "Done when" is
-    about the project as a whole.
-2.3 The task is part of an open project as the human intends it (they named the project or it is
-    clearly about it) → `--parent <project slug>`. In doubt — ask.
-2.4 The same task is already on the board → say so and do not put up a second one.
-2.5 Slug: Latin letters, digits, hyphens, up to 40 characters, meaningful (`add-rate-limiter`).
+    about the project as a whole. Otherwise it is an ordinary task (`--task`). The verb does not
+    guess: without one of the two (or `--parent`) it refuses.
+2.3 A project → propose its breakdown as a list: for each subtask a slug, a title, what and why,
+    a checkable "done when", and — only where one part truly needs another finished first — which
+    earlier parts it comes after. The human approves or edits the list; it goes into the same call
+    (Step 3). The human wants the breakdown later → put the master alone; it is broken down when
+    taken (`/run-task`).
+2.4 The task is part of an open project as the human intends it (they named the project or it is
+    clearly about it) → `--parent <project slug>`. In doubt — ask. It must wait for another part of
+    that project → `--after <slug>[,<slug>]`.
+2.5 The same task is already on the board → say so and do not put up a second one.
+2.6 Slug: Latin letters, digits, hyphens, up to 40 characters, meaningful (`add-rate-limiter`).
 
 ### Step 3 — Put it on the board
 
 ```sh
-fraim task-new <slug> [--master | --parent <master>] <<'EOF'
+fraim task-new <slug> --task | --master | --parent <master> [--after <slug>] <<'EOF'
 # <What to do — in one line>
 
 ## What and why
@@ -66,20 +77,30 @@ fraim task-new <slug> [--master | --parent <master>] <<'EOF'
 ## Done when
 <a checkable sign — one or more items>
 
+## Subtasks
+<only with --master: the approved breakdown, one block per subtask, in order>
+
+### <subtask-slug> — <Title>
+What and why: <1–2 sentences>
+Done when: <a checkable sign>
+After: <optional: slugs of subtasks above it>
+
 ## Links
 <optional: addresses of materials>
 EOF
 ```
 
-3.1 The verb writes the frontmatter itself (`kind`, `created`, `parent`), puts the card in
-    `ai/tasks/<slug>.md` and makes a save point. A refusal names what is missing — fix it and
-    call again.
+3.1 The verb writes the frontmatter itself (`kind`, `created`, `parent`, `after`), puts the card
+    in `ai/tasks/<slug>.md` — and each subtask in a card of its own — and makes one save point.
+    The «Subtasks» section does not stay on the master: the cards are the breakdown. A refusal
+    names what is missing — fix it and call again; nothing of the project is written until every
+    card in it is right.
 3.2 The human called an ordinary task a project → `fraim task-master <slug>`.
 
 ### Step 4 — Answer
 
 4.1 In one line: what was put on the board and where (`ai/tasks/<slug>.md`, into a project or
-    standalone).
+    standalone); for a project — how many subtasks and which can be taken first.
 4.2 That's all. Do not offer to take it on.
 
 ---
@@ -102,4 +123,12 @@ still needed?".
 when they are taken: a task is done whole in one session, a project is broken into subtasks that
 are taken one at a time. If the type were computed by itself ("it has children"), a big task
 without children would look ordinary, and an agent that decided it was "too big" would turn it
-into a project without asking.
+into a project without asking. The same holds the other way: a project the human asked for and
+the agent put down as one ordinary card loses its breakdown — so the verb makes the kind a choice,
+never a default.
+
+**N4 — Why the breakdown goes on the board.** An agent that splits a project in its head has to
+put the split somewhere. When the card had no place for it, it landed in a file of the agent's
+choosing, where no verb, board or later session would find it. Subtasks are that place: each is
+an intent, the board shows them as the project's queue, and `after` says which must wait —
+nothing in it describes the code, so it does not go stale any faster than the project itself.

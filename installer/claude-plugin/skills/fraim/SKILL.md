@@ -126,7 +126,7 @@ these, run it: the format, the paths, the timestamps and the commit are not your
 | finished a task taken from the board | `fraim task-seal SLUG "RESULT" [--dropped]` | closes the card into the archive with one line of outcome; a master task only on the human's word |
 | wants to know where things stand | `fraim status` | the watchman's verdict; report it, do not act on it |
 | wants to know what is planned | `fraim tasks` | open tasks, projects with progress, age of each card |
-| wants work set aside, or a project opened | `fraim task-new SLUG [--master \| --parent M \| --from Q]` | via /make-task; body on stdin: # title, ## What and why, ## Done when, ## Links |
+| wants work set aside, or a project opened | `fraim task-new SLUG --task \| --master \| --parent M [--after S] [--from Q]` | via /make-task; the kind is required; body on stdin: # title, ## What and why, ## Done when, ## Links; a project brings its subtasks in ## Subtasks |
 | says a task is really a project | `fraim task-master SLUG` | turns an open task into a master task |
 | wants to review open questions | `fraim backlog` | the backlog; a question that stops mattering → fraim backlog-drop |
 | drops an open question | `fraim backlog-drop SLUG "WHY"` | closes it into the archive with the reason |
@@ -137,8 +137,10 @@ these, run it: the format, the paths, the timestamps and the commit are not your
 | a prune is finished | `fraim prune-mark` | inside /prune |
 | `fraim scaffold` | lay the foundation files and `ai/` — never by hand |
 
-Some of them **refuse**: `task-new` will not write a card without a title, «What and why» and
-«Done when»; `task-seal` will not close a project while its subtasks are open;
+Some of them **refuse**: `task-new` will not write a card without its kind (`--task`,
+`--master` or `--parent`), a title, «What and why» and «Done when» — and not one card of a
+project when any of its subtasks is wrong; `task-seal` will not close a project while its
+subtasks are open;
 `investigate-seal` wants exactly one outcome branch and a report on the cleanup. A refusal is the check doing its job — fix what it names and run it again.
 Never archive by hand instead.
 

@@ -581,7 +581,7 @@ wm_report_json() {
         printf '\n'
         printf '%s\n' "$WM_TASKS" | {
             _first=1
-            while IFS="$TASK_SEP" read -r _slug _kind _parent _created _title; do
+            while IFS="$TASK_SEP" read -r _slug _kind _parent _created _title _after; do
                 [ -n "$_slug" ] || continue
                 [ "$_first" = 1 ] || printf ',\n'
                 _first=0

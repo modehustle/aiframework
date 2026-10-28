@@ -16,6 +16,7 @@
 #   kind: task | master
 #   created: YYYY-MM-DD
 #   parent: <slug of a master>      (optional, children only)
+#   after: <sibling>, <sibling>     (optional, children only)
 #   ---
 #   # Title
 #   ## What and why
@@ -30,6 +31,13 @@
 # computed (open, and at least one child closed), and only the human closes it — new
 # branches can arrive after every current child is done. One level only: a master has
 # no parent.
+#
+# A project's breakdown lives in its children and nowhere else: a master is laid down
+# together with them in one call (a `## Subtasks` section the verb turns into cards), so
+# the breakdown the human approved has a place on the board the moment it exists. The
+# queue inside a project is `after`: a child waits while any card it names is still open.
+# There is no position number — of the children nobody waits on, any may be taken next,
+# and the human picks.
 
 TASK_WHAT='## What and why'
 TASK_DONE='## Done when'
@@ -60,7 +68,12 @@ tasks_days_since() {
     printf '%s\n' "$(( ( $(date +%s) - _s ) / 86400 ))"
 }
 
-# Every open card, one line each: slug kind parent created title, joined by TASK_SEP.
+# `after:` as a space-separated list. Written `after: a, b`; read tolerantly.
+tasks_after() {
+    fm_get "$1" after 2>/dev/null | tr ',' ' ' | tr -s ' ' | sed 's/^ //; s/ $//'
+}
+
+# Every open card, one line each: slug kind parent created title after, joined by TASK_SEP.
 # Not a tab: tab is IFS whitespace, and `read` collapses a run of it — an empty `parent`
 # would silently shift every field after it one place to the left.
 TASK_SEP=$(printf '\037')
@@ -69,9 +82,9 @@ tasks_scan() {
     for _ts_f in "$(tasks_dir "$_ts_root")"/*.md; do
         tasks_is_card "$_ts_f" || continue
         _ts_slug=$(basename -- "$_ts_f" .md)
-        printf "%s$TASK_SEP%s$TASK_SEP%s$TASK_SEP%s$TASK_SEP%s\n" "$_ts_slug" \
+        printf "%s$TASK_SEP%s$TASK_SEP%s$TASK_SEP%s$TASK_SEP%s$TASK_SEP%s\n" "$_ts_slug" \
             "$(fm_get "$_ts_f" kind)" "$(fm_get "$_ts_f" parent)" \
-            "$(fm_get "$_ts_f" created)" "$(tasks_title "$_ts_f")"
+            "$(fm_get "$_ts_f" created)" "$(tasks_title "$_ts_f")" "$(tasks_after "$_ts_f")"
     done
 }
 
@@ -86,6 +99,55 @@ tasks_closed_children_n() {
         [ "$(fm_get "$_tc_f" parent)" = "$2" ] && _tc_n=$((_tc_n + 1))
     done
     printf '%s\n' "$_tc_n"
+}
+
+# A child of a master, open or closed. `after` may name only these: a sibling that is
+# already done costs nothing, a name that is nobody's would silently never block.
+tasks_is_child() {
+    _ic_f="$(tasks_dir "$1")/$3.md"
+    if tasks_is_card "$_ic_f"; then [ "$(fm_get "$_ic_f" parent)" = "$2" ]; return; fi
+    for _ic_f in "$(tasks_closed "$1")"/*_"$3".md; do
+        [ -f "$_ic_f" ] && [ "$(fm_get "$_ic_f" parent)" = "$2" ] && return 0
+    done
+    return 1
+}
+
+# The queue of a project: its open children, one line each — slug state waits created
+# title — where state is `ready` or `waiting` and waits names the `after` cards still open
+# on the board. Ordered by the longest chain of open dependencies in front of a child,
+# then by slug. The passes are bounded: a cycle written by hand ends the loop, not the
+# board.
+tasks_queue() {
+    tasks_scan "$1" | awk -F"$TASK_SEP" -v p="$2" -v OFS="$TASK_SEP" '
+        { open[$1] = 1 }
+        $3 == p { n++; s[n] = $1; dep[$1] = $6; cr[$1] = $4; ti[$1] = $5 }
+        END {
+            for (i = 1; i <= n; i++) {
+                c = s[i]; w = ""; lv[c] = 0
+                m = split(dep[c], d, / +/)
+                for (j = 1; j <= m; j++)
+                    if (d[j] != "" && (d[j] in open)) w = w (w == "" ? "" : ", ") d[j]
+                wait[c] = w
+            }
+            for (pass = 0; pass < n; pass++) {
+                changed = 0
+                for (i = 1; i <= n; i++) {
+                    c = s[i]; m = split(dep[c], d, / +/)
+                    for (j = 1; j <= m; j++)
+                        if ((d[j] in lv) && lv[d[j]] + 1 > lv[c]) { lv[c] = lv[d[j]] + 1; changed = 1 }
+                }
+                if (!changed) break
+            }
+            for (i = 1; i <= n; i++) {
+                c = s[i]
+                print lv[c], c, (wait[c] == "" ? "ready" : "waiting"), wait[c], cr[c], ti[c]
+            }
+        }' | sort -t"$TASK_SEP" -k1,1n -k2,2 | cut -d"$TASK_SEP" -f2-
+}
+
+# The children of a project nobody waits on, comma-separated: what can be taken next.
+tasks_ready() {
+    tasks_queue "$1" "$2" | awk -F"$TASK_SEP" '$2 == "ready" { o = o (o == "" ? "" : ", ") $1 } END { print o }'
 }
 
 # Old-format tasks: a FOLDER per task, holding a plan. `fraim upgrade` turns them into cards.
@@ -106,13 +168,28 @@ tasks_slug_ok() {
 # The card arrives whole, on stdin, and leaves committed: the agent writes the words,
 # the verb owns the frontmatter, the place and the save point. A card that is laid down
 # empty and filled later is a card that sits half-written in the board when a session dies.
+#
+# The kind is never a default. A silent `task` was the cheap way out for a model that was
+# asked for a project and did not connect the word with `--master`: it got one ordinary
+# card and put the breakdown in a file of its own. So the verb asks: --task, --master, or
+# --parent (a child is always a task).
+#
+# A master may bring its children in the same call — a `## Subtasks` section, one
+# `### <slug> — <title>` per child with `What and why:`, `Done when:` and an optional
+# `After:` naming children above it. Every card is checked before any is written, the
+# section itself is not kept on the master (the cards are the breakdown, and a second copy
+# would go stale with the first child closed), and the project is saved as one point.
+TASK_SUBTASKS='## Subtasks'
+
 verb_task_new() {
     _root=$1; shift
-    _slug=; _kind=task; _parent=; _from=
+    _slug=; _kind=; _parent=; _from=; _after=
     while [ $# -gt 0 ]; do
         case $1 in
-            --master) _kind=master ;;
+            --task) [ "$_kind" != master ] || die "либо --task, либо --master"; _kind=task ;;
+            --master) [ "$_kind" != task ] || die "либо --task, либо --master"; _kind=master ;;
             --parent) [ $# -ge 2 ] || die "--parent требует слаг мастер-задачи"; _parent=$2; shift ;;
+            --after) [ $# -ge 2 ] || die "--after требует слаги подзадач того же проекта"; _after=$2; shift ;;
             --from) [ $# -ge 2 ] || die "--from требует слаг вопроса из бэклога"; _from=$2; shift ;;
             -*) die "неизвестный флаг: $1" ;;
             *) [ -z "$_slug" ] || die "лишний аргумент: $1"; _slug=$1 ;;
@@ -121,6 +198,11 @@ verb_task_new() {
     done
     [ -n "$_slug" ] || die "нужен слаг задачи"
     tasks_slug_ok "$_slug"
+    if [ -z "$_kind" ]; then
+        [ -n "$_parent" ] ||
+            die "укажи тип: --task — одна задача; --master — проект из нескольких задач (подзадачи — разделом «$TASK_SUBTASKS» в той же карточке). Человек говорил о проекте или о нескольких задачах — это --master; не ясно — спроси его одним вопросом"
+        _kind=task
+    fi
     _dir=$(tasks_dir "$_root")
     [ -d "$_dir" ] || die "нет ai/tasks/ — проект не под системой; сначала fraim scaffold"
     [ -e "$_dir/$_slug.md" ] && die "задача уже существует: ai/tasks/$_slug.md"
@@ -136,41 +218,179 @@ verb_task_new() {
         [ "$(fm_get "$_pf" kind)" = master ] ||
             die "«$_parent» — обычная задача, не мастер-задача. Сделать её проектом может только человек: fraim task-master $_parent"
     fi
+    if [ -n "$_after" ]; then
+        [ -n "$_parent" ] || die "--after — порядок внутри проекта: только вместе с --parent"
+        _after=$(printf '%s' "$_after" | tr ',' ' ' | tr -s ' ' | sed 's/^ //; s/ $//')
+        for _a in $_after; do
+            tasks_is_child "$_root" "$_parent" "$_a" ||
+                die "--after: «$_a» — не подзадача проекта «$_parent»"
+        done
+    fi
 
     _body=$(verb_read_body) ||
-        die "карточка приходит потоком:  fraim task-new $_slug <<'EOF'  # Заголовок … EOF"
+        die "карточка приходит потоком:  fraim task-new $_slug --task <<'EOF'  # Заголовок … EOF"
     printf '%s\n' "$_body" | head -1 | grep -qx -- '---' &&
         die "frontmatter пишет глагол, не ты — пришли карточку начиная с «# Заголовок»"
     printf '%s\n' "$_body" | grep -q '^# [^[:space:]]' ||
         die "у карточки нет заголовка — первая строка «# Что сделать»"
     lang_check "the task card" "$_body"
 
-    _tmp="$_dir/.$_slug.md.$$"
-    printf '%s\n' "$_body" | fnd_wrap > "$_tmp" || die "не удалось записать карточку"
+    # Split the card from its subtasks: the master's own text, and per child a head line
+    # and its fields, each in a file of the scratch folder.
+    _sd="$_dir/.$_slug.$$"
+    mkdir "$_sd" || die "не удалось записать карточку"
+    printf '%s\n' "$_body" | tasks_split_subtasks "$_sd"
+    _n=$(cat "$_sd/count")
+    if [ -f "$_sd/found" ] && [ "$_kind" != master ]; then
+        rm -rf "$_sd"
+        die "раздел «$TASK_SUBTASKS» бывает только у проекта (--master); подзадачу в открытый проект ставят по одной: --parent"
+    fi
+    if [ -f "$_sd/found" ] && [ "$_n" -eq 0 ]; then
+        rm -rf "$_sd"; die "раздел «$TASK_SUBTASKS» пуст — каждая подзадача: «### слаг — Заголовок», затем «What and why:» и «Done when:»"
+    fi
+    if [ -f "$_sd/stray" ]; then
+        rm -rf "$_sd"
+        die "в разделе «$TASK_SUBTASKS» текст вне подзадачи — каждая: «### слаг — Заголовок», затем «What and why:», «Done when:», необязательно «After:»"
+    fi
+
+    fnd_wrap < "$_sd/master" > "$_sd/card" || { rm -rf "$_sd"; die "не удалось записать карточку"; }
     for _sec in "$TASK_WHAT" "$TASK_DONE"; do
-        _rc=0; verb_section_filled "$_tmp" "$_sec" || _rc=$?
+        _rc=0; verb_section_filled "$_sd/card" "$_sec" || _rc=$?
         case $_rc in
-            1) rm -f "$_tmp"; die "в карточке нет раздела «$_sec»" ;;
-            2) rm -f "$_tmp"; die "раздел «$_sec» пуст" ;;
-            3) rm -f "$_tmp"; die "в разделе «$_sec» остался плейсхолдер <…>" ;;
+            1) rm -rf "$_sd"; die "в карточке нет раздела «$_sec»" ;;
+            2) rm -rf "$_sd"; die "раздел «$_sec» пуст" ;;
+            3) rm -rf "$_sd"; die "в разделе «$_sec» остался плейсхолдер <…>" ;;
         esac
     done
 
+    # Every child is checked before anything is written: a project half on the board is
+    # worse than a refusal.
+    _i=0; _kids=
+    while [ "$_i" -lt "$_n" ]; do
+        _i=$((_i + 1))
+        _tn_err=$(tasks_check_subtask "$_root" "$_sd" "$_i" "$_slug" "$_kids") ||
+            { rm -rf "$_sd"; die "$_tn_err"; }
+        _kids="$_kids $(cat "$_sd/$_i.slug")"
+    done
+
+    _date=$(date +%Y-%m-%d)
     {
-        printf -- '---\nkind: %s\ncreated: %s\n' "$_kind" "$(date +%Y-%m-%d)"
+        printf -- '---\nkind: %s\ncreated: %s\n' "$_kind" "$_date"
         if [ -n "$_parent" ]; then printf 'parent: %s\n' "$_parent"; fi
+        if [ -n "$_after" ]; then printf 'after: %s\n' "$(printf '%s' "$_after" | sed 's/ /, /g')"; fi
         printf -- '---\n'
-        cat "$_tmp"
-    } > "$_dir/$_slug.md" || { rm -f "$_tmp"; die "не удалось записать карточку"; }
-    rm -f "$_tmp"
+        cat "$_sd/card"
+    } > "$_dir/$_slug.md" || { rm -rf "$_sd"; die "не удалось записать карточку"; }
+    _paths="ai/tasks/$_slug.md"
+    _i=0
+    while [ "$_i" -lt "$_n" ]; do
+        _i=$((_i + 1))
+        _cs=$(cat "$_sd/$_i.slug")
+        {
+            printf -- '---\nkind: task\ncreated: %s\nparent: %s\n' "$_date" "$_slug"
+            if [ -s "$_sd/$_i.deps" ]; then printf 'after: %s\n' "$(sed 's/ /, /g' "$_sd/$_i.deps")"; fi
+            printf -- '---\n'
+            cat "$_sd/$_i.card"
+        } > "$_dir/$_cs.md" || { rm -rf "$_sd"; die "не удалось записать подзадачу $_cs"; }
+        _paths="$_paths ai/tasks/$_cs.md"
+    done
+    rm -rf "$_sd"
 
     _what=задача; [ "$_kind" = master ] && _what=мастер-задача
     ok "ai/tasks/$_slug.md — $_what поставлена${_parent:+ (в проекте «$_parent»)}"
+    _msg="$_slug — added"
+    if [ "$_n" -gt 0 ]; then
+        ok "  подзадач: $_n — можно брать: $(tasks_ready "$_root" "$_slug")"
+        _msg="$_slug — added with $_n subtasks"
+    fi
     if [ -n "$_from" ]; then
         backlog_to_task "$_root" "$_from" "$_slug"
         ok "вопрос «$_from» стал задачей — ушёл из бэклога в архив"
     fi
-    verb_commit "$_root" task "$_slug — added" "ai/tasks/$_slug.md" ai/backlog ai/archive/backlog || warn "коммит не удался"
+    # shellcheck disable=SC2086 # the paths are slugs: no spaces by construction
+    verb_commit "$_root" task "$_msg" $_paths ai/backlog ai/archive/backlog || warn "коммит не удался"
+}
+
+# Read a card on stdin; write into DIR: `master` (the card without its subtasks section),
+# `count`, and per child N: `N.head`, `N.what`, `N.done`, `N.after`. `found` marks that
+# the section exists, `stray` that it holds text outside a child's fields.
+tasks_split_subtasks() {
+    awk -v dir="$1" '
+        function shut() { if (n) { close(dir "/" n ".head"); close(dir "/" n ".what"); close(dir "/" n ".done"); close(dir "/" n ".after") } }
+        /^## / {
+            t = tolower($0); sub(/[ \t]+$/, "", t)
+            insec = (t == "## subtasks")
+            if (insec) { found = 1; next }
+        }
+        !insec { print > (dir "/master"); next }
+        /^### / { shut(); n++; h = $0; sub(/^### +/, "", h); print h > (dir "/" n ".head"); field = ""; next }
+        {
+            line = $0
+            if (line !~ /[^ \t]/) next
+            sub(/^[ \t]+/, "", line)
+            if (match(tolower(line), /^(what and why|done when|after)[ \t]*:/)) {
+                lab = tolower(substr(line, 1, RLENGTH)); line = substr(line, RLENGTH + 1)
+                sub(/^[ \t]+/, "", line)
+                if (lab ~ /what/) field = "what"; else if (lab ~ /done/) field = "done"; else field = "after"
+                if (n == 0) stray = 1
+                if (line == "") next
+            }
+            if (n == 0 || field == "") { stray = 1; next }
+            print line > (dir "/" n "." field)
+        }
+        END {
+            shut()
+            print n + 0 > (dir "/count")
+            if (found) print 1 > (dir "/found")
+            if (stray) print 1 > (dir "/stray")
+        }'
+    [ -f "$1/master" ] || : > "$1/master"
+}
+
+# Check child N of a project and lay out its card body (`N.card`), slug (`N.slug`) and
+# dependencies (`N.deps`) in DIR. KIDS are the slugs listed above it: `After` may name only
+# those, so the order the human approved can never hold a cycle. Prints the refusal.
+tasks_check_subtask() {
+    _cs_root=$1; _cs_d=$2; _cs_i=$3; _cs_master=$4; _cs_kids=$5
+    _cs_head=$(cat "$_cs_d/$_cs_i.head")
+    _cs_slug=$(printf '%s' "$_cs_head" | sed -E 's/^`?([^` :]+)`?.*/\1/')
+    _cs_title=$(printf '%s' "$_cs_head" | sed -E 's/^`?[^` :]+`?([[:space:]]*:|[[:space:]]+(—|–|-))[[:space:]]+//')
+    if [ "$_cs_title" = "$_cs_head" ] || [ -z "$(printf '%s' "$_cs_title" | tr -d '[:space:]')" ]; then
+        printf 'подзадача «%s»: заголовок пишется «### слаг — Заголовок»\n' "$_cs_head"; return 1
+    fi
+    printf '%s' "$_cs_slug" | grep -qE '^[a-z0-9]+(-[a-z0-9]+)*$' ||
+        { printf 'подзадача «%s»: слаг — kebab-case, буквы, цифры и дефисы\n' "$_cs_slug"; return 1; }
+    [ "$_cs_slug" != "$_cs_master" ] ||
+        { printf 'подзадача «%s»: слаг совпадает с проектом\n' "$_cs_slug"; return 1; }
+    case " $_cs_kids " in *" $_cs_slug "*)
+        printf 'подзадача «%s» указана дважды\n' "$_cs_slug"; return 1 ;;
+    esac
+    if [ -e "$(tasks_dir "$_cs_root")/$_cs_slug.md" ] || [ -e "$(tasks_dir "$_cs_root")/$_cs_slug" ]; then
+        printf 'подзадача «%s»: такая задача уже есть на доске\n' "$_cs_slug"; return 1
+    fi
+    for _cs_f in what done; do
+        _cs_v=$(cat "$_cs_d/$_cs_i.$_cs_f" 2>/dev/null) || _cs_v=
+        _cs_name="What and why:"; [ "$_cs_f" = done ] && _cs_name="Done when:"
+        [ -n "$(printf '%s' "$_cs_v" | tr -d '[:space:]')" ] ||
+            { printf 'подзадача «%s»: нет «%s»\n' "$_cs_slug" "$_cs_name"; return 1; }
+        printf '%s' "$_cs_v" | grep -q '<[^>]*>' &&
+            { printf 'подзадача «%s»: в «%s» остался плейсхолдер <…>\n' "$_cs_slug" "$_cs_name"; return 1; }
+    done
+    _cs_deps=$(cat "$_cs_d/$_cs_i.after" 2>/dev/null | tr ',\n' '  ' | tr -s ' ' | sed 's/^ //; s/ $//')
+    for _cs_a in $_cs_deps; do
+        case " $_cs_kids " in *" $_cs_a "*) ;; *)
+            printf 'подзадача «%s»: After «%s» — можно ссылаться только на подзадачи выше по списку\n' "$_cs_slug" "$_cs_a"
+            return 1 ;;
+        esac
+    done
+    printf '%s' "$_cs_slug" > "$_cs_d/$_cs_i.slug"
+    printf '%s' "$_cs_deps" > "$_cs_d/$_cs_i.deps"
+    {
+        printf '# %s\n\n%s\n' "$_cs_title" "$TASK_WHAT"
+        cat "$_cs_d/$_cs_i.what"
+        printf '\n%s\n' "$TASK_DONE"
+        cat "$_cs_d/$_cs_i.done"
+    } | fnd_wrap > "$_cs_d/$_cs_i.card"
 }
 
 # --- task-master ------------------------------------------------------------
@@ -240,7 +460,19 @@ verb_task_seal() {
         _o=$(tasks_open_children "$_root" "$_parent" | grep -c . || true)
         _c=$(tasks_closed_children_n "$_root" "$_parent")
         say "  проект «$_parent»: закрыто $_c из $((_o + _c))"
-        [ "$_o" -eq 0 ] && dim "  открытых подзадач нет — закрыть сам проект решает человек"
+        if [ "$_o" -eq 0 ]; then
+            dim "  открытых подзадач нет — закрыть сам проект решает человек"
+        else
+            _r=$(tasks_ready "$_root" "$_parent")
+            [ -z "$_r" ] || say "  можно брать: $_r"
+        fi
+    fi
+    # A dropped card frees whoever waited on it — the queue cannot tell «no longer needed»
+    # from «done», so the waiting ones are named for the human to look at.
+    if [ "$_outcome" = dropped ]; then
+        _waited=$(tasks_scan "$_root" | awk -F"$TASK_SEP" -v s="$_slug" \
+            '{ n = split($6, d, / +/); for (i = 1; i <= n; i++) if (d[i] == s) { print $1; break } }' | tr '\n' ' ')
+        [ -z "$_waited" ] || warn "эту задачу ждали: $_waited— нужны ли они без неё, решает человек"
     fi
     return 0
 }
@@ -277,6 +509,12 @@ tasks_age_words() {
     if [ "$_d" -eq 0 ]; then printf 'сегодня\n'; else printf '%s дн.\n' "$_d"; fi
 }
 
+# A list (spaces or commas) as a JSON array of strings. Slugs only: nothing to escape.
+tasks_json_list() {
+    printf '%s' "$1" | tr ',' ' ' | awk '{ for (i = 1; i <= NF; i++) o = o (o == "" ? "" : ", ") "\"" $i "\"" }
+        END { printf "[%s]", o }'
+}
+
 tasks_master_words() {
     _o=$(tasks_open_children "$1" "$2" | grep -c . || true)
     _c=$(tasks_closed_children_n "$1" "$2")
@@ -295,16 +533,21 @@ verb_tasks() {
         printf '{\n  "tasks": ['
         [ -n "$_scan" ] && printf '%s\n' "$_scan" | {
             _first=1
-            while IFS="$TASK_SEP" read -r _s _k _p _cr _t; do
+            while IFS="$TASK_SEP" read -r _s _k _p _cr _t _a; do
                 [ -n "$_s" ] || continue
                 if [ "$_first" = 1 ]; then printf '\n'; else printf ',\n'; fi
                 _first=0
                 printf '    { "slug": "%s", "kind": "%s", "parent": "%s", "title": "%s", "created": "%s", "age_days": %s' \
                     "$_s" "$_k" "$_p" "$(wm_json_escape "$_t")" "$_cr" "$(tasks_days_since "$_cr")"
                 if [ "$_k" = master ]; then
-                    printf ', "open_children": %s, "closed_children": %s' \
+                    printf ', "open_children": %s, "closed_children": %s, "ready": %s' \
                         "$(tasks_open_children "$_root" "$_s" | grep -c . || true)" \
-                        "$(tasks_closed_children_n "$_root" "$_s")"
+                        "$(tasks_closed_children_n "$_root" "$_s")" \
+                        "$(tasks_json_list "$(tasks_ready "$_root" "$_s")")"
+                fi
+                if [ -n "$_p" ]; then
+                    _w=; for _x in $_a; do tasks_is_card "$(tasks_dir "$_root")/$_x.md" && _w="$_w $_x"; done
+                    printf ', "after": %s, "waiting_on": %s' "$(tasks_json_list "$_a")" "$(tasks_json_list "$_w")"
                 fi
                 printf ' }'
             done
@@ -330,16 +573,20 @@ verb_tasks() {
         # children whose parent is not an open master — shown, never hidden.
         _masters=$(printf '%s\n' "$_scan" | awk -F"$TASK_SEP" '$2 == "master" { print $1 }' | tr '\n' ' ')
         printf '%s\n' "$_scan" | awk -F"$TASK_SEP" '$2 == "master"' |
-            while IFS="$TASK_SEP" read -r _s _k _p _cr _t; do
-                printf '  ◆ %s — %s %s· %s · %s%s\n' "$_s" "$_t" "$C_DIM" \
-                    "$(tasks_master_words "$_root" "$_s")" "$(tasks_age_words "$_cr")" "$C_OFF"
-                printf '%s\n' "$_scan" | awk -F"$TASK_SEP" -v p="$_s" '$3 == p' |
-                    while IFS="$TASK_SEP" read -r _cs _ck _cp _ccr _ct; do
-                        printf '      · %s — %s %s· %s%s\n' "$_cs" "$_ct" "$C_DIM" "$(tasks_age_words "$_ccr")" "$C_OFF"
+            while IFS="$TASK_SEP" read -r _s _k _p _cr _t _a; do
+                _r=$(tasks_ready "$_root" "$_s")
+                printf '  ◆ %s — %s %s· %s · %s%s%s\n' "$_s" "$_t" "$C_DIM" \
+                    "$(tasks_master_words "$_root" "$_s")" "$(tasks_age_words "$_cr")" \
+                    "${_r:+ · можно брать: $_r}" "$C_OFF"
+                # The queue: nobody-waits-on first, each waiting child naming what it waits for.
+                tasks_queue "$_root" "$_s" |
+                    while IFS="$TASK_SEP" read -r _cs _cst _cw _ccr _ct; do
+                        printf '      · %s — %s %s· %s%s%s\n' "$_cs" "$_ct" "$C_DIM" "$(tasks_age_words "$_ccr")" \
+                            "${_cw:+ · ждёт: $_cw}" "$C_OFF"
                     done
             done
         printf '%s\n' "$_scan" | awk -F"$TASK_SEP" -v m=" $_masters" '$2 != "master" && index(m, " " $3 " ") == 0' |
-            while IFS="$TASK_SEP" read -r _s _k _p _cr _t; do
+            while IFS="$TASK_SEP" read -r _s _k _p _cr _t _a; do
                 _note=
                 [ -n "$_p" ] && _note=" (родитель «$_p» не открыт)"
                 printf '  · %s — %s %s· %s%s%s\n' "$_s" "$_t" "$C_DIM" "$(tasks_age_words "$_cr")" "$_note" "$C_OFF"

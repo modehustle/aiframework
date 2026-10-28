@@ -45,11 +45,13 @@ the end.
 1.2 The human named a task → that one. Did not name one and only one is open → that one. Several →
     list them and ask.
 1.3 The task is a **master task** (`◆`, `kind: master`):
-    - there are open subtasks → show them and ask which one to take. From then on you work with it;
+    - there are open subtasks → show them and offer the ones the board marks as free to take
+      («можно брать»); a subtask that waits (`ждёт: …`) is taken only on the human's word. Ask
+      which one. From then on you work with it;
     - there are no subtasks → propose, as a list, how to break the project into tasks. The human
-      approves or edits; put each approved one on the board via `fraim task-new <slug> --parent <master>`
-      (body — as in `/make-task`). Then ask which one to take. The project as a whole is not done
-      in one session.
+      approves or edits; put each approved one on the board via
+      `fraim task-new <slug> --parent <master> [--after <slug>]` (body — as in `/make-task`). Then
+      ask which one to take. The project as a whole is not done in one session.
 1.4 The task is older than a month (the age is visible on the board) → one line: «This task is N
     days old — is it still relevant?» Answer "no" → `fraim task-seal <slug> --dropped "<why>"`, and
     that's it.
@@ -91,7 +93,7 @@ the end.
     out of scope.
 5.2 The human agrees → `fraim task-seal <slug> "<outcome line>"`. The verb moves the card to the
     archive, appends the date, the outcome and the commit, and saves. For a subtask it shows the
-    project's progress.
+    project's progress and what can be taken next — pass that on to the human.
 5.3 The human decided the task is not needed → `fraim task-seal <slug> --dropped "<why>"`.
 5.4 Only the human closes a master task: even when all subtasks are closed, you say
     «no subtasks left — shall we close the project?» and wait.

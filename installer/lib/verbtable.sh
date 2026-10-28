@@ -26,7 +26,7 @@ end ;; open questions remain, important but not for now ;; fraim backlog-new SLU
 end ;; finished a task taken from the board ;; fraim task-seal SLUG "RESULT" [--dropped] ;; закрыть задачу строкой итога ;; closes the card into the archive with one line of outcome; a master task only on the human's word
 human ;; wants to know where things stand ;; fraim status ;; вердикт сторожа по проекту ;; the watchman's verdict; report it, do not act on it
 human ;; wants to know what is planned ;; fraim tasks ;; доска задач и проектов ;; open tasks, projects with progress, age of each card
-human ;; wants work set aside, or a project opened ;; fraim task-new SLUG [--master | --parent M | --from Q] ;; поставить задачу (карточка потоком) ;; via /make-task; body on stdin: # title, ## What and why, ## Done when, ## Links
+human ;; wants work set aside, or a project opened ;; fraim task-new SLUG --task | --master | --parent M [--after S] [--from Q] ;; поставить задачу или проект с подзадачами (потоком) ;; via /make-task; the kind is required; body on stdin: # title, ## What and why, ## Done when, ## Links; a project brings its subtasks in ## Subtasks
 human ;; says a task is really a project ;; fraim task-master SLUG ;; сделать задачу проектом ;; turns an open task into a master task
 human ;; wants to review open questions ;; fraim backlog ;; открытые вопросы ;; the backlog; a question that stops mattering → fraim backlog-drop
 human ;; drops an open question ;; fraim backlog-drop SLUG "WHY" ;; снять вопрос из бэклога ;; closes it into the archive with the reason

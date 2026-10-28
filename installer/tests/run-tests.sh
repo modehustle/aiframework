@@ -610,22 +610,22 @@ printf '\ndeterministic verbs\n'
 card() { # title — the card body, as the agent sends it
     printf '# %s\n\n## What and why\nNeeded because it is needed.\n\n## Done when\nIt works.\n' "$1"
 }
-card "Add login" | "$FRAIM" task-new add-auth >/dev/null 2>&1
+card "Add login" | "$FRAIM" task-new add-auth --task >/dev/null 2>&1
 check "task-new created a card" "$([ -f "$PROJ2/ai/tasks/add-auth.md" ] && echo yes || echo no)" "yes"
 check "frontmatter: kind" "$(sed -n 's/^kind: //p' "$PROJ2/ai/tasks/add-auth.md")" "task"
 check "frontmatter: date" "$(grep -c '^created: 20' "$PROJ2/ai/tasks/add-auth.md")" "1"
 check "card saved with a save point" "$(git -C "$PROJ2" log --oneline -1 --format=%s)" "task: add-auth — added"
 # A card holds nothing that could go stale: no provenance, no plan.
 check "card has no provenance" "$(grep -c 'Based on\|Plan provenance' "$PROJ2/ai/tasks/add-auth.md")" "0"
-card "x" | "$FRAIM" task-new add-auth >/dev/null 2>&1
+card "x" | "$FRAIM" task-new add-auth --task >/dev/null 2>&1
 check "task-new does not overwrite an existing task" "$?" "2"
-card "x" | "$FRAIM" task-new "Not Kebab" >/dev/null 2>&1
+card "x" | "$FRAIM" task-new "Not Kebab" --task >/dev/null 2>&1
 check "task-new requires kebab-case" "$?" "2"
-"$FRAIM" task-new no-body </dev/null >/dev/null 2>&1
+"$FRAIM" task-new no-body --task </dev/null >/dev/null 2>&1
 check "no card body — refused" "$?" "2"
-printf '# Title only\n' | "$FRAIM" task-new no-sections >/dev/null 2>&1
+printf '# Title only\n' | "$FRAIM" task-new no-sections --task >/dev/null 2>&1
 check "no «What and why» and «Done when» — refused" "$?" "2"
-printf -- '---\nkind: master\n---\n# x\n' | "$FRAIM" task-new own-fm >/dev/null 2>&1
+printf -- '---\nkind: master\n---\n# x\n' | "$FRAIM" task-new own-fm --task >/dev/null 2>&1
 check "frontmatter from the agent — refused" "$?" "2"
 check "refusals left nothing behind" "$(ls "$PROJ2/ai/tasks" | grep -c 'no-body\|no-sections\|own-fm\|^\.')" "0"
 
@@ -667,8 +667,109 @@ check "dropping is closing too" "$(sed -n 's/^outcome: //p' "$(find "$PROJ2/ai/a
 "$FRAIM" task-seal web "web version done" >/dev/null 2>&1
 check "project without open subtasks closes" "$?" "0"
 
+# The kind is never a default: a model asked for a project must not get a silent task.
+card "No kind" | "$FRAIM" task-new no-kind >/dev/null 2>&1
+check "task-new without --task / --master — refused" "$?" "2"
+check "refused card was not written" "$([ -f "$PROJ2/ai/tasks/no-kind.md" ] && echo yes || echo no)" "no"
+card "Both" | "$FRAIM" task-new both-kinds --task --master >/dev/null 2>&1
+check "--task and --master together — refused" "$?" "2"
+
+# A project is laid down with its breakdown: one call, every child a card, one save point.
+proj() { # extra subtasks text — a master card with a «## Subtasks» section
+    printf '# Mobile app
+
+## What and why
+People ask for it.
+
+## Done when
+It ships.
+
+## Subtasks
+
+%s
+
+## Links
+- issue 7
+' "$1"
+}
+proj '### mob-api — Shared API
+What and why: both clients read it.
+Done when: the schema is in the repo.
+
+### mob-ios — iOS client
+What and why: half of the users.
+Done when: it runs
+  on a phone.
+After: mob-api
+
+### mob-docs: Docs page
+What and why: people need to know.
+Done when: the page is up.' | "$FRAIM" task-new mob --master >/dev/null 2>&1
+check "master with subtasks created" "$?" "0"
+check "every subtask is a card in the project" \
+      "$(sed -n 's/^parent: //p' "$PROJ2/ai/tasks/mob-api.md" "$PROJ2/ai/tasks/mob-ios.md" "$PROJ2/ai/tasks/mob-docs.md" | tr '\n' ' ')" "mob mob mob "
+check "subtask card: title and sections" \
+      "$(grep -c '^# iOS client$\|^## What and why$\|^## Done when$' "$PROJ2/ai/tasks/mob-ios.md")" "3"
+check "a continued field stays in its section" "$(grep -c '^on a phone\.$' "$PROJ2/ai/tasks/mob-ios.md")" "1"
+check "after is written to the frontmatter" "$(sed -n 's/^after: //p' "$PROJ2/ai/tasks/mob-ios.md")" "mob-api"
+check "the master does not keep a copy of its subtasks" "$(grep -c '^## Subtasks\|^### ' "$PROJ2/ai/tasks/mob.md")" "0"
+check "sections after the subtasks stay on the master" "$(grep -c '^- issue 7$' "$PROJ2/ai/tasks/mob.md")" "1"
+check "project and subtasks in one save point" \
+      "$(git -C "$PROJ2" log -1 --format=%s)|$(git -C "$PROJ2" show --name-only --format= HEAD | grep -c '^ai/tasks/mob')" "task: mob — added with 3 subtasks|4"
+"$FRAIM" tasks 2>/dev/null | grep -q '◆ mob — Mobile app .*можно брать: mob-api, mob-docs'
+check "board names what can be taken next" "$?" "0"
+"$FRAIM" tasks 2>/dev/null | grep -q '      · mob-ios — iOS client .*ждёт: mob-api'
+check "board names what a waiting subtask waits for" "$?" "0"
+"$FRAIM" tasks --json 2>/dev/null | grep -q '"slug": "mob-ios".*"waiting_on": \["mob-api"\]'
+check "json: waiting_on" "$?" "0"
+
+# Subtask refusals: nothing of the project is written when one child is wrong.
+proj '### mob2-a — A
+What and why: x.
+Done when: y.
+After: mob2-b
+
+### mob2-b — B
+What and why: x.
+Done when: y.' | "$FRAIM" task-new mob2 --master >/dev/null 2>&1
+check "After may name only a subtask above it" "$?" "2"
+proj '### mob3-a — A
+What and why: x.' | "$FRAIM" task-new mob3 --master >/dev/null 2>&1
+check "a subtask without «Done when» — refused" "$?" "2"
+proj 'First the API:
+### mob4-a — A
+What and why: x.
+Done when: y.' | "$FRAIM" task-new mob4 --master >/dev/null 2>&1
+check "text outside a subtask — refused" "$?" "2"
+proj '### mob-api — Again
+What and why: x.
+Done when: y.' | "$FRAIM" task-new mob5 --master >/dev/null 2>&1
+check "a subtask slug already on the board — refused" "$?" "2"
+proj '### mob6-a — A
+What and why: x.
+Done when: y.' | "$FRAIM" task-new mob6 --task >/dev/null 2>&1
+check "«## Subtasks» on an ordinary task — refused" "$?" "2"
+check "refused projects left nothing behind" \
+      "$(ls -a "$PROJ2/ai/tasks" | grep -c 'mob[2-6]\|^\.mob')" "0"
+
+# One more subtask, ordered after an existing one.
+card "Android client" | "$FRAIM" task-new mob-android --parent mob --after mob-api >/dev/null 2>&1
+check "--after with --parent" "$(sed -n 's/^after: //p' "$PROJ2/ai/tasks/mob-android.md")" "mob-api"
+card "x" | "$FRAIM" task-new mob-bad --parent mob --after add-auth >/dev/null 2>&1
+check "--after naming a card outside the project — refused" "$?" "2"
+card "x" | "$FRAIM" task-new mob-bad --task --after mob-api >/dev/null 2>&1
+check "--after without --parent — refused" "$?" "2"
+
+# Closing frees the queue: the seal names what can be taken now.
+"$FRAIM" task-seal mob-api "schema in the repo" 2>/dev/null | grep -q 'можно брать: mob-android, mob-docs, mob-ios'
+check "seal names what is free now" "$?" "0"
+"$FRAIM" tasks 2>/dev/null | grep -q 'ждёт:'
+check "nothing waits once the dependency is closed" "$?" "1"
+for _s in mob-ios mob-android mob-docs; do "$FRAIM" task-seal "$_s" --dropped "test" >/dev/null 2>&1; done
+"$FRAIM" task-seal mob "test" >/dev/null 2>&1
+
 # An ordinary task becomes a project only through a verb — at the human's word.
-card "A big one" | "$FRAIM" task-new big >/dev/null 2>&1
+card "A big one" | "$FRAIM" task-new big --task >/dev/null 2>&1
 "$FRAIM" task-master big >/dev/null 2>&1
 check "task-master makes a project" "$(sed -n 's/^kind: //p' "$PROJ2/ai/tasks/big.md")" "master"
 "$FRAIM" task-seal big "x" >/dev/null 2>&1
@@ -943,7 +1044,7 @@ check "question without «Question» and «Why it matters» — refused" "$?" "2
 check "fraim backlog shows the question" "$?" "0"
 "$FRAIM" find cache 2>/dev/null | grep -q 'ai/backlog/cache-q.md'
 check "find searches the backlog too" "$?" "0"
-printf '# Build the cache\n\n## What and why\nx\n\n## Done when\nx\n' | "$FRAIM" task-new add-cache --from cache-q >/dev/null 2>&1
+printf '# Build the cache\n\n## What and why\nx\n\n## Done when\nx\n' | "$FRAIM" task-new add-cache --task --from cache-q >/dev/null 2>&1
 check "question became a task" "$([ -f "$PROJ2/ai/tasks/add-cache.md" ] && [ ! -f "$PROJ2/ai/backlog/cache-q.md" ] && echo yes || echo no)" "yes"
 check "question archive names the task" "$(grep -c 'became task add-cache' "$PROJ2"/ai/archive/backlog/*_cache-q.md)" "1"
 check "card references the question" "$(grep -c 'From the backlog: `ai/archive/backlog/' "$PROJ2/ai/tasks/add-cache.md")" "1"
@@ -978,10 +1079,10 @@ printf 'стек поменялся\n' | "$FRAIM" arch "Stack" >/dev/null 2>&1
 check "arch refuses a body in Russian" "$?" "2"
 printf 'notes\n' | "$FRAIM" arch "Развёртывание" --new >/dev/null 2>&1
 check "arch refuses a new section name in Russian" "$?" "2"
-printf '# Добавить кэш\n\n## What and why\nМедленно.\n\n## Done when\nБыстро.\n' | "$FRAIM" task-new ru-card >/dev/null 2>&1
+printf '# Добавить кэш\n\n## What and why\nМедленно.\n\n## Done when\nБыстро.\n' | "$FRAIM" task-new ru-card --task >/dev/null 2>&1
 check "task-new refuses a card in Russian" "$?" "2"
 check "no card left behind" "$(ls -a "$PROJ2/ai/tasks" | grep -c 'ru-card')" "0"
-card "Language probe" | "$FRAIM" task-new lang-probe >/dev/null 2>&1
+card "Language probe" | "$FRAIM" task-new lang-probe --task >/dev/null 2>&1
 "$FRAIM" task-seal lang-probe "готово" >/dev/null 2>&1
 check "task-seal refuses a result in Russian" "$?" "2"
 check "the card stays on the board" "$([ -f "$PROJ2/ai/tasks/lang-probe.md" ] && echo yes)" "yes"
@@ -1072,7 +1173,7 @@ mkdir -p "$CL/ai/tasks/old-plan"
 printf '# Task Context\n\n## Goal\nСделать Y.\n\n## Why\nНадо.\n' > "$CL/ai/tasks/old-plan/context.md"
 printf '# Task\n\n## Summary\nДобавить Y.\n\n## Acceptance Criteria\n- [ ] Y есть\n' > "$CL/ai/tasks/old-plan/task.md"
 # an open card — clean does NOT touch the board
-printf '# Open one\n\n## What and why\nx\n\n## Done when\nx\n' | "$FRAIM" task-new open-card >/dev/null 2>&1
+printf '# Open one\n\n## What and why\nx\n\n## Done when\nx\n' | "$FRAIM" task-new open-card --task >/dev/null 2>&1
 for i in 1 2 3; do
     printf 'c%s\n' "$i" >> "$CL/app.py"
     git -C "$CL" add app.py >/dev/null; git -C "$CL" commit -qm "fix: c$i" >/dev/null
