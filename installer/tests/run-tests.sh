@@ -944,7 +944,7 @@ cd "$REPO" || exit 1
 # --- decide / pitfall: writing into the foundation --------------------------
 cd "$PROJ2" || exit 1
 
-printf 'Decision: sqlite in WAL mode.\n' | "$FRAIM" decide "storage engine" >/dev/null 2>&1
+printf 'Decision: sqlite in WAL mode, file at `C:\\temp\\new`.\n' | "$FRAIM" decide "storage engine" >/dev/null 2>&1
 check "decide appended an entry" "$(grep -c '^## 20.* — storage engine$' "$PROJ2/DECISIONS.md")" "1"
 check "decide removed the stub marker" "$(grep -c 'fraim:stub' "$PROJ2/DECISIONS.md")" "0"
 
@@ -960,6 +960,7 @@ printf 'Decision: postgres after all.\n' |
 check "supersede recorded with the full heading" "$(grep -c '^> Supersedes: 20.* — storage engine$' "$PROJ2/DECISIONS.md")" "1"
 check "superseded entry left the root" "$(grep -c '^## .*— storage engine$' "$PROJ2/DECISIONS.md")" "0"
 check "and went to the decisions archive, not deleted" "$(grep -c '— storage engine$' "$PROJ2/ai/archive/decisions_log.md")" "1"
+check "the moved entry kept its backslashes" "$(grep -cF 'C:\temp\new' "$PROJ2/ai/archive/decisions_log.md")" "1"
 printf 'Decision: x.\n' | "$FRAIM" decide "ambiguous" --supersedes "20" >/dev/null 2>&1
 check "ambiguous supersede — refused" "$?" "2"
 check "and nothing written" "$(grep -c '— ambiguous$' "$PROJ2/DECISIONS.md")" "0"
@@ -1007,6 +1008,9 @@ printf '# A\n\n## Stack\nold stack\n\n## Data flow\nflow stays\n' > "$PROJ2/ARCH
 printf 'new stack line\n' | "$FRAIM" arch "Stack" >/dev/null 2>&1
 check "arch replaced the section body" "$(grep -c '^new stack line$' "$PROJ2/ARCHITECTURE.md")$(grep -c '^old stack$' "$PROJ2/ARCHITECTURE.md")" "10"
 check "neighbouring section intact" "$(grep -c '^flow stays$' "$PROJ2/ARCHITECTURE.md")" "1"
+# A table cell that quotes a pipe keeps its backslash: losing it splits the cell.
+printf '| cmd | note |\n|---|---|\n| `a \\| b` | pipe, `\\n` |\n' | "$FRAIM" arch "Stack" >/dev/null 2>&1
+check "arch keeps backslashes in the body" "$(grep -cF '| `a \| b` | pipe, `\n` |' "$PROJ2/ARCHITECTURE.md")" "1"
 printf 'x\n' | "$FRAIM" arch "Stak" >/dev/null 2>&1
 check "typo in section name — refusal, not a new section" "$?$(grep -c '^## Stak$' "$PROJ2/ARCHITECTURE.md")" "20"
 printf 'deploy notes\n' | "$FRAIM" arch "Deployment" --new >/dev/null 2>&1

@@ -268,7 +268,10 @@ $_list
     if [ "$_new" = 1 ]; then
         { cat "$_p"; printf '\n## %s\n%s\n' "$_sec" "$_wrapped"; } > "$_tmp"
     else
-        awk -v h="## $_sec" -v body="$_wrapped" '
+        # Text travels through ENVIRON, not -v: awk -v expands backslash escapes, and a
+        # table cell's `\|` would lose its slash and split the cell.
+        FND_HEAD="## $_sec" FND_BODY=$_wrapped awk '
+            BEGIN { h = ENVIRON["FND_HEAD"]; body = ENVIRON["FND_BODY"] }
             $0 == h { print; print body; print ""; skip = 1; next }
             skip && /^#{1,2} / { skip = 0 }
             skip { next }
@@ -301,14 +304,17 @@ fnd_move_decision() {
     _md_root=$1; _md_head=$2
     _md_src="$_md_root/DECISIONS.md"; _md_log="$_md_root/ai/archive/decisions_log.md"
     mkdir -p "$_md_root/ai/archive" || return 1
-    _md_entry=$(awk -v h="$_md_head" '$0 == h { f = 1; print; next } f && /^## / { exit } f { print }' "$_md_src")
+    # Text travels through ENVIRON, not -v: awk -v expands backslash escapes.
+    _md_entry=$(FND_HEAD=$_md_head awk 'BEGIN { h = ENVIRON["FND_HEAD"] }
+        $0 == h { f = 1; print; next } f && /^## / { exit } f { print }' "$_md_src")
     [ -n "$_md_entry" ] || return 1
-    awk -v h="$_md_head" '$0 == h { skip = 1; next } skip && /^## / { skip = 0 } skip { next } { print }' \
+    FND_HEAD=$_md_head awk 'BEGIN { h = ENVIRON["FND_HEAD"] }
+        $0 == h { skip = 1; next } skip && /^## / { skip = 0 } skip { next } { print }' \
         "$_md_src" > "$_md_src.fraim.tmp" && mv "$_md_src.fraim.tmp" "$_md_src" || return 1
     if [ ! -f "$_md_log" ]; then
         printf '# DECISIONS — archive (append-only)\n\n> Superseded entries moved out of DECISIONS.md, newest on top.\n' > "$_md_log"
     fi
-    awk -v entry="$_md_entry" '
+    FND_ENTRY=$_md_entry awk 'BEGIN { entry = ENVIRON["FND_ENTRY"] }
         !done && /^## / { print entry; print ""; done = 1 }
         { print }
         END { if (!done) { print ""; print entry } }
