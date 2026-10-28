@@ -28,7 +28,10 @@ convenience in `install.sh`). Distribution: shell installer + Claude Code plugin
 | root docs (`README.md`, `MODES.md`, `PRINCIPLES.md`, `DESIGN-2026-09.md`, `AUDIT*.md`, `BACKLOG.md`) | design rationale and audits; input, may drift as the product evolves |
 
 ## Data model (key entities)
-- **project registry** (`~/.fraim/`): registered projects, install state, version.
+- **project registry** (`~/.fraim/`): registered projects, install state, version. `fraim upgrade`
+  with no path walks it (plus the managed project in the current directory, registered on the
+  way), each project in its own subshell so one refusal does not end the sweep; with a path it
+  upgrades that one project. `fraim init` and `fraim update` touch the machine only and point to it.
 - **per-project state**: `ai/` tree (tasks, backlog, archive, investigations), foundation files,
   `fraim.conf`.
 - **foundation writes go through verbs**: `fraim decide` (newest on top; `--supersedes` naming one

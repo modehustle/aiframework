@@ -3,6 +3,25 @@
 > Newest on top. One entry per decision. Never rewrite history — supersede with a new
 > entry, or relocate stale entries to `ai/archive/decisions_log.md` via `/prune`.
 
+## 2026-10-28 — fraim upgrade is a machine command over the registry
+
+Context: the owner noticed the asymmetry: `fraim update` brings a new release to the machine once,
+while `fraim upgrade` had to be run inside every project, one by one, and nobody remembers which
+projects exist.
+Decision: `fraim upgrade` with no path upgrades every project in the registry
+(`~/.fraim/projects`), plus the project in the current directory when it is under the system and
+not registered yet (it is registered on the way, so the watchman's «→ fraim upgrade» still works
+from inside an unregistered project). A missing directory or a folder not under the system is
+skipped with a line, each project runs in its own subshell so a refusal in one does not end the
+sweep, and a summary closes it; the exit is 1 when any project failed, 2 on an empty registry
+outside a project. `fraim upgrade PATH` keeps the old behaviour for one project. `fraim init`
+(and so `fraim update`) names the number of registered projects and points to `fraim upgrade`.
+Alternatives: running the sweep inside `fraim update` rejected — upgrade commits into each project,
+and an update runs from a schedule or an image (`--quiet`) where nobody is looking at those
+repositories; a separate `fraim upgrade --all` rejected — the common case would need the flag.
+Consequences: a bare `fraim upgrade` inside a project now also touches the other registered
+projects; tests call `fraim upgrade .` where they mean one project.
+
 ## 2026-10-28 — OpenCode is a supported harness
 
 Context: the owner asked for OpenCode to be supported like the other agents. It reads the open
