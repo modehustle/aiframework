@@ -30,6 +30,8 @@ If you re-read `ARCHITECTURE.md` and rewrite it prettier, you have laundered sta
 - The user runs it deliberately, every 2–4 weeks, OR
 - when the watchman reports a drift threshold reached. There are two, counted the same way and configurable separately (`fraim config` shows the values in effect and where they came from): `foundation_lag_commits` — code commits since `ARCHITECTURE.md` last moved, i.e. the map going stale; and `lessons_lag_commits` — code commits since `CONVENTIONS.md` last moved, i.e. work happening while nothing is learned from it. Do not carry either number in your head: a project hammered daily and one touched monthly honestly have different thresholds, and the user may have changed them.
 
+- when the watchman reports text that is not English in the foundation, on the board or in the backlog (finding `language`). The project is English inside whatever language the human speaks; that text was written by hand past the verbs, or before they checked. Translate it — meaning unchanged, quoted names and the human's own words stay as they are — through the verbs where one fits (`fraim arch` for a map section), by hand otherwise, and save it with one `fraim commit docs`. `fraim find` and `fraim brief` show the entries; `fraim status` names the files and counts.
+
 There is no wrong time to garden, but those are the triggers that catch drift before it rots.
 
 ---

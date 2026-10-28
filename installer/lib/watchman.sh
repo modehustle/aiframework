@@ -488,6 +488,31 @@ wm_managed() {
     return 1
 }
 
+# 7. The language of what agents read. The verbs refuse text that is not English and
+#    `fraim commit` refuses to add it, but a file edited by hand and saved with plain git,
+#    or not saved at all, passes neither. So the verdict reads what `fraim brief` prints —
+#    the foundation, the open cards, the backlog — as it is now, whoever wrote it and
+#    however it got there. Old text in another language is the same drift as new: it is
+#    what the next session reads. The archive is history and is left alone.
+wm_check_language() {
+    _wl_root=$1
+    _wl_n=0; _wl_files=; _wl_first=
+    for _wl_f in "$_wl_root"/ARCHITECTURE.md "$_wl_root"/CONVENTIONS.md "$_wl_root"/DECISIONS.md \
+                 "$_wl_root"/STACK.md "$_wl_root"/ai/tasks/*.md "$_wl_root"/ai/backlog/*.md; do
+        [ -f "$_wl_f" ] || continue
+        _wl_r=$(lang_measure all < "$_wl_f") && continue
+        _wl_k=$(printf '%s\n' "$_wl_r" | grep -c .)
+        _wl_n=$((_wl_n + _wl_k))
+        _wl_rel=${_wl_f#"$_wl_root"/}
+        if [ -z "$_wl_files" ]; then _wl_files="$_wl_rel ($_wl_k)"; else _wl_files="$_wl_files, $_wl_rel ($_wl_k)"; fi
+    done
+    [ "$_wl_n" -gt 0 ] || return 0
+    wm_add language attention \
+        "$_wl_n $(wm_plural "$_wl_n" фрагмент фрагмента фрагментов) фундамента не по-английски: $_wl_files" \
+        "/prune — перевести на английский"
+    return 0
+}
+
 wm_run() {
     _root=$1
     WM_FINDINGS=
@@ -503,6 +528,7 @@ wm_run() {
     wm_check_queue
     config_is_on check_foundation   "$_root" && wm_check_foundation "$_root"
     config_is_on check_lessons      "$_root" && wm_check_lessons "$_root"
+    config_is_on check_language     "$_root" && wm_check_language "$_root"
     config_is_on check_update       "$_root" && wm_check_update
     return 0
 }

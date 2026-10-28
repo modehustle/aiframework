@@ -937,6 +937,7 @@ cmd_commit() {
     lang_check "the commit message" "$_text"
     _root=$(pwd -P)
     verb_is_git "$_root" || die "здесь нет git — точку сохранения поставить не во что"
+    lang_check_commit "$_root" "$@"
     verb_commit "$_root" "$_kind" "$_text" "$@" || die "коммит не удался"
 }
 cmd_prune_mark() { verb_prune_mark "$(verb_root)"; }

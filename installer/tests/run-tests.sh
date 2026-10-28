@@ -140,7 +140,7 @@ done
 CARDOUT=$(sh -c '
     . "'"$REPO"'/installer/lib/core.sh"; . "'"$REPO"'/installer/lib/config.sh"
     . "'"$REPO"'/installer/lib/registry.sh"; . "'"$REPO"'/installer/lib/context.sh"
-    . "'"$REPO"'/installer/lib/scaffold.sh"; . "'"$REPO"'/installer/lib/verbs.sh"; . "'"$REPO"'/installer/lib/tasks.sh"; . "'"$REPO"'/installer/lib/foundation.sh"; . "'"$REPO"'/installer/lib/verbtable.sh"
+    . "'"$REPO"'/installer/lib/scaffold.sh"; . "'"$REPO"'/installer/lib/lang.sh"; . "'"$REPO"'/installer/lib/verbs.sh"; . "'"$REPO"'/installer/lib/tasks.sh"; . "'"$REPO"'/installer/lib/foundation.sh"; . "'"$REPO"'/installer/lib/verbtable.sh"
     . "'"$REPO"'/installer/lib/ade.sh"; . "'"$REPO"'/installer/lib/watchman.sh"; . "'"$REPO"'/installer/lib/update.sh"; . "'"$REPO"'/installer/lib/menu.sh"
     cd "'"$CARD"'" && menu_card && printf "%s\n" "$MENU_CARD"' 2>&1)
 check "menu card does not crash on watchman numbers" "$(printf '%s' "$CARDOUT" | grep -c 'Illegal number')" "0"
@@ -160,7 +160,7 @@ cd "$SANDBOX" || exit 1
 NAV=$(sh -c '
     . "'"$REPO"'/installer/lib/core.sh"; . "'"$REPO"'/installer/lib/config.sh"
     . "'"$REPO"'/installer/lib/registry.sh"; . "'"$REPO"'/installer/lib/context.sh"
-    . "'"$REPO"'/installer/lib/scaffold.sh"; . "'"$REPO"'/installer/lib/verbs.sh"; . "'"$REPO"'/installer/lib/tasks.sh"; . "'"$REPO"'/installer/lib/foundation.sh"; . "'"$REPO"'/installer/lib/verbtable.sh"
+    . "'"$REPO"'/installer/lib/scaffold.sh"; . "'"$REPO"'/installer/lib/lang.sh"; . "'"$REPO"'/installer/lib/verbs.sh"; . "'"$REPO"'/installer/lib/tasks.sh"; . "'"$REPO"'/installer/lib/foundation.sh"; . "'"$REPO"'/installer/lib/verbtable.sh"
     . "'"$REPO"'/installer/lib/ade.sh"; . "'"$REPO"'/installer/lib/watchman.sh"; . "'"$REPO"'/installer/lib/update.sh"; . "'"$REPO"'/installer/lib/menu.sh"
     cd "'"$CARD"'" || exit 1
     MENU_N=$(menu_count); MENU_SEL=1
@@ -265,7 +265,7 @@ rm -f "$PROJ/ai/fraim.conf"
 
 # The board: an open card is information, never alarm. Nothing on a card can go stale or
 # be blocked — it carries an intent, not a snapshot of the code.
-printf -- '---\nkind: task\ncreated: 2026-01-01\n---\n# Сделать X\n\n## What and why\nx\n\n## Done when\nx\n' \
+printf -- '---\nkind: task\ncreated: 2026-01-01\n---\n# Do X\n\n## What and why\nx\n\n## Done when\nx\n' \
     > "$PROJ/ai/tasks/do-x.md"
 git -C "$PROJ" add -A >/dev/null 2>&1; git -C "$PROJ" commit -qm "task: do-x" >/dev/null 2>&1
 "$FRAIM" status "$PROJ" >/dev/null 2>&1
@@ -998,6 +998,37 @@ LHEAD=$(git -C "$PROJ2" rev-parse HEAD)
 check "commit refuses a message in Russian" "$?" "2"
 check "nothing was committed" "$(git -C "$PROJ2" rev-parse HEAD)" "$LHEAD"
 "$FRAIM" commit docs "readme touched" README.md >/dev/null 2>&1
+# fraim commit checks what the save point ADDS: the foundation and cards whole, code by its
+# comments only. Old text is not the commit's business; strings in code are the operator's.
+printf '\nОбычный абзац, дописанный руками в обход глаголов.\n' >> "$PROJ2/DECISIONS.md"
+LHEAD=$(git -C "$PROJ2" rev-parse HEAD)
+OUTC=$("$FRAIM" commit docs "decisions edited by hand" DECISIONS.md 2>&1)
+check "commit refuses a hand edit of the foundation in Russian" "$?" "2"
+check "the refusal names the file" "$(printf '%s' "$OUTC" | grep -c 'DECISIONS.md: Обычный абзац')" "1"
+check "nothing was committed" "$(git -C "$PROJ2" rev-parse HEAD)" "$LHEAD"
+git -C "$PROJ2" checkout -- DECISIONS.md
+mkdir -p "$PROJ2/src"
+printf 'def f():\n    # считаем сумму заново, кэш врёт\n    return 1\n' > "$PROJ2/src/calc.py"
+"$FRAIM" commit feat "calc" src/calc.py >/dev/null 2>&1
+check "commit refuses a new code comment in Russian" "$?" "2"
+printf 'def f():\n    # recompute the sum, the cache lies\n    die("кэш врёт # совсем")  # the message is the operator\047s\n    return 1\n' > "$PROJ2/src/calc.py"
+"$FRAIM" commit feat "calc" src/calc.py >/dev/null 2>&1
+check "strings in code are not checked, English comments pass" "$?" "0"
+printf 'const a = "http://x"; // сломано\n/*\n * подробности\n */\n' > "$PROJ2/src/a.js"
+"$FRAIM" commit feat "js" src/a.js >/dev/null 2>&1
+check "// and /* */ comments are checked too" "$?" "2"
+printf 'const a = "http://x"; // works\n' > "$PROJ2/src/a.js"
+"$FRAIM" commit feat "js" src/a.js >/dev/null 2>&1
+check "old lines are not re-checked: only what is added" "$?" "0"
+
+# The watchman reads the foundation as it is now: a hand edit saved past fraim commit
+# still shows.
+printf '\n## 2026-01-01 — правка руками\n\nРешение: обошли глаголы.\n' >> "$PROJ2/DECISIONS.md"
+git -C "$PROJ2" commit -qam "plain git" >/dev/null 2>&1
+SL=$("$FRAIM" status 2>&1)
+check "watchman reports foundation text not in English" "$(printf '%s' "$SL" | grep -c 'не по-английски: DECISIONS.md (2)')" "1"
+git -C "$PROJ2" revert -q --no-edit HEAD >/dev/null 2>&1
+
 LM=$(sh -c '. "'"$REPO"'/installer/lib/core.sh"; . "'"$REPO"'/installer/lib/lang.sh"
     for t in "这破坏了项目的纯洁性" "Ο πράκτορας γράφει" \
              "Der Agent schreibt das Fundament in der Sprache des Operators, was die Reinheit bricht, deshalb soll das Werkzeug die Sprache prüfen, bevor es einen Eintrag in die Entscheidungen schreibt und dann ablehnt." \
@@ -1211,7 +1242,7 @@ printf '\nfraim publish (off-machine copy)\n'
 # only on a terminal, and a pty cannot be set up in POSIX sh.
 PUBLIB_CANCEL='. "'"$REPO"'/installer/lib/core.sh"; . "'"$REPO"'/installer/lib/config.sh"
     . "'"$REPO"'/installer/lib/registry.sh"; . "'"$REPO"'/installer/lib/context.sh"
-    . "'"$REPO"'/installer/lib/scaffold.sh"; . "'"$REPO"'/installer/lib/verbs.sh"; . "'"$REPO"'/installer/lib/tasks.sh"; . "'"$REPO"'/installer/lib/foundation.sh"; . "'"$REPO"'/installer/lib/verbtable.sh"
+    . "'"$REPO"'/installer/lib/scaffold.sh"; . "'"$REPO"'/installer/lib/lang.sh"; . "'"$REPO"'/installer/lib/verbs.sh"; . "'"$REPO"'/installer/lib/tasks.sh"; . "'"$REPO"'/installer/lib/foundation.sh"; . "'"$REPO"'/installer/lib/verbtable.sh"
     . "'"$REPO"'/installer/lib/ade.sh"; . "'"$REPO"'/installer/lib/watchman.sh"; . "'"$REPO"'/installer/lib/update.sh"; . "'"$REPO"'/installer/lib/publish.sh"'
 
 # Everything here works without network and without gh: a local bare repository serves as the «host».
@@ -1495,7 +1526,7 @@ GIT_CONFIG_COUNT=0; export GIT_CONFIG_COUNT
 
 PUBLIB='. "'"$REPO"'/installer/lib/core.sh"; . "'"$REPO"'/installer/lib/config.sh"
         . "'"$REPO"'/installer/lib/registry.sh"; . "'"$REPO"'/installer/lib/context.sh"
-        . "'"$REPO"'/installer/lib/scaffold.sh"; . "'"$REPO"'/installer/lib/verbs.sh"; . "'"$REPO"'/installer/lib/tasks.sh"; . "'"$REPO"'/installer/lib/foundation.sh"; . "'"$REPO"'/installer/lib/verbtable.sh"
+        . "'"$REPO"'/installer/lib/scaffold.sh"; . "'"$REPO"'/installer/lib/lang.sh"; . "'"$REPO"'/installer/lib/verbs.sh"; . "'"$REPO"'/installer/lib/tasks.sh"; . "'"$REPO"'/installer/lib/foundation.sh"; . "'"$REPO"'/installer/lib/verbtable.sh"
         . "'"$REPO"'/installer/lib/ade.sh"; . "'"$REPO"'/installer/lib/watchman.sh"; . "'"$REPO"'/installer/lib/update.sh"; . "'"$REPO"'/installer/lib/publish.sh"'
 
 CONV=$(sh -c "$PUBLIB"'
@@ -2500,7 +2531,7 @@ check "all waves collected — nothing to raise" "$?" "1"
 printf '\ndispatcher: conductor acceptance\n'
 
 DLIBV="$DLIB"'
-    . "'"$REPO"'/installer/lib/verbs.sh"; . "'"$REPO"'/installer/lib/tasks.sh"; . "'"$REPO"'/installer/lib/foundation.sh"; . "'"$REPO"'/installer/lib/verbtable.sh"'
+    . "'"$REPO"'/installer/lib/lang.sh"; . "'"$REPO"'/installer/lib/verbs.sh"; . "'"$REPO"'/installer/lib/tasks.sh"; . "'"$REPO"'/installer/lib/foundation.sh"; . "'"$REPO"'/installer/lib/verbtable.sh"'
 
 AB="$SANDBOX/accept"; mkdir -p "$AB/ai/builds"; export AB
 git -C "$AB" init -q; git -C "$AB" config user.email t@t; git -C "$AB" config user.name t
