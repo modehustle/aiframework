@@ -3,6 +3,31 @@
 > Newest on top. One entry per decision. Never rewrite history — supersede with a new
 > entry, or relocate stale entries to `ai/archive/decisions_log.md` via `/prune`.
 
+## 2026-10-28 — fraim commit checks what it adds; the watchman checks the foundation's language
+
+Context: the verbs check only the text they are handed. A foundation file edited by hand bypasses
+them, and code comments are written by no verb at all — both still drifted into the operator's
+language.
+Decision: (1) `fraim commit` measures the lines the save point adds (changes against HEAD, new files
+whole): the foundation files and `ai/**/*.md` as text, code files by their comments only — `#`,
+`//`, `/* */`, `--`, `<!-- -->` by extension, found outside string literals. Strings are not
+checked: the operator's messages live there in the operator's language. Other files (README, docs,
+data) are not checked. A refusal names each file with its first offending line and commits nothing.
+Old text is not re-checked, so a project with a non-English past can still commit. (2) The watchman
+gets `check_language` (on by default): it measures the foundation, the open cards and the backlog
+as they are now and reports every unit that is not English, by file, pointing to /prune — this
+catches what was saved with plain git or not saved at all. The archive is history and is not read.
+(3) /prune translates such text, meaning unchanged. (4) `lang_measure all` reports every failing
+unit, not the first.
+Alternatives: a git pre-commit hook rejected — it lives in one clone and the product is
+harness- and machine-agnostic; checking whole files at commit time rejected — a project's old text
+would block every save point; baselining old foundation text in the watchman rejected — it is what
+the next session reads, so it is drift whatever its age; checking string literals rejected — they
+hold the operator's locale by design.
+Consequences: projects whose foundation is still partly in another language get an attention
+finding until it is translated (this repository: the Russian entries of DECISIONS.md). Python
+docstrings are string literals and are not seen.
+
 ## 2026-10-28 — the write verbs refuse text that is not English
 
 Context: the rule «the project is English inside» (2026-10-27) lived only in instructions. Live

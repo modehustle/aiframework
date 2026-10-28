@@ -25,7 +25,9 @@
   and are translated before a public release. The human talks to the agent in any language.
   The write verbs enforce it (`lang.sh`): text they would put into a project — a decision,
   a pitfall, a map section, a card, a backlog question, a result line, a commit message,
-  findings — is refused when it is not English; quoted words are not measured.
+  findings — is refused when it is not English; quoted words are not measured. `fraim
+  commit` refuses to add such text to the foundation, cards or code comments (strings in
+  code are the operator's and are not checked), and `fraim status` reports what is there.
 - Two-layer split: `procedures/` is the canonical engine-agnostic methodology —
   never import harness specifics there. `installer/` is delivery code; harness
   knowledge lives only there.
