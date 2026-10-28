@@ -112,7 +112,7 @@ execution environment), then models are discovered live from the chosen agent it
 catalogue as fallback, typed value when nothing answers.
 
 ## External interfaces
-Harness adapters (Hermes, Claude Code, Codex, omp, pi, Devin CLI, Antigravity) via
+Harness adapters (Hermes, Claude Code, Codex, omp, pi, Devin CLI, Antigravity, OpenCode) via
 generated Agent Skills + `AGENTS.md` context blocks. GitHub repo as distribution channel.
 
 ## Deployment

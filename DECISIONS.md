@@ -3,6 +3,27 @@
 > Newest on top. One entry per decision. Never rewrite history — supersede with a new
 > entry, or relocate stale entries to `ai/archive/decisions_log.md` via `/prune`.
 
+## 2026-10-28 — OpenCode is a supported harness
+
+Context: the owner asked for OpenCode to be supported like the other agents. It reads the open
+Agent Skills format and a global AGENTS.md, lists its models itself and takes a model in argv, so
+it fits every table we keep without new mechanics.
+Decision: (1) A harness row: probe `opencode`, skills in `~/.config/opencode/skills` (plural),
+the context block in `~/.config/opencode/AGENTS.md`; presence is that directory, never the bare
+`~/.config`. (2) The roles picker discovers models with `opencode models`, one `provider/model`
+per line; the parser keeps nested slashes and colons and drops anything with a space. (3) A
+built-in fleet launch command `opencode --model %s` (bare `opencode` without a model), so a fleet
+worker on OpenCode takes the custom launch path with the model in argv; no readiness banner,
+`tui-idle` alone decides, and `launchcmd_opencode` / `readypattern_opencode` still override.
+Alternatives: relying on OpenCode's fallback to `~/.claude/skills` rejected — it exists only when
+Claude Code is installed and can be switched off by an environment variable; writing the block
+into `~/.claude/CLAUDE.md` for it rejected — that file belongs to another harness.
+Consequences: with Claude Code installed too, OpenCode sees our skills twice under the same names,
+with the same text. The AGENTS.md our block creates ends OpenCode's fallback to
+`~/.claude/CLAUDE.md`, so a human's own global rules for OpenCode belong in its AGENTS.md. The
+facts come from OpenCode's documentation, not a live run: the launch command and the
+`opencode models` format are to be confirmed on a machine with OpenCode.
+
 ## 2026-10-28 — a task's kind is required; a project is laid down with its subtasks; after orders the queue
 
 Context: a live test in Devin CLI on a cheap model. The human asked for a project; the model went
