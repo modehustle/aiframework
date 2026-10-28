@@ -192,6 +192,7 @@ roles_efforts() { printf 'low\nmedium\nhigh\nxhigh\nmax\n'; }
 #   devin         `devin models list`          text table, id + display name + price
 #   pi            `pi --list-models`           text table, provider + model + context
 #   cursor-agent  `cursor-agent models`        text table, id - display name
+#   opencode      `opencode models`            one provider/model per line
 #   codex         ~/.codex/models_cache.json   JSON, self-refreshed (etag, fetched_at)
 #   claude        catalogue embedded in the    minified JS entries
 #                 claude binary                  {id:"claude-...",family:"..."}
@@ -216,6 +217,7 @@ roles_models_table() {
 devin	command	devin models list	roles_parse_devin_models
 pi	command	pi --list-models	roles_parse_pi_models
 cursor-agent	command	cursor-agent models	roles_parse_cursor_models
+opencode	command	opencode models	roles_parse_opencode_models
 codex	file	.codex/models_cache.json	roles_parse_codex_models
 claude	binary	claude	roles_parse_claude_models
 TBL
@@ -233,6 +235,13 @@ roles_parse_devin_models() {
 roles_parse_cursor_models() {
     sed -n 's/^\([^[:space:]][^[:space:]]*\) - .*/\1/p' |
         grep -E '^[a-z0-9][a-z0-9._-]*$' | sort -u || :
+}
+
+# opencode: one `provider/model` per line, exactly the string its --model takes. The model
+# part may carry more slashes and a colon (`openrouter/vendor/model:free`); anything with a
+# space — a log line, a warning — is not an id.
+roles_parse_opencode_models() {
+    grep -E '^[a-z0-9][a-z0-9._-]*/[^[:space:]]+$' | sort -u || :
 }
 
 # pi: a column table, model in field 2, header on line 1. A leading "~" marks a

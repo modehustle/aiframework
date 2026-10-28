@@ -1782,6 +1782,8 @@ check "rm removes the entry" "$("$FRAIM" projects 2>/dev/null | grep -cx "  $PRO
 printf '\nfraim init\n'
 
 mkdir -p "$HOME/.codex" "$HOME/.claude"     # pretend two harnesses are installed
+# OpenCode is detected by ~/.config/opencode, never by the bare ~/.config every machine has.
+mkdir -p "$HOME/.config"
 # Antigravity is detected by ~/.gemini/config, not by ~/.gemini: the bare directory
 # belongs to Gemini CLI, which is a different product sharing the same home.
 mkdir -p "$HOME/.gemini"
@@ -1792,12 +1794,22 @@ cd "$PROJ" || exit 1
 env PATH="$SANDBOX_PATH" "$FRAIM" init >/dev/null 2>&1
 check "bare ~/.gemini is not Antigravity" \
     "$([ -d "$HOME/.gemini/config/skills" ] && echo yes || echo no)" "no"
-mkdir -p "$HOME/.gemini/config"
+check "bare ~/.config is not OpenCode" \
+    "$([ -d "$HOME/.config/opencode" ] && echo yes || echo no)" "no"
+mkdir -p "$HOME/.gemini/config" "$HOME/.config/opencode"
 env PATH="$SANDBOX_PATH" "$FRAIM" init >/dev/null 2>&1
 check "init succeeded" "$?" "0"
 check "Codex: 12 skills" "$(find "$HOME/.codex/skills" -name SKILL.md 2>/dev/null | wc -l | tr -d ' ')" "12"
 check "Claude Code: 12 skills" "$(find "$HOME/.claude/skills" -name SKILL.md 2>/dev/null | wc -l | tr -d ' ')" "12"
 check "Antigravity: 12 skills" "$(find "$HOME/.gemini/config/skills" -name SKILL.md 2>/dev/null | wc -l | tr -d ' ')" "12"
+check "OpenCode: 12 skills in skills/ (plural)" "$(find "$HOME/.config/opencode/skills" -name SKILL.md 2>/dev/null | wc -l | tr -d ' ')" "12"
+check "context block in ~/.config/opencode/AGENTS.md" "$(grep -c 'fraim:begin' "$HOME/.config/opencode/AGENTS.md" 2>/dev/null)" "1"
+# OpenCode wants each skill's name to match its folder — a mismatch is a skill it skips.
+_mis=0
+for _sk in "$HOME/.config/opencode/skills"/*/SKILL.md; do
+    [ "$(sed -n 's/^name: //p' "$_sk" | head -1)" = "$(basename "$(dirname "$_sk")")" ] || _mis=$((_mis + 1))
+done
+check "OpenCode: every skill name matches its folder" "$_mis" "0"
 check "context block in ~/.codex/AGENTS.md" "$(grep -c 'fraim:begin' "$HOME/.codex/AGENTS.md" 2>/dev/null)" "1"
 check "context block in ~/.gemini/AGENTS.md" "$(grep -c 'fraim:begin' "$HOME/.gemini/AGENTS.md" 2>/dev/null)" "1"
 check "GEMINI.md is not ours — we do not write to it" \
@@ -2093,6 +2105,10 @@ DLC=$(FRAIM_HOME="$FLHOME" PATH="$ADEBIN:/usr:/bin" sh -c "$FLLIB"'; fleet_launc
 check "devin: built-in launch command with model" "$DLC" "devin --permission-mode bypass --model glm-5-2"
 DLC=$(FRAIM_HOME="$FLHOME" PATH="$ADEBIN:/usr:/bin" sh -c "$FLLIB"'; fleet_launch_command no-such glm-5-2; printf rc=%s "$?"' 2>/dev/null)
 check "we do not invent a command for an unknown agent" "$DLC" "rc=1"
+DLC=$(FRAIM_HOME="$FLHOME" PATH="$ADEBIN:/usr:/bin" sh -c "$FLLIB"'; fleet_launch_command opencode zai/glm-5.3-flash')
+check "opencode: built-in launch command with provider/model" "$DLC" "opencode --model zai/glm-5.3-flash"
+DLC=$(FRAIM_HOME="$FLHOME" PATH="$ADEBIN:/usr:/bin" sh -c "$FLLIB"'; fleet_launch_command opencode ""')
+check "opencode: no model — the bare agent" "$DLC" "opencode"
 printf 'launchcmd_grok = grok --model %%s --yolo\n' > "$FLPROJ/ai/fraim.conf" 2>/dev/null || {
     mkdir -p "$FLPROJ/ai"; printf 'launchcmd_grok = grok --model %%s --yolo\n' > "$FLPROJ/ai/fraim.conf"; }
 DLC=$(FRAIM_HOME="$FLHOME" PATH="$ADEBIN:/usr:/bin" sh -c "$FLLIB"'; fleet_launch_command grok glm-9 "$FLPROJ"')
@@ -2257,9 +2273,20 @@ check "claude parser: id from the binary's embedded catalogue" \
       "claude-haiku-4-5
 claude-opus-5"
 
+check "opencode parser: provider/model lines, nested slashes and colons kept, noise dropped" \
+      "$(roles_parse_out roles_parse_opencode_models 'INFO  loading providers
+anthropic/claude-sonnet-5-5
+openrouter/z-ai/glm-5.3-flash:free
+zai/glm-5.3-flash
+
+Warning: cache is stale')" \
+      "anthropic/claude-sonnet-5-5
+openrouter/z-ai/glm-5.3-flash:free
+zai/glm-5.3-flash"
+
 # Empty and broken input is a legal empty answer with exit code 0: an agent update
 # that broke the parser degrades into «enter your own», not into an error.
-for _p in roles_parse_devin_models roles_parse_cursor_models roles_parse_pi_models roles_parse_codex_models roles_parse_claude_models; do
+for _p in roles_parse_devin_models roles_parse_cursor_models roles_parse_pi_models roles_parse_codex_models roles_parse_claude_models roles_parse_opencode_models; do
     _out=$(roles_parse_out "$_p" '' 2>/dev/null; roles_parse_out "$_p" 'garbage !! ##' 2>/dev/null)
     check "parser $_p: empty/broken input — empty, exit code 0" "$_out|" "|"
 done

@@ -30,6 +30,15 @@
 # is `~/.gemini/config` rather than `~/.gemini` — deliberately. `~/.gemini` alone
 # means Gemini CLI, which is not this harness; the `config/` subtree is
 # Antigravity's own.
+#
+# OpenCode keeps everything under XDG, `~/.config/opencode/`: skills in `skills/` (plural —
+# older third-party pages still show `skill/`), the global rules in `AGENTS.md`. The probe
+# home is therefore `~/.config/opencode`, never the bare `~/.config` that every Linux
+# machine has. Two of its Claude Code fallbacks touch us: it also reads `~/.claude/skills`,
+# so on a machine with both our skills are found twice under the same names — the same
+# text, so either copy is right; and it reads `~/.claude/CLAUDE.md` only while its own
+# `AGENTS.md` does not exist, so the file our block creates ends that fallback for the
+# human's own global rules too.
 harness_table() {
     cat <<'TBL'
 hermes	Hermes Agent	hermes	$HOME/.hermes/skills	$HOME/.hermes/AGENTS.md
@@ -39,6 +48,7 @@ omp	omp	omp	$HOME/.omp/skills	$HOME/.omp/AGENTS.md
 pi	pi	pi	$HOME/.pi/skills	$HOME/.pi/AGENTS.md
 devin	Devin CLI	devin	$HOME/.devin/skills	$HOME/.devin/AGENTS.md
 antigravity	Antigravity	agy	$HOME/.gemini/config/skills	$HOME/.gemini/AGENTS.md
+opencode	OpenCode	opencode	$HOME/.config/opencode/skills	$HOME/.config/opencode/AGENTS.md
 TBL
 }
 

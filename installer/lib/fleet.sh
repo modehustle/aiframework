@@ -173,7 +173,7 @@ fleet_model_command() {
 # What an agent is launched WITH is split the same way the in-session model
 # command already is: a launch command is used only when it is KNOWN —
 #   1. `launchcmd_<agent>` in the config, template with `%s` for the model id;
-#   2. built in here for agents we have read (devin).
+#   2. built in here for agents we have read (devin, opencode).
 # No guessing for unknown agents: a wrong argv is not a failed launch, it is a
 # task that never starts while looking like it did.
 fleet_launch_command() {
@@ -186,6 +186,11 @@ fleet_launch_command() {
             # `devin models list` (glm-5-2 present).
             devin) [ -n "$_flc_model" ] && _flc_tpl='devin --permission-mode bypass --model %s' ||
                    _flc_tpl='devin' ;;
+            # The TUI takes the same `--model provider/model` as `opencode run`, the form
+            # `opencode models` lists. No permission flag: its defaults already let the
+            # agent edit and run commands, and the rest lives in its config.
+            opencode) [ -n "$_flc_model" ] && _flc_tpl='opencode --model %s' ||
+                   _flc_tpl='opencode' ;;
             *) return 1 ;;
         esac
     fi

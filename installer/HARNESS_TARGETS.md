@@ -70,6 +70,7 @@ GitHub Copilot, Cursor, VS Code и другие.
 | 10 | **Codex** | 191B | CLI + IDE-расширение (OpenAI) | skills | **P0** |
 | — | **Devin CLI** | вне рейтинга | CLI, проприетарный (Cognition) | skills | P1 |
 | — | **Antigravity** | вне рейтинга | IDE + CLI, проприетарный (Google) | `~/.gemini/config/skills/` | **P0** |
+| — | **OpenCode** | вне рейтинга | CLI (TUI), open source | `~/.config/opencode/skills/` | **P0** |
 | — | **Devin Desktop** | вне рейтинга | десктоп-оболочка (Cognition) | наследует от вложенного агента | — |
 
 P0 закрывается **одним** артефактом — каталогом со `SKILL.md`. Это и есть ядро инсталлера.
@@ -292,6 +293,28 @@ Antigravity читает оба. `GEMINI.md` в этом же каталоге �
 Бинарник называется `agy`. Признак присутствия — каталог `~/.gemini/config`, а не
 `~/.gemini`: голый `~/.gemini` заводит и Gemini CLI, который этим харнесом не является.
 
+### OpenCode
+
+Открытый терминальный агент (TUI) с любым провайдером моделей; на его кодовой базе стоит и
+Kilo Code v7.
+
+**Опции:**
+
+- **A. Skills** — открытый стандарт: `~/.config/opencode/skills/<имя>/SKILL.md` глобально,
+  `.opencode/skills/` в проекте. Имя в фронтматтере обязано совпадать с именем каталога.
+- **B. Правила** — `~/.config/opencode/AGENTS.md` глобально, `AGENTS.md` в проекте.
+- **C. MCP и плагины.**
+
+**Рекомендация: A + B.** Две оговорки. Каталог — `skills/` во множественном числе; старый
+`skill/` ещё гуляет по сторонним страницам. И OpenCode держит запасные пути от Claude Code:
+читает `~/.claude/skills` (наши скиллы при стоящем рядом Claude Code видны дважды — тем же
+текстом) и `~/.claude/CLAUDE.md`, но последний — только пока нет своего `AGENTS.md`, а его
+заводит наш блок.
+
+Модели — `opencode models`, по одной `провайдер/модель` в строке; ровно эту строку берёт
+`--model` и в `opencode run`, и в TUI, поэтому воркер флота запускается
+`opencode --model <провайдер/модель>`.
+
 ### Devin Desktop
 
 Запущен 2 июня 2026 как следующее поколение Windsurf. На старте умеет запускать внутри
@@ -329,6 +352,7 @@ Cursor, Copilot, Gemini CLI и остальные принявшие станд�
 | Codex | каталог skills | копирование |
 | Devin CLI | каталог skills | копирование |
 | Antigravity | `~/.gemini/config/skills/` | копирование |
+| OpenCode | `~/.config/opencode/skills/` | копирование |
 
 **Контекстный слой (P0).** Блок для `AGENTS.md`, объясняющий инвариант фундамента
 и то, когда звать какую процедуру. Читается 30+ агентами и служит подсказкой для тех,
@@ -428,3 +452,5 @@ Codex, Devin CLI сразу), затем плагин Claude Code поверх �
   [CLI (`agy`)](https://antigravity.google/docs/cli/getting-started/) ·
   [каталоги скиллов для Antigravity 2.0](https://github.com/google/agents-cli/issues/26) ·
   [конфликт GEMINI.md с Gemini CLI](https://github.com/google-gemini/gemini-cli/issues/16058)
+- [OpenCode — skills](https://opencode.ai/docs/skills/) · [правила](https://opencode.ai/docs/rules/) ·
+  [CLI](https://opencode.ai/docs/cli/)
