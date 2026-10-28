@@ -23,6 +23,9 @@
   message catalog (`locale/ru`) so other languages can be added. Project docs (README, MODES,
   PRINCIPLES, AUDIT*, DESIGN*, BACKLOG, installer/*.md) may stay Russian during development
   and are translated before a public release. The human talks to the agent in any language.
+  The write verbs enforce it (`lang.sh`): text they would put into a project — a decision,
+  a pitfall, a map section, a card, a backlog question, a result line, a commit message,
+  findings — is refused when it is not English; quoted words are not measured.
 - Two-layer split: `procedures/` is the canonical engine-agnostic methodology —
   never import harness specifics there. `installer/` is delivery code; harness
   knowledge lives only there.

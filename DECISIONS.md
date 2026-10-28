@@ -3,6 +3,37 @@
 > Newest on top. One entry per decision. Never rewrite history — supersede with a new
 > entry, or relocate stale entries to `ai/archive/decisions_log.md` via `/prune`.
 
+## 2026-10-28 — the write verbs refuse text that is not English
+
+Context: the rule «the project is English inside» (2026-10-27) lived only in instructions. Live
+sessions showed that models talking to the human in Russian drift into Russian in the foundation
+they write a minute later — decisions, pitfalls, cards — and nothing stopped them. The operator's
+locale may be any language, so the rule cannot rely on one model's discipline.
+Decision: (1) A new library `lang.sh` measures text deterministically, on bytes, with no locale:
+a unit (paragraph, list item, table row, heading) is refused when more than a fifth of its letters
+belong to a non-Latin script (Cyrillic, Greek, Hebrew, Arabic, Indic, CJK, Hangul…), or when it
+carries three or more everyday function words of a Latin-script language (es, de, fr, it, pt, nl,
+pl) or words with diacritics, and more of them than English function words. Quoted spans —
+`code`, fenced blocks, «…», “…”, "…" — are not measured: that is where a name or the human's own
+words in another language go. (2) Every verb that writes text into a project runs it before
+writing: `decide` (title and body), `pitfall`, `arch` (body; the name with `--new`), `task-new`,
+`task-seal` (result), `backlog-new`, `backlog-drop` (reason), `fraim commit` (message),
+`investigate-seal` (findings.md). A refusal exits 2 and writes nothing. (3) The refusal is
+addressed to the agent and is in English: what was refused, why, the offending line, and how to
+fix it — a refusal in the operator's language would push the agent further into it. (4) The rule
+is also stated up front: in the project AGENTS.md block, the machine context block and the opening
+of `fraim brief`.
+Alternatives: a config switch to turn the check off rejected — the owner's rule holds in every
+project, and quoting is the way out of a false alarm; requiring a share of English function words
+rejected — terse English (a template paragraph, a list of names) has none and was refused in
+testing; checking whole texts rather than units rejected — a Russian paragraph inside the long
+English findings template stayed under the threshold; language detection by a model or a library
+rejected — non-deterministic and not POSIX shell.
+Consequences: test fixtures that fed Russian text to the verbs were rewritten in English. Existing
+Russian entries in old projects are untouched: only new text is checked, and `--supersedes` takes a
+heading as a reference, unchecked. Mixed Latin-script languages beyond the seven listed pass the
+word test; non-Latin scripts are caught whatever the language.
+
 ## 2026-10-27 — the product is English inside; Russian is only the operator's locale
 
 Context: the owner's model — fraim is an English product, because agents work better in English; the
