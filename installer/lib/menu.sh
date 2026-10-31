@@ -185,7 +185,16 @@ ui_wrap() {
         if (n == 0) { print ""; next }
         for (i = 1; i <= n; i++) {
             ww = w_of(words[i])
-            if (lw > 0 && lw + 1 + ww > W) { print line; line = ""; lw = 0 }
+            if (lw > 0 && lw + 1 + ww > W && ww <= W) { print line; line = ""; lw = 0 }
+            # A run with no spaces wider than the line (Chinese, Japanese, a long path) is
+            # broken by width, character by character.
+            while (ww > W - lw - (lw > 0)) {
+                if (lw > 0) { line = line " "; lw++ }
+                head = cut(words[i], W - lw); print line head; line = ""; lw = 0
+                words[i] = substr(words[i], length(head) + 1); ww = w_of(words[i])
+                if (length(head) == 0) break
+            }
+            if (ww == 0) continue
             if (lw > 0) { line = line " "; lw++ }
             line = line words[i]; lw += ww
         }
