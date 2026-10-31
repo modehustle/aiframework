@@ -1,6 +1,6 @@
 ---
 name: run-task
-description: "Take a task from the board (ai/tasks/) when the human says so — or a fleet worker's brief from ai/parallel/ — and do it as an ordinary working session: read the foundation and the code fresh, do the work, save, close the card with one line of outcome"
+description: "Take a task from the board (ai/tasks/) when the human says so — or a fleet worker's brief from ai/builds/ — and do it as an ordinary working session: read the foundation and the code fresh, do the work, save, close the card with one line of outcome"
 metadata:
   tier: capable
   version: 0.10.0
@@ -12,9 +12,8 @@ You take a task from the board and do it. This is an **ordinary working session*
 what is needed, why, and when it will be done, and you gather the context yourself — from the
 foundation and the code, as they stand today. There is no plan, nothing to execute literally.
 
-If you were given a **build subtask brief** (`ai/parallel/<build>/<subtask>/task.md`), you are a
-fleet worker, and different rules apply to you: the [«Fleet worker»](#fleet-worker) section at
-the end.
+If you were given a **build subtask brief** (`ai/builds/<build>/<subtask>.md`), you are a fleet
+worker, and different rules apply to you: the [«Fleet worker»](#fleet-worker) section at the end.
 
 > Paths are relative to the project root. The mechanics are in the `fraim` verbs: the card is
 > closed by `fraim task-seal`, a save point is made by `fraim commit`. No `fraim` — say so and do
@@ -105,23 +104,29 @@ the end.
 
 ## Fleet worker
 
-The brief `ai/parallel/<build>/<subtask>/task.md` was written by the conductor — minutes ago,
-against this very tree. It does not go stale in a queue, because it does not sit in a queue.
-Here, unlike with a card, execution is **literal**, because other workers are working alongside:
+You are one of several subagents writing at the same time. The brief
+`ai/builds/<build>/<subtask>.md` was written by the conductor minutes ago, against this very tree:
+it carries the card's intent and done-when, the files you may change, the contract shared by the
+whole round, and these rules. Here, unlike with a card, execution is **literal**, because other
+workers are working alongside:
 
-- **W1 — Only your own files.** You change only the paths from the brief's `## Files to Change`.
-  You need a file outside the list → do not touch it, stop and say so: the conductor will replan
-  the build.
+- **W0 — Your own checkout.** Work where your harness put you (its own worktree), or in the
+  checkout the conductor named. Never in the project's main checkout.
+- **W1 — Only your own files.** You change only the paths from the brief's «Files you may
+  change»; a path ending with `/` covers everything under it. You need a file outside the list →
+  do not touch it, stop and say so: the conductor will replan the round.
 - **W2 — Nothing beyond the brief.** No neighbouring refactoring, no fixes along the way, no
   dependencies or configs unless the brief mentions them. What you find goes into the report, in
   words.
-- **W3 — Reality beats the brief.** The brief and the code diverge → stop and describe the
-  divergence. Do not bend the code to fit the brief, nor the brief to fit the code.
+- **W3 — Reality beats the brief.** The brief, the contract and the code diverge → stop and
+  describe the divergence. Do not bend the code to fit the brief, nor the brief to fit the code.
 - **W4 — The foundation is not yours.** You do not touch `ARCHITECTURE.md`, `CONVENTIONS.md`,
-  `DECISIONS.md` — the build writes them, once, after acceptance. What would be worth recording
-  there goes into the report.
-- **W5 — Commit.** Everything you did goes into a commit in your own checkout: the build is
-  assembled by merging branches.
+  `DECISIONS.md` — the conductor writes them, once, after the round is accepted. What would be
+  worth recording there goes into the report.
+- **W5 — Commit, and name your branch.** Everything you did goes into a commit in your own
+  checkout: the round is assembled from commits. End your report with the line
+  `Branch: <name>` — the output of `git branch --show-current`.
 
-There is nothing to close: a build subtask has no card, there is one acceptance per build, and the
-conductor does it.
+Report in a few lines: what you did, what you could not, what belongs in the foundation. There is
+nothing to close: the card is closed by the round's acceptance, in the same merge that takes your
+work into the trunk.

@@ -30,7 +30,7 @@ without being asked. `DECISIONS.md` is append-only. A stale foundation is a bug.
 | the human asks to put work on the board for later, or to open a project | `/make-task` |
 | the human asks to take a task from the board | `/run-task` |
 | the human asks what is on the board / in the backlog | `fraim tasks` / `fraim backlog` |
-| the human asks to conduct: cheap workers, or a split across directions | `/conductor` |
+| two or more subagents will write code at once: several board tasks, or parallel work | `/conductor` |
 | where is this bug / is X even feasible | `/investigate` |
 | the documents drifted from the code | `/prune` |
 | returning to a project after a break | `/orient` |
@@ -66,9 +66,11 @@ mode. A task on the board (`/make-task`) is work **put aside for later**, or a p
 of several tasks — and only the human puts it there. Never propose turning the work in front
 of you into a task, and never write one to execute it yourself in the same session: just do
 the work and save it. `fraim tasks` shows the board when the human asks what is on it.
-The same holds for `/conductor` (handing pieces to workers on cheaper models, or splitting
-work of different directions across a fleet): it runs when the human asks for it, never
-on your own initiative.
+Parallel writing is what `/conductor` is for: when two or more of your subagents will write
+code at the same time — the human handed over several board tasks or projects at once, asked
+for parallel work, or your harness splits the work itself — fraim checks the split before and
+accepts the round after. Subagents that only read need no conductor; one task is never handed
+out.
 You are about to change something you do not understand → `/investigate`.
 
 `fraim status` gives a deterministic verdict on the current project — foundation
