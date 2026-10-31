@@ -46,7 +46,7 @@ front of you into a task. The human speaks in words, not commands — recognise 
 | know what is pending, planned or in progress | `fraim tasks` — report it |
 | work on a specific task from the board | `/run-task` |
 | keep an open question without acting on it | `fraim backlog-new` after the human confirms / `fraim backlog` to review |
-| have work done by cheaper models, or split into parallel directions | `/conductor` |
+| several tasks or projects from the board done at once, or work run in parallel | `/conductor` |
 | get back into the project after a break | `/orient` |
 | understand a behaviour nobody can explain, or check that something is feasible | `/investigate` |
 | bring the documents back in line with the code | `/prune` |
