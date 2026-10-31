@@ -198,6 +198,7 @@ check "Russian plural forms" "$(FRAIM_LANG=ru sh -c "$LCORE; $PL")" "1 комм�
 PL='M_w_one="{n} commit"; M_w_other="{n} commits"; for n in 1 2 0; do tp $n w; printf "|"; done'
 check "English plural forms" "$(FRAIM_LANG=en sh -c "$LCORE; $PL")" "1 commit|2 commits|0 commits|"
 check "display width counts a CJK character as two columns" "$(sh -c "$LCORE"'; str_width "日本語 ok"')" "9"
+check "full-width punctuation is two columns as well" "$(sh -c "$LCORE"'; str_width "（a）："')" "7"
 check "the English catalog speaks English" \
       "$(FRAIM_LANG=en "$FRAIM" config set check_git off 2>&1 | grep -c 'always on')" "1"
 "$FRAIM" config set lang xx >/dev/null 2>&1

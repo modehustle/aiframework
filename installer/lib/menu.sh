@@ -91,6 +91,7 @@ ui_theme() {
 # CJK, kana, Hangul) take two columns; an escape sequence takes none. Too long → clipped
 # with «…»; short → padded with spaces; colour reset at the end so nothing bleeds.
 UI_AWK_LIB='
+function wide_ff(s, i,    c2) { c2 = substr(s, i + 1, 1); return substr(s, i, 1) == "\357" && (c2 == "\274" || c2 == "\275") }
 function w_of(s,    i, n, c, w) {
     w = 0; n = length(s); i = 1
     while (i <= n) {
@@ -99,7 +100,7 @@ function w_of(s,    i, n, c, w) {
         if (c < "\200") { i += 1; w += 1 }
         else if (c < "\300") { i += 1 }
         else if (c < "\340") { i += 2; w += 1 }
-        else if (c < "\360") { w += (c >= "\343" && c <= "\355") ? 2 : 1; i += 3 }
+        else if (c < "\360") { w += (c >= "\343" && c <= "\355" || wide_ff(s, i)) ? 2 : 1; i += 3 }
         else { i += 4; w += 2 }
     }
     return w
@@ -112,7 +113,7 @@ function cut(s, max,    i, n, c, w, cw, len, out) {
         if (c < "\200") { len = 1; cw = 1 }
         else if (c < "\300") { len = 1; cw = 0 }
         else if (c < "\340") { len = 2; cw = 1 }
-        else if (c < "\360") { len = 3; cw = (c >= "\343" && c <= "\355") ? 2 : 1 }
+        else if (c < "\360") { len = 3; cw = (c >= "\343" && c <= "\355" || wide_ff(s, i)) ? 2 : 1 }
         else { len = 4; cw = 2 }
         if (w + cw > max) break
         out = out substr(s, i, len); w += cw; i += len

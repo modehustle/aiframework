@@ -28,14 +28,17 @@ str_len() {
     printf '%s' "$1" | LC_ALL=C tr -d '\200-\277' | LC_ALL=C wc -c | tr -d ' '
 }
 
-# Display width in terminal COLUMNS. CJK ideographs, kana and Hangul take two columns
-# each; str_len counts them as one, and a Chinese or Japanese label sheared every column
-# after it. Their UTF-8 lead bytes are \343-\355 (U+3000–U+DFFF) — counting those bytes
-# adds the second column, again with no locale.
+# Display width in terminal COLUMNS. CJK ideographs, kana, Hangul and the full-width forms
+# take two columns each; str_len counts them as one, and a Chinese or Japanese label
+# sheared every column after it. In UTF-8 they start with \343-\355 (U+3000–U+DFFF) or
+# with \357\274 / \357\275 (U+FF00–U+FF7F: （）：？ and full-width Latin) — counting those
+# adds the second column, under the C locale, so bytes are bytes everywhere.
 str_width() {
-    _sw_n=$(str_len "$1")
-    _sw_w=$(printf '%s' "$1" | LC_ALL=C tr -cd '\343-\355' | LC_ALL=C wc -c | tr -d ' ')
-    printf '%s\n' $(( _sw_n + _sw_w ))
+    _SW_S=$1 LC_ALL=C awk 'BEGIN {
+        s = ENVIRON["_SW_S"]; t = s
+        x = gsub(/[\343-\355]/, "", t) + gsub(/\357[\274\275]/, "", s)
+        u = ENVIRON["_SW_S"]; gsub(/[\200-\277]/, "", u)
+        print length(u) + x }'
 }
 
 say()  { printf '%s\n' "$*"; }
