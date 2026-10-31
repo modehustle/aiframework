@@ -1,0 +1,27 @@
+# The foundation verbs: find, arch, and the brief's own failure.
+M_fnd_err_tmp='no se pudo crear un archivo temporal'
+M_fnd_err_find_keys='hacen falta claves: fraim find CLAVE [CLAVE…] — de 2 a 4, en ambos idiomas, como raíces de palabra (tarea task)'
+M_fnd_find_nothing='no se encontró nada para: {keys} — prueba otras formas de la palabra o el otro idioma'
+M_fnd_find_footer='— entradas encontradas: {count} · claves: {keys} —'
+
+M_fnd_err_in_file='--in necesita un archivo'
+M_fnd_err_unknown_flag='opción desconocida: {flag}'
+M_fnd_err_extra_arg='argumento inesperado: {arg}'
+M_fnd_err_decisions_top='DECISIONS.md solo se escribe por arriba: fraim decide'
+M_fnd_err_arch_files='fraim arch edita ARCHITECTURE.md, CONVENTIONS.md o STACK.md'
+M_fnd_err_need_section='hace falta el nombre de una sección: fraim arch "Components & responsibilities" <<'\''EOF'\'' … EOF'
+M_fnd_err_pitfall_line='las lecciones se añaden como una línea: fraim pitfall "…"'
+M_fnd_err_no_file='no existe {file}'
+M_fnd_err_body_stdin='el cuerpo de la sección llega por stdin: fraim arch "{section}" <<'\''EOF'\'' … EOF'
+M_fnd_err_body_empty='el cuerpo de la sección está vacío'
+M_fnd_err_body_headings='el cuerpo de la sección no debe tener encabezados — una sección por llamada'
+M_fnd_err_section_exists='la sección «{section}» ya existe en {file} — sin --new se reemplaza'
+M_fnd_err_no_section='{file} no tiene la sección «{section}». Hay:
+{list}
+Una sección nueva — con la opción --new'
+M_fnd_err_section_dup='la sección «{section}» aparece {count} veces en {file} — corrige el archivo a mano una vez'
+M_fnd_err_write='no se pudo escribir {file}'
+M_fnd_err_headings_touched='la edición tocó otros encabezados de {file} — no se escribió nada'
+M_fnd_arch_added='{file} ← sección «{section}» añadida'
+M_fnd_arch_replaced='{file} ← sección «{section}» reemplazada'
+M_fnd_arch_unsaved='aún sin guardar: añade {file} a tu fraim commit'
