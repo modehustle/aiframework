@@ -1,0 +1,27 @@
+# The foundation verbs: find, arch, and the brief's own failure.
+M_fnd_err_tmp='impossible de créer un fichier temporaire'
+M_fnd_err_find_keys='des clés sont requises : fraim find KEY [KEY…] — 2 à 4, dans les deux langues, en radicaux (tâch task)'
+M_fnd_find_nothing='rien trouvé pour : {keys} — essayez d'\''autres formes du mot ou l'\''autre langue'
+M_fnd_find_footer='— entrées trouvées : {count} · clés : {keys} —'
+
+M_fnd_err_in_file='--in attend un fichier'
+M_fnd_err_unknown_flag='option inconnue : {flag}'
+M_fnd_err_extra_arg='argument inattendu : {arg}'
+M_fnd_err_decisions_top='DECISIONS.md ne s'\''écrit que par le haut : fraim decide'
+M_fnd_err_arch_files='fraim arch modifie ARCHITECTURE.md, CONVENTIONS.md ou STACK.md'
+M_fnd_err_need_section='un nom de section est requis : fraim arch "Components & responsibilities" <<'\''EOF'\'' … EOF'
+M_fnd_err_pitfall_line='les leçons s'\''ajoutent en une ligne : fraim pitfall "…"'
+M_fnd_err_no_file='{file} introuvable'
+M_fnd_err_body_stdin='le corps de la section arrive sur stdin : fraim arch "{section}" <<'\''EOF'\'' … EOF'
+M_fnd_err_body_empty='le corps de la section est vide'
+M_fnd_err_body_headings='le corps de la section ne doit pas contenir de titres — une section par appel'
+M_fnd_err_section_exists='la section « {section} » existe déjà dans {file} — sans --new, elle est remplacée'
+M_fnd_err_no_section='{file} n'\''a pas de section « {section} ». Il y a :
+{list}
+Une nouvelle section — avec l'\''option --new'
+M_fnd_err_section_dup='la section « {section} » apparaît {count} fois dans {file} — corrigez le fichier à la main une fois'
+M_fnd_err_write='impossible d'\''écrire {file}'
+M_fnd_err_headings_touched='la modification a touché d'\''autres titres de {file} — rien n'\''a été écrit'
+M_fnd_arch_added='{file} ← section « {section} » ajoutée'
+M_fnd_arch_replaced='{file} ← section « {section} » remplacée'
+M_fnd_arch_unsaved='pas encore sauvegardé : ajoutez {file} à votre fraim commit'
