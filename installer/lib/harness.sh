@@ -6,51 +6,97 @@
 # So the harness layer is a table, not code. Adding a harness is adding a row.
 
 # Columns, tab-separated:
-#   key   label   probe   skills-dir   instructions-file
-# probe  — a binary name on PATH, or a directory; the harness counts as present
-#          if either the binary resolves or the directory exists.
+#   key   label   probe   skills-dir[,skills-dir]   instructions-file
+# probe  — see harness_present: binaries and paths, comma-separated.
 # instructions-file — the harness's GLOBAL context file, where we leave the
 #          pointer block. `-` means the harness has no global one on disk (its
 #          rules live in a settings screen); never leave the cell empty — a tab
-#          separator collapses empty fields.
+#          separator collapses empty fields. Where a harness reads a rules
+#          DIRECTORY rather than one file (Kiro, Augment, Continue), the cell
+#          names our own file inside it.
+#
+# Every fact below was read in the harness's source or its official docs
+# (installer/HARNESS_TARGETS.md has the sources); a row is never filled from a
+# third-party list of paths.
+#
+# ONE COPY IN THE SHARED DIRECTORY. `~/.agents/skills` is the open standard's
+# user location and most harnesses read it next to their own directory. Several of
+# them warn on a second copy of the same name (Gemini CLI on screen, pi, omp,
+# Hermes), so a harness that reads `~/.agents/skills` gets its skills THERE and
+# nowhere else; only a harness that does not read it gets its own directory
+# (Claude Code, Hermes, Antigravity, Factory Droid, Grok, Kiro, Junie, Continue).
+# Copies are still seen twice where a harness also reads another harness's own
+# directory (`~/.claude/skills` is read by Kilo, Cursor, Crush, Goose, Grok, Warp,
+# Augment, OpenCode, Copilot in VS Code) — the same text, so either copy is right.
+# The probe of a shared-directory row names the harness's own home: the parent of
+# `~/.agents/skills` says nothing about which product is installed.
+#
+# The same reasoning holds for the context file: `~/.agents/AGENTS.md` is read by
+# Cline, Warp, Goose and Kimi Code alike, so they share it and see one block.
 #
 # Antigravity is the one row where neither cell is the obvious one, and both
 # choices are load-bearing:
 #
 #   · the binary is `agy`, not `antigravity` — that is the name its installer
 #     puts on PATH;
-#   · skills go to `~/.gemini/config/skills`, which is the single directory all
-#     three flavours read (IDE, CLI, and the agent itself). The older paths —
-#     `~/.gemini/skills`, `~/.gemini/antigravity/global_skills`,
-#     `~/.gemini/antigravity-cli/skills` — are each read by only some of them;
+#   · skills go to two directories: `~/.gemini/config/skills` is read by the IDE
+#     and Antigravity 2.0, `~/.gemini/antigravity-cli/skills` by the CLI (Google's
+#     own agents-cli installs into both). Neither reads `~/.agents/skills`;
 #   · the pointer block goes to `~/.gemini/AGENTS.md`, not `~/.gemini/GEMINI.md`.
-#     Antigravity reads both, but Gemini CLI writes GEMINI.md as its own global
-#     context, and the two products share the directory: writing there would put
-#     our block into a file another tool owns and rewrites.
+#     Antigravity reads both, but GEMINI.md is Gemini CLI's global context, and
+#     the Gemini CLI row writes there — Antigravity would see the block twice.
 #
-# The presence probe derives the harness home from the skills path, which here
-# is `~/.gemini/config` rather than `~/.gemini` — deliberately. `~/.gemini` alone
-# means Gemini CLI, which is not this harness; the `config/` subtree is
-# Antigravity's own.
+# The presence probe derives the Antigravity home from the skills path, which is
+# `~/.gemini/config` rather than `~/.gemini` — deliberately. `~/.gemini` alone
+# is shared with Gemini CLI, which is detected by its binary or by
+# `~/.gemini/settings.json`, a file only Gemini CLI writes.
 #
-# OpenCode keeps everything under XDG, `~/.config/opencode/`: skills in `skills/` (plural —
-# older third-party pages still show `skill/`), the global rules in `AGENTS.md`. The probe
-# home is therefore `~/.config/opencode`, never the bare `~/.config` that every Linux
-# machine has. Two of its Claude Code fallbacks touch us: it also reads `~/.claude/skills`,
-# so on a machine with both our skills are found twice under the same names — the same
-# text, so either copy is right; and it reads `~/.claude/CLAUDE.md` only while its own
-# `AGENTS.md` does not exist, so the file our block creates ends that fallback for the
-# human's own global rules too.
+# OpenCode keeps its global rules in `~/.config/opencode/AGENTS.md`; it falls back
+# to `~/.claude/CLAUDE.md` only while that file does not exist, so the file our block
+# creates ends that fallback for the human's own global rules too. Its skills go to
+# the shared directory, which it reads by default; its home is `~/.config/opencode`,
+# never the bare `~/.config` every Linux machine has.
+#
+# pi and omp keep their agent home one level down, in `~/.pi/agent` and
+# `~/.omp/agent`; earlier rows wrote to `~/.pi` and `~/.omp`, which neither reads
+# (the retired table below takes those copies back). Devin for Terminal lives in
+# `~/.config/devin`, not `~/.devin`. Hermes has no global AGENTS.md: the one file
+# it always loads is `SOUL.md`, its identity text, which it seeds itself — we do not
+# write into it. OpenClaw's always-loaded file is its workspace AGENTS.md, which its
+# onboarding seeds from a template — we do not write into that either.
+#
+# Not here, on purpose: Roo Code (shut down 2026-05-15, repository archived),
+# Windsurf (Cascade became Devin Desktop, which shares `~/.config/devin` with the
+# Devin row), Amp and Trae (no primary source could be read for their paths).
 harness_table() {
     cat <<'TBL'
-hermes	Hermes Agent	hermes	$HOME/.hermes/skills	$HOME/.hermes/AGENTS.md
+hermes	Hermes Agent	hermes	$HOME/.hermes/skills	-
 claude	Claude Code	claude	$HOME/.claude/skills	$HOME/.claude/CLAUDE.md
-codex	Codex	codex	$HOME/.codex/skills	$HOME/.codex/AGENTS.md
-omp	omp	omp	$HOME/.omp/skills	$HOME/.omp/AGENTS.md
-pi	pi	pi	$HOME/.pi/skills	$HOME/.pi/AGENTS.md
-devin	Devin CLI	devin	$HOME/.devin/skills	$HOME/.devin/AGENTS.md
-antigravity	Antigravity	agy	$HOME/.gemini/config/skills	$HOME/.gemini/AGENTS.md
-opencode	OpenCode	opencode	$HOME/.config/opencode/skills	$HOME/.config/opencode/AGENTS.md
+codex	Codex	codex,$HOME/.codex	$HOME/.agents/skills	$HOME/.codex/AGENTS.md
+omp	omp	omp,$HOME/.omp/agent	$HOME/.agents/skills	$HOME/.omp/agent/AGENTS.md
+pi	pi	pi,$HOME/.pi/agent	$HOME/.agents/skills	$HOME/.pi/agent/AGENTS.md
+devin	Devin CLI	devin,$HOME/.config/devin	$HOME/.agents/skills	$HOME/.config/devin/AGENTS.md
+antigravity	Antigravity	agy	$HOME/.gemini/config/skills,$HOME/.gemini/antigravity-cli/skills	$HOME/.gemini/AGENTS.md
+opencode	OpenCode	opencode,$HOME/.config/opencode	$HOME/.agents/skills	$HOME/.config/opencode/AGENTS.md
+gemini	Gemini CLI	gemini,$HOME/.gemini/settings.json	$HOME/.agents/skills	$HOME/.gemini/GEMINI.md
+qwen	Qwen Code	qwen,$HOME/.qwen	$HOME/.agents/skills	$HOME/.qwen/AGENTS.md
+kimi	Kimi Code	kimi,$HOME/.kimi-code	$HOME/.agents/skills	$HOME/.agents/AGENTS.md
+vibe	Mistral Vibe	vibe,$HOME/.vibe	$HOME/.agents/skills	$HOME/.vibe/AGENTS.md
+goose	Goose	goose,$HOME/.config/goose	$HOME/.agents/skills	$HOME/.agents/AGENTS.md
+crush	Crush	crush,$HOME/.config/crush	$HOME/.agents/skills	$HOME/.config/crush/CRUSH.md
+droid	Factory Droid	droid	$HOME/.factory/skills	$HOME/.factory/AGENTS.md
+grok	Grok Build	grok	$HOME/.grok/skills	$HOME/.grok/AGENTS.md
+openclaw	OpenClaw	openclaw,$HOME/.openclaw	$HOME/.agents/skills	-
+copilot	GitHub Copilot	copilot,$HOME/.copilot	$HOME/.agents/skills	$HOME/.copilot/copilot-instructions.md
+cursor	Cursor	cursor-agent,cursor,$HOME/.cursor	$HOME/.agents/skills	-
+cline	Cline	cline,$HOME/.cline	$HOME/.agents/skills	$HOME/.agents/AGENTS.md
+kilo	Kilo Code	kilo,kilocode,$HOME/.config/kilo,$HOME/.kilo,$HOME/.kilocode	$HOME/.agents/skills	$HOME/.config/kilo/AGENTS.md
+zed	Zed	zed,zeditor,$HOME/.config/zed	$HOME/.agents/skills	$HOME/.config/zed/AGENTS.md
+warp	Warp	warp,warp-terminal,$HOME/.warp,$HOME/.config/warp-terminal	$HOME/.agents/skills	$HOME/.agents/AGENTS.md
+augment	Augment	auggie,$HOME/.augment	$HOME/.agents/skills	$HOME/.augment/rules/fraim.md
+kiro	Kiro	kiro-cli,kiro	$HOME/.kiro/skills	$HOME/.kiro/steering/fraim.md
+junie	Junie	junie	$HOME/.junie/skills	$HOME/.junie/AGENTS.md
+continue	Continue	cn	$HOME/.continue/skills	$HOME/.continue/rules/fraim.md
 TBL
 }
 
@@ -150,6 +196,8 @@ context	$HOME/.omp/AGENTS.md
 skills	$HOME/.devin/skills
 context	$HOME/.devin/AGENTS.md
 context	$HOME/.hermes/AGENTS.md
+skills	$HOME/.codex/skills
+skills	$HOME/.config/opencode/skills
 TBL
 }
 
