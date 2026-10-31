@@ -5,7 +5,7 @@ Das tippst du
   fraim                     der fraim-Bildschirm (im Terminal) — dasselbe wie fraim menu
   fraim menu                Projekt, Board, Backlog, Entscheidungen, Einstellungen und Sprache auf einem Bildschirm
   fraim status [PATH]       was im Projekt los ist (--json für Maschinen)
-  fraim fleet [PATH]        wo die Arbeit liegt: Checkouts des Projekts und die Laufzeitumgebung der Flotte
+  fraim fleet [PATH]        wo die Arbeit liegt: die Checkouts des Projekts
   fraim undo [HASH]         Sicherungspunkte anzeigen / den vorherigen Stand zurückholen
   fraim scaffold [PATH]     ein Projekt ins System aufnehmen
   fraim upgrade [PATH]      alle registrierten Projekte auf den Standard dieser Version bringen
@@ -14,15 +14,12 @@ Das tippst du
   fraim publish [--check]   eine Kopie des Projekts außerhalb dieses Rechners: anlegen, pushen, prüfen
                             (--brief — ein Auftrag an den Agenten, das Gefundene zu bereinigen)
   fraim dispatch PLAN       Flotte: den Plan prüfen und einen Build anlegen
-  fraim dispatch collect BUILD  eine Welle in den Build-Branch einsammeln
+  fraim dispatch collect BUILD  die Ergebnisse der Runde in den Build-Branch einsammeln
   fraim dispatch accept BUILD   Abnahme durch den Dirigenten: abgleichen, prüfen, aufräumen, Trunk
-                            run BUILD — die Flotte in der Laufzeitumgebung starten
-                            watch BUILD — was die Laufzeitumgebung über die Worker meldet
-                            verify BUILD SUBTASK — den Baum mit den Pfaden abgleichen
-                            check PLAN · accept BUILD · list
+                            prepare BUILD — Checkouts für ein Harness ohne Isolation
+                            verify BUILD SUBTASK [BRANCH] — ein Ergebnis gegen seine Pfade
+                            check PLAN · list
   fraim mode                Reste des alten Flottenmodus aus dem Projekt entfernen
-  fraim roles [set [NAME]]  die Rollentabelle: worauf eine Rolle auf diesem Rechner auflöst
-                            (set — Agent, Modell und Aufwand aus einer Liste wählen)
   fraim init                die Skills installieren / einen neuen Harness übernehmen
   fraim update [--check]    die neue Version holen und ausrollen (--check — nur nachsehen;
                             --quiet — für den Autostart: still, steht nie im Weg)
@@ -35,6 +32,7 @@ M_cli_usage_tail='
 Intern
   fraim task-block, task-result, task-revise, plan-seal, reconcile-seal —
                             zusammen mit den Plänen entfernt: eine Aufgabe ist jetzt eine Karte
+  fraim roles               mit der Rollentabelle entfernt: ein Worker läuft auf dem Modell des Agenten selbst
   fraim show NAME           den Text einer Prozedur ausgeben
   fraim build               die Artefakte des Repositorys neu bauen
   fraim version             die Version

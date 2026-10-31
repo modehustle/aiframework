@@ -5,7 +5,7 @@ You type these
   fraim                     the fraim screen (in a terminal) — same as fraim menu
   fraim menu                project, board, backlog, decisions, settings and language on one screen
   fraim status [PATH]       what is going on in the project (--json for machines)
-  fraim fleet [PATH]        where the work lives: project checkouts and the fleet runtime
+  fraim fleet [PATH]        where the work lives: the project'\''s checkouts
   fraim undo [HASH]         list the save points / put things back as they were
   fraim scaffold [PATH]     bring a project under the system
   fraim upgrade [PATH]      bring every registered project up to this version'\''s standard
@@ -14,15 +14,12 @@ You type these
   fraim publish [--check]   a copy of the project off this machine: create, push, verify
                             (--brief — a task for the agent to clean out what was found)
   fraim dispatch PLAN       fleet: check the plan and open a build
-  fraim dispatch collect BUILD  merge a wave into the build branch
+  fraim dispatch collect BUILD  merge the round'\''s results into the build branch
   fraim dispatch accept BUILD   the conductor'\''s acceptance: verify, check, cleanup, trunk
-                            run BUILD — start the fleet in the runtime
-                            watch BUILD — what the runtime says about the workers
-                            verify BUILD SUBTASK — check the tree against the paths
-                            check PLAN · accept BUILD · list
+                            prepare BUILD — checkouts for a harness without isolation
+                            verify BUILD SUBTASK [BRANCH] — one result against its paths
+                            check PLAN · list
   fraim mode                remove leftovers of the old fleet mode from the project
-  fraim roles [set [NAME]]  the role table: what a role resolves to on this machine
-                            (set — pick the agent, model and effort from a list)
   fraim init                install the skills / pick up a new harness
   fraim update [--check]    fetch the new version and lay it out (--check — only find out;
                             --quiet — for autostart: silent, never in the way of a start)
@@ -35,6 +32,7 @@ M_cli_usage_tail='
 Service
   fraim task-block, task-result, task-revise, plan-seal, reconcile-seal —
                             removed together with plans: a task is a card now
+  fraim roles               removed with the role table: a worker runs on the agent'\''s own model
   fraim show NAME           print a procedure'\''s text
   fraim build               rebuild the repository'\''s artifacts
   fraim version             the version

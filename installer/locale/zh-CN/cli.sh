@@ -5,7 +5,7 @@ M_cli_usage_head='fraim——面向智能体驱动项目的运维层
   fraim                     fraim 界面（在终端中）——等同于 fraim menu
   fraim menu                项目、看板、待议清单、决策、设置和语言，一屏尽览
   fraim status [PATH]       项目当前的状况（--json 供机器读取）
-  fraim fleet [PATH]        工作在哪里进行：项目的检出副本和舰队运行时
+  fraim fleet [PATH]        工作在哪里进行：项目的检出副本
   fraim undo [HASH]         列出保存点 / 恢复到原来的样子
   fraim scaffold [PATH]     把项目纳入系统管理
   fraim upgrade [PATH]      让每个已注册项目达到本版本的标准
@@ -14,15 +14,12 @@ M_cli_usage_head='fraim——面向智能体驱动项目的运维层
   fraim publish [--check]   在本机之外建立项目副本：创建、推送、核对
                             （--brief——生成任务，让智能体清除扫描发现的内容）
   fraim dispatch PLAN       舰队：检查计划并开启一次构建
-  fraim dispatch collect BUILD  把一个波次合并进构建分支
+  fraim dispatch collect BUILD  把这一轮的结果合并进构建分支
   fraim dispatch accept BUILD   指挥的验收：核对、检查、清理、并入主干
-                            run BUILD——在运行时中启动舰队
-                            watch BUILD——运行时报告的工作者状态
-                            verify BUILD SUBTASK——对照路径检查工作树
-                            check PLAN · accept BUILD · list
+                            prepare BUILD——为没有隔离的 harness 准备检出
+                            verify BUILD SUBTASK [BRANCH]——对照路径检查一个结果
+                            check PLAN · list
   fraim mode                清除项目中旧舰队模式的残留
-  fraim roles [set [NAME]]  角色表：每个角色在本机上解析成什么
-                            （set——从列表中选择智能体、模型和强度）
   fraim init                安装技能 / 接入新的智能体工具
   fraim update [--check]    获取新版本并布置（--check——只检查；
                             --quiet——用于自动启动：静默，绝不妨碍启动）
@@ -35,6 +32,7 @@ M_cli_usage_tail='
 辅助命令
   fraim task-block, task-result, task-revise, plan-seal, reconcile-seal —
                             已随计划一同移除：任务现在就是一张卡片
+  fraim roles               已随角色表移除：工作者使用代理自己的模型
   fraim show NAME           打印某个流程的文本
   fraim build               重新构建仓库的产物
   fraim version             版本

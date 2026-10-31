@@ -5,7 +5,7 @@ Estes você digita
   fraim                     a tela do fraim (no terminal) — o mesmo que fraim menu
   fraim menu                projeto, quadro, backlog, decisões, configurações e idioma numa só tela
   fraim status [PATH]       o que está acontecendo no projeto (--json para máquinas)
-  fraim fleet [PATH]        onde o trabalho está: checkouts do projeto e o ambiente da frota
+  fraim fleet [PATH]        onde o trabalho está: os checkouts do projeto
   fraim undo [HASH]         listar os pontos de salvamento / deixar tudo como estava
   fraim scaffold [PATH]     colocar um projeto sob o sistema
   fraim upgrade [PATH]      colocar todos os projetos do registro no padrão desta versão
@@ -14,15 +14,12 @@ Estes você digita
   fraim publish [--check]   uma cópia do projeto fora desta máquina: criar, enviar, conferir
                             (--brief — uma tarefa para o agente limpar o que foi achado)
   fraim dispatch PLAN       frota: verificar o plano e abrir um build
-  fraim dispatch collect BUILD  fazer merge de uma onda no branch do build
+  fraim dispatch collect BUILD  fazer merge dos resultados da rodada no branch do build
   fraim dispatch accept BUILD   o aceite do maestro: conferir, verificar, limpar, tronco
-                            run BUILD — iniciar a frota no ambiente de execução
-                            watch BUILD — o que o ambiente diz sobre os workers
-                            verify BUILD SUBTASK — conferir a árvore com os caminhos
-                            check PLAN · accept BUILD · list
+                            prepare BUILD — checkouts para um harness sem isolamento
+                            verify BUILD SUBTASK [BRANCH] — um resultado frente aos seus caminhos
+                            check PLAN · list
   fraim mode                remover do projeto as sobras do antigo modo frota
-  fraim roles [set [NAME]]  a tabela de papéis: no que cada papel se resolve nesta máquina
-                            (set — escolher agente, modelo e esforço de uma lista)
   fraim init                instalar as skills / reconhecer um novo harness
   fraim update [--check]    buscar a nova versão e distribuí-la (--check — só verificar;
                             --quiet — para o início automático: silencioso, nunca atrapalha)
@@ -35,6 +32,7 @@ M_cli_usage_tail='
 Serviço
   fraim task-block, task-result, task-revise, plan-seal, reconcile-seal —
                             removidos junto com os planos: uma tarefa agora é um cartão
+  fraim roles               removido com a tabela de papéis: o worker roda no modelo do próprio agente
   fraim show NAME           exibir o texto de um procedimento
   fraim build               recompilar os artefatos do repositório
   fraim version             a versão

@@ -5,7 +5,7 @@ M_cli_usage_head='fraim — エージェント駆動のプロジェクトのた�
   fraim                     fraim の画面 (ターミナル内)。fraim menu と同じ
   fraim menu                プロジェクト、ボード、バックログ、決定事項、設定、言語を 1 画面で
   fraim status [PATH]       プロジェクトで起きていること (機械向けは --json)
-  fraim fleet [PATH]        作業の所在: プロジェクトのチェックアウトとフリートのランタイム
+  fraim fleet [PATH]        作業の所在: プロジェクトのチェックアウト
   fraim undo [HASH]         セーブポイントの一覧 / 元の状態に戻す
   fraim scaffold [PATH]     プロジェクトをシステムの管理下に置く
   fraim upgrade [PATH]      登録済みの全プロジェクトをこのバージョンの標準に合わせる
@@ -14,15 +14,12 @@ M_cli_usage_head='fraim — エージェント駆動のプロジェクトのた�
   fraim publish [--check]   このマシンの外にプロジェクトのコピー: 作成、プッシュ、照合
                             (--brief: 検出事項を除去するタスクをエージェント向けに出力)
   fraim dispatch PLAN       フリート: 計画を検査してビルドを開く
-  fraim dispatch collect BUILD  ウェーブをビルドブランチにマージ
+  fraim dispatch collect BUILD  ラウンドの結果をビルドブランチにマージ
   fraim dispatch accept BUILD   指揮者による受け入れ: 照合、チェック、クリーンアップ、トランク
-                            run BUILD: ランタイムでフリートを起動
-                            watch BUILD: ワーカーについてランタイムが報告する内容
-                            verify BUILD SUBTASK: ツリーをパスと照合
-                            check PLAN · accept BUILD · list
+                            prepare BUILD: 分離機能のないハーネス用のチェックアウト
+                            verify BUILD SUBTASK [BRANCH]: 1 つの結果をそのパスと照合
+                            check PLAN · list
   fraim mode                旧フリートモードの残骸をプロジェクトから削除
-  fraim roles [set [NAME]]  ロール表: このマシンで各ロールが何に解決されるか
-                            (set: エージェント、モデル、推論量を一覧から選ぶ)
   fraim init                スキルをインストール / 新しいハーネスを取り込む
   fraim update [--check]    新しいバージョンを取得して展開 (--check: 確認のみ、
                             --quiet: 自動起動用。何も出力せず、起動を妨げない)
@@ -35,6 +32,7 @@ M_cli_usage_tail='
 保守用
   fraim task-block, task-result, task-revise, plan-seal, reconcile-seal —
                             計画とともに削除されました。タスクは今はカードです
+  fraim roles               ロール表とともに廃止: ワーカーはエージェント自身のモデルで動きます
   fraim show NAME           手順のテキストを表示
   fraim build               リポジトリの成果物を再ビルド
   fraim version             バージョン

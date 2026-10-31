@@ -2439,6 +2439,16 @@ check "a red project check keeps the round out of the trunk" "$RC" "1"
 check "the card stays open" "$([ -f "$DP/ai/tasks/login-form.md" ] && echo yes)" "yes"
 check "the build branch stays for the fix" "$(git -C "$DP" show "fraim/$B3:web/login/index.html")" "red"
 
+printf '\ndispatcher: build ids\n'
+# Rounds follow each other quickly; two builds within one second must not share an id — the
+# second one used to overwrite the first's plan and journal.
+DQ="$SANDBOX/dispatch-ids"; mkdir -p "$DQ/ai/tasks"
+git -C "$DQ" init -q; git -C "$DQ" config user.email t@t; git -C "$DQ" config user.name t
+printf 'x\n' > "$DQ/a.txt"; git -C "$DQ" add -A >/dev/null; git -C "$DQ" commit -qm init >/dev/null
+for i in 1 2 3; do (cd "$DQ" && "$FRAIM" dispatch "$DPL/wide.md" >/dev/null 2>&1); done
+check "three builds in a row get three ids" "$(ls "$DQ/ai/builds" | wc -l | tr -d ' ')" "3"
+check "and three build branches" "$(git -C "$DQ" branch --list 'fraim/*' | grep -c .)" "3"
+
 printf '\ndispatcher: what is gone\n'
 OUT=$("$FRAIM" dispatch run x 2>&1); RC=$?
 check "dispatch run answers where it went" "$RC" "2"

@@ -1080,12 +1080,17 @@ cmd_dispatch() {
             dispatch_size_notes "$_plan"
 
             # Unique even within one second: rounds follow each other quickly, and a second
-            # build under the first one's id would overwrite its plan and journal.
-            _bid=build-$(date -u '+%Y%m%d-%H%M%S'); _bbase=$_bid; _bn=1
-            while [ -e "$(build_dir "$_root" "$_bid")" ] ||
-                  git -C "$_root" rev-parse --verify --quiet "refs/heads/$(build_branch "$_bid")" >/dev/null 2>&1; do
-                _bn=$((_bn + 1)); _bid=$_bbase-$_bn
+            # build under the first one's id would overwrite its plan and journal. The suffix
+            # is a letter glued to the time, not «-2»: checkouts are named <build>-<subtask>,
+            # and «build-X-2-w1» would read as build X's subtask «2-w1».
+            _bid=build-$(date -u '+%Y%m%d-%H%M%S'); _bbase=$_bid
+            for _bsfx in b c d e f g h i j k l m n o p q r s t u v w x y z; do
+                [ -e "$(build_dir "$_root" "$_bid")" ] ||
+                    git -C "$_root" rev-parse --verify --quiet "refs/heads/$(build_branch "$_bid")" >/dev/null 2>&1 ||
+                    break
+                _bid=$_bbase$_bsfx
             done
+            [ -e "$(build_dir "$_root" "$_bid")" ] && die "$(t cli_disp_err_journal)"
             build_seal "$_root" "$_bid" "$_plan" >/dev/null || die "$(t cli_disp_err_journal)"
 
             say "$(t cli_disp_build_title build="$_bid")"
