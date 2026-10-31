@@ -1161,6 +1161,30 @@ mkdir -p "$PROJ2/src/deep"
 (cd "$PROJ2/src/deep" && printf 'from below\n' | "$FRAIM" arch "Stack" >/dev/null 2>&1)
 check "verb finds the project root from a subdirectory" "$(grep -c '^from below$' "$PROJ2/ARCHITECTURE.md")" "1"
 
+# --- large text: over the 128 KiB a single environment string may hold ------
+# The verbs once handed their text to awk through ENVIRON, and Linux refuses to exec a
+# program with one environment string over 128 KiB: a big section failed with «Argument
+# list too long». Its own project, so the counts the tests below rely on stay put.
+BIGP="$SANDBOX/bigtext"
+mkdir -p "$BIGP" && git -C "$BIGP" init -q
+(cd "$BIGP" && "$FRAIM" scaffold >/dev/null 2>&1)
+printf '# A\n\n## Stack\nold\n\n## Data flow\nflow stays\n' > "$BIGP/ARCHITECTURE.md"
+BIGB="$SANDBOX/big-body.txt"
+awk 'BEGIN { for (i = 1; i <= 4000; i++) printf "- item %d of the map, a cell `a \\| b`\n", i }' > "$BIGB"
+check "the fixture is over 128 KiB" "$([ "$(wc -c < "$BIGB")" -gt 131072 ] && echo yes)" "yes"
+(cd "$BIGP" && "$FRAIM" arch "Stack" < "$BIGB" >/dev/null 2>&1)
+check "arch writes a section over 128 KiB" "$?" "0"
+check "the large section is byte for byte the body" \
+      "$(sed -n '/^## Stack$/,/^## Data flow$/p' "$BIGP/ARCHITECTURE.md" | sed '1d;$d' | sed '$d' | cmp -s - "$BIGB" && echo same)" "same"
+check "the next section survived" "$(grep -c '^flow stays$' "$BIGP/ARCHITECTURE.md")" "1"
+(cd "$BIGP" && { printf 'Decision: a large one.\n\n'; cat "$BIGB"; } | "$FRAIM" decide "large decision" >/dev/null 2>&1)
+check "decide writes a body over 128 KiB" "$?$(grep -c '^- item' "$BIGP/DECISIONS.md")" "04000"
+(cd "$BIGP" && printf 'Decision: smaller.\n' | "$FRAIM" decide "smaller" --supersedes "large decision" >/dev/null 2>&1)
+check "supersede moves an entry over 128 KiB" \
+      "$?$(grep -c '^- item' "$BIGP/ai/archive/decisions_log.md")$(grep -c '^- item' "$BIGP/DECISIONS.md")" "040000"
+(cd "$BIGP" && sed 's/^- //' "$BIGB" | "$FRAIM" pitfall >/dev/null 2>&1)
+check "pitfall appends lines over 128 KiB" "$?$(grep -c '^- item' "$BIGP/CONVENTIONS.md")" "04000"
+
 # --- brief and find: the whole foundation and the whole entry ---------------
 B=$("$FRAIM" brief 2>/dev/null)
 check "brief ends with a completeness mark" "$(printf '%s\n' "$B" | tail -1 | grep -c 'nothing cut')" "1"
@@ -1974,40 +1998,101 @@ check "bare ~/.config is not OpenCode" \
 mkdir -p "$HOME/.gemini/config" "$HOME/.config/opencode"
 env PATH="$SANDBOX_PATH" "$FRAIM" init >/dev/null 2>&1
 check "init succeeded" "$?" "0"
-check "Codex: 12 skills" "$(find "$HOME/.codex/skills" -name SKILL.md 2>/dev/null | wc -l | tr -d ' ')" "12"
+# Codex, OpenCode and most others read the shared ~/.agents/skills: one copy there, none in their own.
+check "Codex: 12 skills in the shared ~/.agents/skills" "$(find "$HOME/.agents/skills" -name SKILL.md 2>/dev/null | wc -l | tr -d ' ')" "12"
+check "Codex: nothing in the deprecated ~/.codex/skills" "$(find "$HOME/.codex/skills" -name SKILL.md 2>/dev/null | wc -l | tr -d ' ')" "0"
 check "Claude Code: 12 skills" "$(find "$HOME/.claude/skills" -name SKILL.md 2>/dev/null | wc -l | tr -d ' ')" "12"
-check "Antigravity: 12 skills" "$(find "$HOME/.gemini/config/skills" -name SKILL.md 2>/dev/null | wc -l | tr -d ' ')" "12"
-check "OpenCode: 12 skills in skills/ (plural)" "$(find "$HOME/.config/opencode/skills" -name SKILL.md 2>/dev/null | wc -l | tr -d ' ')" "12"
+check "Antigravity IDE: 12 skills" "$(find "$HOME/.gemini/config/skills" -name SKILL.md 2>/dev/null | wc -l | tr -d ' ')" "12"
+check "Antigravity CLI: 12 skills in its own directory" "$(find "$HOME/.gemini/antigravity-cli/skills" -name SKILL.md 2>/dev/null | wc -l | tr -d ' ')" "12"
+check "OpenCode: no second copy in its own skills/" "$(find "$HOME/.config/opencode/skills" -name SKILL.md 2>/dev/null | wc -l | tr -d ' ')" "0"
 check "context block in ~/.config/opencode/AGENTS.md" "$(grep -c 'fraim:begin' "$HOME/.config/opencode/AGENTS.md" 2>/dev/null)" "1"
 # OpenCode wants each skill's name to match its folder — a mismatch is a skill it skips.
 _mis=0
-for _sk in "$HOME/.config/opencode/skills"/*/SKILL.md; do
+for _sk in "$HOME/.agents/skills"/*/SKILL.md; do
     [ "$(sed -n 's/^name: //p' "$_sk" | head -1)" = "$(basename "$(dirname "$_sk")")" ] || _mis=$((_mis + 1))
 done
-check "OpenCode: every skill name matches its folder" "$_mis" "0"
+check "every skill name matches its folder (OpenCode, Cline skip a mismatch)" "$_mis" "0"
 check "context block in ~/.codex/AGENTS.md" "$(grep -c 'fraim:begin' "$HOME/.codex/AGENTS.md" 2>/dev/null)" "1"
 check "context block in ~/.gemini/AGENTS.md" "$(grep -c 'fraim:begin' "$HOME/.gemini/AGENTS.md" 2>/dev/null)" "1"
-check "GEMINI.md is not ours — we do not write to it" \
+check "bare ~/.gemini is not Gemini CLI — GEMINI.md untouched" \
     "$([ -f "$HOME/.gemini/GEMINI.md" ] && echo yes || echo no)" "no"
 check "project registered" "$("$FRAIM" projects 2>/dev/null | grep -cx "  $PROJ")" "1"
 check "Bash(fraim:*) permission configured" "$(grep -c 'Bash(fraim' "$HOME/.claude/settings.json" 2>/dev/null)" "1"
 
 # Idempotence is the whole update story: init is also update.
-H1=$(find "$HOME/.codex/skills" -type f | sort | xargs md5sum | md5sum)
+H1=$(find "$HOME/.agents/skills" -type f | sort | xargs md5sum | md5sum)
 A1=$(md5sum < "$HOME/.codex/AGENTS.md")
 "$FRAIM" init >/dev/null 2>&1
-H2=$(find "$HOME/.codex/skills" -type f | sort | xargs md5sum | md5sum)
+H2=$(find "$HOME/.agents/skills" -type f | sort | xargs md5sum | md5sum)
 A2=$(md5sum < "$HOME/.codex/AGENTS.md")
 check "repeated init does not change skills" "$H1" "$H2"
 check "repeated init does not duplicate the block" "$A1" "$A2"
 
 # A skill we own that vanished upstream must be swept; the user's own must not.
-mkdir -p "$HOME/.codex/skills/obsolete" "$HOME/.codex/skills/mine"
-printf -- '---\nname: obsolete\ndescription: "x"\nmetadata:\n  source: fraim\n---\n' > "$HOME/.codex/skills/obsolete/SKILL.md"
-printf -- '---\nname: mine\ndescription: "x"\n---\n' > "$HOME/.codex/skills/mine/SKILL.md"
+mkdir -p "$HOME/.agents/skills/obsolete" "$HOME/.agents/skills/mine"
+printf -- '---\nname: obsolete\ndescription: "x"\nmetadata:\n  source: fraim\n---\n' > "$HOME/.agents/skills/obsolete/SKILL.md"
+printf -- '---\nname: mine\ndescription: "x"\n---\n' > "$HOME/.agents/skills/mine/SKILL.md"
 "$FRAIM" init >/dev/null 2>&1
-check "our obsolete skill removed" "$([ -d "$HOME/.codex/skills/obsolete" ] && echo yes || echo no)" "no"
-check "foreign skill untouched" "$([ -d "$HOME/.codex/skills/mine" ] && echo yes || echo no)" "yes"
+check "our obsolete skill removed" "$([ -d "$HOME/.agents/skills/obsolete" ] && echo yes || echo no)" "no"
+check "foreign skill untouched" "$([ -d "$HOME/.agents/skills/mine" ] && echo yes || echo no)" "yes"
+
+# Retired locations: earlier versions wrote where pi, omp, Devin and Codex never looked.
+# init takes back ours — skills marked source: fraim, the block between our markers —
+# and leaves the human's own text and skills where they are.
+mkdir -p "$HOME/.pi/skills/orient" "$HOME/.pi/skills/theirs" "$HOME/.codex/skills/orient"
+printf -- '---\nname: orient\ndescription: "x"\nmetadata:\n  source: fraim\n---\n' > "$HOME/.pi/skills/orient/SKILL.md"
+cp "$HOME/.pi/skills/orient/SKILL.md" "$HOME/.codex/skills/orient/SKILL.md"
+printf -- '---\nname: theirs\ndescription: "x"\n---\n' > "$HOME/.pi/skills/theirs/SKILL.md"
+printf '# my own rules\n' > "$HOME/.pi/AGENTS.md"
+sh -c '. "'"$REPO"'/installer/lib/context.sh"; context_install "$HOME/.pi/AGENTS.md"; context_install "$HOME/.devin/AGENTS.md"'
+env PATH="$SANDBOX_PATH" "$FRAIM" init >/dev/null 2>&1
+check "retired ~/.pi/skills: our skill taken back" "$([ -d "$HOME/.pi/skills/orient" ] && echo yes || echo no)" "no"
+check "retired ~/.pi/skills: the human's skill stays" "$([ -d "$HOME/.pi/skills/theirs" ] && echo yes || echo no)" "yes"
+check "retired ~/.codex/skills: our skill taken back" "$([ -d "$HOME/.codex/skills/orient" ] && echo yes || echo no)" "no"
+check "retired ~/.pi/AGENTS.md: block gone, the human's text exactly as it was" \
+    "$(cat "$HOME/.pi/AGENTS.md")" "# my own rules"
+check "retired ~/.devin/AGENTS.md: a file that held only our block is removed" \
+    "$([ -f "$HOME/.devin/AGENTS.md" ] && echo yes || echo no)" "no"
+
+# New rows, each detected by its own home and served from the right place.
+mkdir -p "$HOME/.pi/agent" "$HOME/.cursor" "$HOME/.kiro" "$HOME/.factory" "$HOME/.config/kilo" "$HOME/.zcode" "$HOME/.junie"
+: > "$HOME/.gemini/settings.json"     # a file only Gemini CLI writes
+env PATH="$SANDBOX_PATH" "$FRAIM" init >/dev/null 2>&1
+check "pi: block in ~/.pi/agent/AGENTS.md, where pi reads it" \
+    "$(grep -c 'fraim:begin' "$HOME/.pi/agent/AGENTS.md" 2>/dev/null)" "1"
+check "pi: no copy in ~/.pi/agent/skills — it reads ~/.agents/skills and warns on a duplicate" \
+    "$([ -d "$HOME/.pi/agent/skills" ] && echo yes || echo no)" "no"
+check "Gemini CLI by settings.json: block in GEMINI.md" \
+    "$(grep -c 'fraim:begin' "$HOME/.gemini/GEMINI.md" 2>/dev/null)" "1"
+check "Gemini CLI: no ~/.gemini/skills — a second copy is an on-screen conflict warning" \
+    "$([ -d "$HOME/.gemini/skills" ] && echo yes || echo no)" "no"
+check "Cursor: no global rules file, so none is invented" \
+    "$(find "$HOME/.cursor" -type f | wc -l | tr -d ' ')" "0"
+check "Kiro: its own skills directory" "$(find "$HOME/.kiro/skills" -name SKILL.md 2>/dev/null | wc -l | tr -d ' ')" "12"
+check "Kiro: our own steering file, not a block in someone else's" \
+    "$(grep -c 'fraim:begin' "$HOME/.kiro/steering/fraim.md" 2>/dev/null)" "1"
+check "Factory Droid: no own copy — it reads the shared directory (checked live)" "$([ -d "$HOME/.factory/skills" ] && echo yes || echo no)" "no"
+check "Factory Droid: block in ~/.factory/AGENTS.md" "$(grep -c 'fraim:begin' "$HOME/.factory/AGENTS.md" 2>/dev/null)" "1"
+check "Kilo Code by ~/.config/kilo: block in its AGENTS.md" \
+    "$(grep -c 'fraim:begin' "$HOME/.config/kilo/AGENTS.md" 2>/dev/null)" "1"
+check "ZCode (GLM): its own skills directory" "$(find "$HOME/.zcode/skills" -name SKILL.md 2>/dev/null | wc -l | tr -d ' ')" "12"
+check "ZCode: block in ~/.zcode/AGENTS.md" "$(grep -c 'fraim:begin' "$HOME/.zcode/AGENTS.md" 2>/dev/null)" "1"
+check "Junie: no ~/.junie/AGENTS.md — it never loads a user-level one (checked live)" "$([ -f "$HOME/.junie/AGENTS.md" ] && echo yes || echo no)" "no"
+check "the shared directory still holds one copy" "$(find "$HOME/.agents/skills" -name SKILL.md | grep -c '/orient/')" "1"
+
+# The probe cell: a bare word is a binary, a $HOME path counts by existing, and once a
+# row names a path the parent of its skills directory no longer counts.
+HPLIB='. "'"$REPO"'/installer/lib/harness.sh"'
+check "probe: an existing listed path counts" \
+    "$(sh -c "$HPLIB"'; harness_present "no-such-bin,\$HOME/.cursor" "$HOME/.agents/skills" && echo yes || echo no')" "yes"
+check "probe: with a path listed, the shared parent does not count" \
+    "$(sh -c "$HPLIB"'; harness_present "no-such-bin,\$HOME/.nope" "$HOME/.agents/skills" && echo yes || echo no')" "no"
+check "probe: a bare binary keeps the old rule — the skills parent counts" \
+    "$(sh -c "$HPLIB"'; harness_present "no-such-bin" "$HOME/.kiro/skills" && echo yes || echo no')" "yes"
+check "probe: any binary of the list on PATH counts" \
+    "$(sh -c "$HPLIB"'; harness_present "no-such-bin,sh,\$HOME/.nope" "$HOME/.nope/skills" && echo yes || echo no')" "yes"
+_tbl_bad=$(sh -c "$HPLIB"'; harness_table' | awk -F'\t' 'NF != 5 || $5 == ""' | wc -l | tr -d ' ')
+check "every harness row has five non-empty cells" "$_tbl_bad" "0"
 
 "$FRAIM" doctor >/dev/null 2>&1
 check "doctor succeeded" "$?" "0"
@@ -2460,9 +2545,23 @@ Warning: cache is stale')" \
 openrouter/z-ai/glm-5.3-flash:free
 zai/glm-5.3-flash"
 
+check "grok parser: bulleted ids, the default's marker and the headers dropped" \
+      "$(roles_parse_out roles_parse_grok_models 'Default model: grok-code-fast-2
+Available models:
+  * grok-code-fast-2 (default)
+  - grok-5
+  - grok-5-mini')" \
+      "grok-5
+grok-5-mini
+grok-code-fast-2"
+
+check "kilo and crush list models the way opencode does" \
+      "$(sh -c '. "'"$REPO"'/installer/lib/roles.sh"; roles_models_table' | awk -F'\t' '$1 == "kilo" || $1 == "crush" { print $1 "=" $4 }' | tr '\n' ' ')" \
+      "kilo=roles_parse_opencode_models crush=roles_parse_opencode_models "
+
 # Empty and broken input is a legal empty answer with exit code 0: an agent update
 # that broke the parser degrades into «enter your own», not into an error.
-for _p in roles_parse_devin_models roles_parse_cursor_models roles_parse_pi_models roles_parse_codex_models roles_parse_claude_models roles_parse_opencode_models; do
+for _p in roles_parse_devin_models roles_parse_cursor_models roles_parse_pi_models roles_parse_codex_models roles_parse_claude_models roles_parse_opencode_models roles_parse_grok_models; do
     _out=$(roles_parse_out "$_p" '' 2>/dev/null; roles_parse_out "$_p" 'garbage !! ##' 2>/dev/null)
     check "parser $_p: empty/broken input — empty, exit code 0" "$_out|" "|"
 done

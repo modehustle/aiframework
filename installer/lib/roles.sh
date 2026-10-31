@@ -193,6 +193,9 @@ roles_efforts() { printf 'low\nmedium\nhigh\nxhigh\nmax\n'; }
 #   pi            `pi --list-models`           text table, provider + model + context
 #   cursor-agent  `cursor-agent models`        text table, id - display name
 #   opencode      `opencode models`            one provider/model per line
+#   kilo          `kilo models`                one provider/model per line (an OpenCode fork)
+#   crush         `crush models`               one provider/model per line when piped
+#   grok          `grok models`                header, then "  * id (default)" / "  - id"
 #   codex         ~/.codex/models_cache.json   JSON, self-refreshed (etag, fetched_at)
 #   claude        catalogue embedded in the    minified JS entries
 #                 claude binary                  {id:"claude-...",family:"..."}
@@ -217,7 +220,11 @@ roles_models_table() {
 devin	command	devin models list	roles_parse_devin_models
 pi	command	pi --list-models	roles_parse_pi_models
 cursor-agent	command	cursor-agent models	roles_parse_cursor_models
+cursor	command	cursor-agent models	roles_parse_cursor_models
 opencode	command	opencode models	roles_parse_opencode_models
+kilo	command	kilo models	roles_parse_opencode_models
+crush	command	crush models	roles_parse_opencode_models
+grok	command	grok models	roles_parse_grok_models
 codex	file	.codex/models_cache.json	roles_parse_codex_models
 claude	binary	claude	roles_parse_claude_models
 TBL
@@ -242,6 +249,13 @@ roles_parse_cursor_models() {
 # space — a log line, a warning — is not an id.
 roles_parse_opencode_models() {
     grep -E '^[a-z0-9][a-z0-9._-]*/[^[:space:]]+$' | sort -u || :
+}
+
+# grok: "Default model: …" and "Available models:" headers, then one id per line behind
+# a bullet — `*` marks the default, which also carries a trailing "(default)".
+roles_parse_grok_models() {
+    sed -n 's/^[[:space:]]*[*-][[:space:]]\{1,\}\([^[:space:]][^[:space:]]*\).*/\1/p' |
+        grep -E '^[a-zA-Z0-9][a-zA-Z0-9/._:-]*$' | sort -u || :
 }
 
 # pi: a column table, model in field 2, header on line 1. A leading "~" marks a

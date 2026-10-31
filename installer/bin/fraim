@@ -72,11 +72,21 @@ cmd_init() {
 
     harness_detect | while IFS='	' read -r _key _label _skills _instr; do
         [ -n "$_key" ] || continue
-        _count=$(harness_install "$_label" "$_skills" "$_build") || {
-            warn "$(t cli_init_harness_failed label="$_label")"
-            continue
-        }
-        ok "$_label → $_skills ($_count)"
+        _failed=0
+        # One directory per line: split on newlines only, so a home with a space survives.
+        _oifs=$IFS; IFS='
+'
+        for _dir in $(harness_dirs "$_skills"); do
+            IFS=$_oifs
+            _count=$(harness_install "$_label" "$_dir" "$_build") || {
+                warn "$(t cli_init_harness_dir_failed label="$_label" dir="$_dir")"
+                _failed=1
+                continue
+            }
+            ok "$_label → $_dir ($_count)"
+        done
+        IFS=$_oifs
+        [ "$_failed" -eq 0 ] || continue
         if [ -n "$_instr" ]; then
             if context_install "$_instr"; then
                 dim "    $(t cli_context_block path="$_instr")"
@@ -86,6 +96,11 @@ cmd_init() {
         fi
     done
     _found=$(harness_detect | wc -l | tr -d ' ')
+
+    # Where earlier versions put our files and the harness never looked: take them back.
+    harness_sweep_retired | while read -r _gone; do
+        [ -n "$_gone" ] && dim "    $(t cli_init_swept path="$_gone")"
+    done
 
     if [ "$_found" -eq 0 ]; then
         say ""
@@ -429,6 +444,7 @@ cmd_doctor() {
         [ -n "$_key" ] || continue
         _skills=$(harness_expand "$_skills")
         if harness_present "$_probe" "$_skills"; then
+            _skills=${_skills%%,*}
             _installed=$(grep -rl '^  source: fraim$' "$_skills" 2>/dev/null | wc -l | tr -d ' ')
             _vers=$(grep -rh '^  version: ' "$_skills" 2>/dev/null | sed 's/^  version: //' | sort -u | tr '\n' ' ')
             if [ "$_installed" -gt 0 ]; then

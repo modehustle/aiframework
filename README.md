@@ -26,9 +26,13 @@ sh ~/.fraim/src/installer/install.sh
 fraim init
 ```
 
-`fraim init` находит установленные харнесы (Hermes, Claude Code, Codex, omp, pi, Devin CLI,
-Antigravity, OpenCode), раскладывает по ним 12 процедур и мастер-скилл как Agent Skills, дописывает
-контекстный блок в их `AGENTS.md` и заводит реестр проектов. Команда **идемпотентна**: она же
+`fraim init` находит установленные харнесы — терминальные (Claude Code, Codex, Hermes, pi, omp,
+OpenCode, Devin CLI, Gemini CLI, Qwen Code, Kimi Code, Mistral Vibe, Goose, Crush, Factory Droid,
+Grok Build), IDE и редакторы (Cursor, GitHub Copilot, Cline, Kilo Code, Zed, Antigravity, Kiro,
+Junie, Augment, Continue), десктопный ZCode от Z.ai (GLM), Warp и OpenClaw; полный список и пути — в
+[installer/README.md](installer/README.md#что-куда-ставится). Он раскладывает по ним 12 процедур
+и мастер-скилл как Agent Skills (одной копией в общем `~/.agents/skills` для всех, кто его
+читает), дописывает контекстный блок в их глобальные правила и заводит реестр проектов. Команда **идемпотентна**: она же
 обновление, она же подключение только что поставленного харнеса. Устаревшие скиллы прошлых
 версий она убирает сама, чужие — не трогает.
 

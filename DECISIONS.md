@@ -103,6 +103,85 @@ Consequences: the settings screen of the new interface reads sections and types 
 not from a list of its own. Descriptions are still Russian strings in the table until the message
 catalog lands.
 
+## 2026-10-31 — harness rows checked live: Junie writes no block, Junie and Droid share ~/.agents/skills
+
+Context: the owner asked why the harnesses were not simply installed and tried. Nineteen of them
+ship
+through npm or PyPI, which this environment reaches: each was installed into its own prefix, `fraim
+init` was run in a clean home, and the agent itself was asked — its own listing command, or the
+system prompt it sent to a local stand-in model server, with control runs removing one directory at
+a time.
+Decision: (1) Seventeen rows are confirmed as they are. (2) Junie gets no context block: a block in
+`~/.junie/AGENTS.md` never reached a request, while the project's `.junie/AGENTS.md` did. (3) Junie
+and Factory Droid read the shared `~/.agents/skills` (both checked live), so by the
+one-copy rule they get their skills there and nowhere else. (4) The harness table states which rows
+were checked live and which rest on documentation (Cursor, Zed, Warp, Kiro, Devin, Antigravity,
+ZCode, Goose, Grok Build — their download sites are closed here).
+Alternatives: keeping documentation as the only evidence rejected — it was wrong for four rows
+already.
+Consequences: found on the way, not acted on: Hermes cuts a skill's description to 57 characters
+in what the model sees; OpenClaw with a profile does not read the shared directory; Gemini CLI
+writes `~/.gemini/settings.json` only after sign-in, so before that only its binary identifies it.
+
+## 2026-10-31 — ZCode is a supported harness; the pi and Devin finding confirmed and narrowed
+
+Context: the owner pointed out that pi and Devin did read our skills, and asked for Z.ai's GLM
+agent.
+On the owner's machine pi did not find `/skill:orient`, which confirms pi never read `~/.pi/skills`
+(its user skills are `~/.pi/agent/skills` and `~/.agents/skills`; it stopped reading
+`~/.claude/skills` and `~/.codex/skills` in 0.50, January 2026). Devin CLI did see our skills, but
+only through Claude Code's copy: it reads `~/.claude/skills` and `~/.claude/CLAUDE.md` by default,
+never `~/.devin/skills`.
+Decision: (1) A row for ZCode, Z.ai's desktop agent for GLM: skills in its own `~/.zcode/skills`,
+the block in `~/.zcode/AGENTS.md` (read every session), recognised by `~/.zcode` or the macOS app
+bundle — it ships no CLI binary we could name. Its own directory, not the shared one: only one
+secondary source says it reads `~/.agents/skills`. (2) The documents say precisely what was wrong
+for Devin: the directory, not the visibility.
+Alternatives: leaving GLM to the harnesses that already run its models (Claude Code, OpenCode,
+Kilo Code, Cline through the GLM Coding Plan) rejected — the owner asked for the native app too.
+Consequences: the ZCode row rests on a quoted summary of its docs (zcode.z.ai is unreachable from
+here) and is to be confirmed on a machine with ZCode installed.
+
+## 2026-10-31 — harnesses: 27 rows, one shared ~/.agents/skills copy, paths checked against sources
+
+Context: the owner asked to widen the list of supported harnesses beyond terminal agents. Checking
+every row against the harnesses' own source code and docs (October 2026) found that four existing
+rows wrote where the harness never reads: pi and omp keep their agent home in `~/.pi/agent` and
+`~/.omp/agent`, Devin for Terminal in `~/.config/devin`, Hermes loads no global AGENTS.md; the
+Antigravity CLI reads `~/.gemini/antigravity-cli/skills`, and Codex marks `~/.codex/skills`
+deprecated in favour of `~/.agents/skills`. Most harnesses now also read the open standard's shared
+`~/.agents/skills`, and several of them warn on a second copy of the same skill (Gemini CLI on
+screen, pi, omp, Hermes).
+Decision: (1) A harness that reads `~/.agents/skills` gets its skills there and nowhere else; only
+a harness that does not read it (Claude Code, Hermes, Antigravity, Factory Droid, Grok Build, Kiro,
+Junie, Continue) gets its own directory. (2) Nineteen rows are added: Gemini CLI, Qwen Code, Kimi
+Code, Mistral Vibe, Goose, Crush, Factory Droid, Grok Build, OpenClaw, GitHub Copilot, Cursor,
+Cline, Kilo Code, Zed, Warp, Augment, Kiro, Junie, Continue; pi, omp, Devin, Codex, OpenCode and
+Antigravity are corrected. (3) The probe cell takes a comma-separated list of binaries and `$HOME`
+paths; once a row names a path, the parent of its skills directory no longer counts (`~/.agents`
+says nothing about which product is installed, `~/.gemini` is shared by Gemini CLI and
+Antigravity — Gemini CLI is recognised by `gemini` or `~/.gemini/settings.json`). (4) The skills
+cell may name several directories; Antigravity gets both of its own. (5) The instructions cell is
+`-` where rules live only in a settings screen (Cursor) or the only always-loaded file is one the
+harness seeds itself and owns (Hermes `SOUL.md`, OpenClaw's workspace `AGENTS.md`); where a harness
+reads a rules directory (Kiro, Augment, Continue), the cell names our own `fraim.md` in it; Cline,
+Warp, Goose and Kimi Code share `~/.agents/AGENTS.md`. (6) `harness_retired_table` lists the old
+wrong locations; `fraim init` removes from them only skills marked `source: fraim` and the block
+between our markers (`context_uninstall`; a file that held only the block is deleted), and never a
+path some row still uses. (7) The roles picker lists models for Kilo (`kilo models`), Crush (`crush
+models`), Grok (`grok models`) and Cursor; no new built-in fleet launch command — none was run
+live. This replaces item (1) of «OpenCode is a supported harness» as to the skills directory.
+Alternatives: installing into every directory a harness reads rejected — the duplicate warnings;
+installing only into `~/.agents/skills` for all rejected — Claude Code, Hermes, Antigravity and
+others do not read it; writing into Hermes `SOUL.md` or OpenClaw's workspace file rejected for now
+— creating them first would stop the harness seeding its own; Roo Code (shut down 2026-05-15),
+Windsurf (became Devin Desktop, which shares Devin's directory), Amp and Trae (no primary source
+readable) left out.
+Consequences: on a machine with Claude Code, harnesses that also read `~/.claude/skills` or
+`~/.claude/CLAUDE.md` still see our text twice — the same text. Cursor, Devin, Kiro, Junie and
+Augment rows rest on search excerpts of their official pages, not on pages read whole; they are to
+be confirmed on a machine with each installed.
+
 ## 2026-10-28 — fraim upgrade is a machine command over the registry
 
 Context: the owner noticed the asymmetry: `fraim update` brings a new release to the machine once,
