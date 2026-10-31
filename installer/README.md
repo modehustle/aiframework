@@ -185,6 +185,7 @@ fraim init
 | Kiro | IDE + CLI | `~/.kiro/skills/` | `~/.kiro/steering/fraim.md` |
 | Junie (JetBrains) | плагин IDE + CLI | `~/.junie/skills/` | `~/.junie/AGENTS.md` |
 | Continue | расширение IDE + CLI `cn` | `~/.continue/skills/` | `~/.continue/rules/fraim.md` |
+| ZCode (Z.ai, GLM) | десктоп | `~/.zcode/skills/` | `~/.zcode/AGENTS.md` |
 
 `~/.agents/AGENTS.md` так же общий: его читают Cline, Warp, Goose и Kimi Code, поэтому
 блок там один на всех. Где харнес читает **каталог** правил, а не один файл (Kiro, Augment,
@@ -208,8 +209,10 @@ CLI — `~/.gemini/antigravity-cli/skills/` (так же ставит и гуг�
 `AGENTS.md` его рабочего пространства, которое заводит его онбординг по шаблону, — туда
 тоже не пишем. Обоим остаются скиллы, мастер-скилл `fraim` срабатывает по описанию.
 
-Прежние версии клали файлы туда, где их никто не читал: `~/.pi/`, `~/.omp/` (pi и omp живут
-на уровень глубже, в `…/agent/`), `~/.devin/` (Devin CLI живёт в `~/.config/devin/`),
+Прежние версии клали файлы туда, где харнес их не читает: `~/.pi/`, `~/.omp/` (pi и omp
+живут на уровень глубже, в `…/agent/`; на живой машине pi действительно не нашёл
+`/skill:orient`), `~/.devin/` (Devin CLI живёт в `~/.config/devin/`; наши скиллы он видел
+только через копию Claude Code в `~/.claude/skills`, которую читает по умолчанию),
 `~/.hermes/AGENTS.md`, а ещё `~/.codex/skills/` (у Codex он устарел) и
 `~/.config/opencode/skills/`. `fraim init` забирает оттуда **только своё** — скиллы с
 `source: fraim` и блок между нашими маркерами; чужие скиллы и текст человека остаются.

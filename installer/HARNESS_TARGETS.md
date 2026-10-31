@@ -5,7 +5,7 @@
 > Срез популярности — рейтинг приложений OpenRouter по расходу токенов (август 2026),
 > плюс Devin CLI и Devin Desktop, которых в топ-10 нет, но которые важны как класс.
 >
-> **Октябрь 2026: список расширен до 27 харнесов, пути сверены по первоисточникам.** Раздел
+> **Октябрь 2026: список расширен до 28 харнесов, пути сверены по первоисточникам.** Раздел
 > [Срез октябрь 2026](#срез-октябрь-2026) действует поверх всего, что ниже: часть путей
 > августовского среза оказалась неверной (pi, omp, Devin, Hermes, Antigravity CLI).
 
@@ -87,6 +87,7 @@ Droid, Grok Build, Kiro, Junie, Continue.
 | Kiro | IDE + CLI | `~/.kiro/skills` | `~/.kiro/steering/fraim.md` | `kiro-cli`, `~/.kiro` | — |
 | Junie | плагин JetBrains + CLI | `~/.junie/skills` | `~/.junie/AGENTS.md` | `junie`, `~/.junie` | — |
 | Continue | IDE + `cn` | `~/.continue/skills` | `~/.continue/rules/fraim.md` | `cn`, `~/.continue` | — |
+| ZCode (Z.ai, GLM) | десктоп | `~/.zcode/skills` | `~/.zcode/AGENTS.md` | `~/.zcode`, `/Applications/ZCode.app` | — |
 
 «Модели» — откуда выбор ролей (`fraim roles`) берёт список; прочерк значит «введи сам».
 Запуск воркера флота с моделью в argv по-прежнему встроен только для Devin и OpenCode:
@@ -95,9 +96,12 @@ Droid, Grok Build, Kiro, Junie, Continue.
 
 ### Что было неверно в августовском срезе
 
-- **pi** читает `~/.pi/agent/skills` и `~/.pi/agent/AGENTS.md`, а не `~/.pi/…` — наши скиллы
-  и блок там никто не читал. **omp** — то же самое, `~/.omp/agent/`.
-- **Devin CLI** живёт в `~/.config/devin/`, а не в `~/.devin/` (тот — у Devin Local).
+- **pi** читает `~/.pi/agent/skills`, `~/.agents/skills` и `~/.pi/agent/AGENTS.md`, а не
+  `~/.pi/…` (`~/.claude/skills` и `~/.codex/skills` он перестал читать в 0.50, январь 2026).
+  Подтверждено на живой машине: `/skill:orient` pi не нашёл. **omp** — то же самое, `~/.omp/agent/`.
+- **Devin CLI** живёт в `~/.config/devin/`, а не в `~/.devin/` (тот — у Devin Local). Наши
+  скиллы он при этом видел — через копию Claude Code: Devin CLI по умолчанию читает
+  `~/.claude/skills` и `~/.claude/CLAUDE.md`. Без Claude Code на машине не видел бы.
 - **Hermes**: `~/.hermes/AGENTS.md` грузится, только когда рабочий каталог — `~/.hermes`.
   Всегда грузится лишь `SOUL.md` — «личность», которую Hermes заводит сам.
 - **Antigravity**: `~/.gemini/config/skills` читают IDE и Antigravity 2.0, а CLI `agy` —
@@ -113,6 +117,14 @@ Droid, Grok Build, Kiro, Junie, Continue.
 - **Windsurf** — Cascade закрыт 1 июля 2026; преемник Devin Desktop делит `~/.config/devin`
   со строкой Devin CLI, отдельная строка не нужна.
 - **Amp, Trae** — пути нашлись только во вторичных источниках; добавить, когда подтвердятся.
+
+**ZCode** (агент Z.ai под модели GLM, в августовском срезе — «пропустить»: точки входа не
+нашлось) теперь добавлен: `~/.zcode/AGENTS.md` читается в каждой сессии (пересказ его
+документации в [ripr-swarm#3038](https://github.com/EffortlessMetrics/ripr-swarm/issues/3038)),
+скиллы — `~/.zcode/skills` (два вторичных источника). Сайт zcode.z.ai отсюда недоступен,
+строку надо сверить на машине с ZCode. Сами модели GLM и так работают в Claude Code,
+OpenCode, Kilo Code, Cline и других через GLM Coding Plan — ZCode нужен тем, кто сидит в
+родном приложении Z.ai.
 - **Gemini CLI** в строю, но с 18 июня 2026 он только для Code Assist Standard/Enterprise;
   частных пользователей Google перевёл на Antigravity CLI.
 
@@ -142,7 +154,7 @@ Droid, Grok Build, Kiro, Junie, Continue.
 [continue `loadMarkdownSkills.ts`](https://github.com/continuedev/continue) ·
 [Roo-Code (архив)](https://github.com/RooCodeInc/Roo-Code).
 Только по выдаче поиска с официальных страниц (сверить на живой машине): Cursor, Devin,
-Kiro, Junie, Augment. Отправная точка для поиска — реестр
+Kiro, Junie, Augment, ZCode. Отправная точка для поиска — реестр
 [vercel-labs/skills](https://github.com/vercel-labs/skills/blob/main/docs/agents.md); сам он
 источником не служил и в нескольких строках расходится с первоисточниками.
 

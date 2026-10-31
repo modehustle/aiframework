@@ -3,6 +3,25 @@
 > Newest on top. One entry per decision. Never rewrite history — supersede with a new
 > entry, or relocate stale entries to `ai/archive/decisions_log.md` via `/prune`.
 
+## 2026-10-31 — ZCode is a supported harness; the pi and Devin finding confirmed and narrowed
+
+Context: the owner pointed out that pi and Devin did read our skills, and asked for Z.ai's GLM
+agent.
+On the owner's machine pi did not find `/skill:orient`, which confirms pi never read `~/.pi/skills`
+(its user skills are `~/.pi/agent/skills` and `~/.agents/skills`; it stopped reading
+`~/.claude/skills` and `~/.codex/skills` in 0.50, January 2026). Devin CLI did see our skills, but
+only through Claude Code's copy: it reads `~/.claude/skills` and `~/.claude/CLAUDE.md` by default,
+never `~/.devin/skills`.
+Decision: (1) A row for ZCode, Z.ai's desktop agent for GLM: skills in its own `~/.zcode/skills`,
+the block in `~/.zcode/AGENTS.md` (read every session), recognised by `~/.zcode` or the macOS app
+bundle — it ships no CLI binary we could name. Its own directory, not the shared one: only one
+secondary source says it reads `~/.agents/skills`. (2) The documents say precisely what was wrong
+for Devin: the directory, not the visibility.
+Alternatives: leaving GLM to the harnesses that already run its models (Claude Code, OpenCode,
+Kilo Code, Cline through the GLM Coding Plan) rejected — the owner asked for the native app too.
+Consequences: the ZCode row rests on a quoted summary of its docs (zcode.z.ai is unreachable from
+here) and is to be confirmed on a machine with ZCode installed.
+
 ## 2026-10-31 — harnesses: 27 rows, one shared ~/.agents/skills copy, paths checked against sources
 
 Context: the owner asked to widen the list of supported harnesses beyond terminal agents. Checking

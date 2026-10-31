@@ -116,15 +116,15 @@ catalogue as fallback, typed value when nothing answers.
 
 ## External interfaces
 Harness adapters via generated Agent Skills + global context blocks, one table in `harness.sh`
-(27 rows): terminal agents (Claude Code, Codex, Hermes, pi, omp, OpenCode, Devin CLI, Gemini CLI,
+(28 rows): terminal agents (Claude Code, Codex, Hermes, pi, omp, OpenCode, Devin CLI, Gemini CLI,
 Qwen Code, Kimi Code, Mistral Vibe, Goose, Crush, Factory Droid, Grok Build), IDEs and editors
 (Cursor, GitHub Copilot, Cline, Kilo Code, Zed, Antigravity, Kiro, Junie, Augment, Continue),
-Warp and OpenClaw. Every harness that reads the open standard's shared `~/.agents/skills` gets
-its skills there and nowhere else; the rest get their own directory (a row may name several,
-Antigravity does). The context block goes to each harness's global rules file, our own
-`fraim.md` where the harness reads a rules directory, nowhere where rules live only in a
-settings screen (`-`). `harness_retired_table` lists where earlier versions wrote and the
-harness never read; `fraim init` takes our files back from there. Paths and their sources:
+desktop ZCode (Z.ai, GLM), Warp and OpenClaw. Every harness that reads the open standard's shared
+`~/.agents/skills` gets its skills there and nowhere else; the rest get their own directory (a row
+may name several, Antigravity does). The context block goes to each harness's global rules file,
+our own `fraim.md` where the harness reads a rules directory, nowhere where rules live only in a
+settings screen (`-`). `harness_retired_table` lists where earlier versions wrote and the harness
+never read; `fraim init` takes our files back from there. Paths and their sources:
 `installer/HARNESS_TARGETS.md`. GitHub repo as distribution channel.
 
 ## Deployment

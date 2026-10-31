@@ -65,6 +65,12 @@
 # write into it. OpenClaw's always-loaded file is its workspace AGENTS.md, which its
 # onboarding seeds from a template — we do not write into that either.
 #
+# ZCode is Z.ai's desktop agent for its GLM models; it ships no CLI we could name, so it
+# is recognised by its home or its macOS app bundle. Its own `~/.zcode/skills` is used
+# rather than the shared directory: only one secondary source says it reads
+# `~/.agents/skills`, two agree on its own. Its docs host was unreachable — the row
+# rests on a quoted summary of them (`~/.zcode/AGENTS.md`, read every session).
+#
 # Not here, on purpose: Roo Code (shut down 2026-05-15, repository archived),
 # Windsurf (Cascade became Devin Desktop, which shares `~/.config/devin` with the
 # Devin row), Amp and Trae (no primary source could be read for their paths).
@@ -97,6 +103,7 @@ augment	Augment	auggie,$HOME/.augment	$HOME/.agents/skills	$HOME/.augment/rules/
 kiro	Kiro	kiro-cli,kiro	$HOME/.kiro/skills	$HOME/.kiro/steering/fraim.md
 junie	Junie	junie	$HOME/.junie/skills	$HOME/.junie/AGENTS.md
 continue	Continue	cn	$HOME/.continue/skills	$HOME/.continue/rules/fraim.md
+zcode	ZCode	$HOME/.zcode,/Applications/ZCode.app	$HOME/.zcode/skills	$HOME/.zcode/AGENTS.md
 TBL
 }
 

@@ -1887,7 +1887,7 @@ check "retired ~/.devin/AGENTS.md: a file that held only our block is removed" \
     "$([ -f "$HOME/.devin/AGENTS.md" ] && echo yes || echo no)" "no"
 
 # New rows, each detected by its own home and served from the right place.
-mkdir -p "$HOME/.pi/agent" "$HOME/.cursor" "$HOME/.kiro" "$HOME/.factory" "$HOME/.config/kilo"
+mkdir -p "$HOME/.pi/agent" "$HOME/.cursor" "$HOME/.kiro" "$HOME/.factory" "$HOME/.config/kilo" "$HOME/.zcode"
 : > "$HOME/.gemini/settings.json"     # a file only Gemini CLI writes
 env PATH="$SANDBOX_PATH" "$FRAIM" init >/dev/null 2>&1
 check "pi: block in ~/.pi/agent/AGENTS.md, where pi reads it" \
@@ -1906,6 +1906,8 @@ check "Kiro: our own steering file, not a block in someone else's" \
 check "Factory Droid: its own skills directory" "$(find "$HOME/.factory/skills" -name SKILL.md 2>/dev/null | wc -l | tr -d ' ')" "12"
 check "Kilo Code by ~/.config/kilo: block in its AGENTS.md" \
     "$(grep -c 'fraim:begin' "$HOME/.config/kilo/AGENTS.md" 2>/dev/null)" "1"
+check "ZCode (GLM): its own skills directory" "$(find "$HOME/.zcode/skills" -name SKILL.md 2>/dev/null | wc -l | tr -d ' ')" "12"
+check "ZCode: block in ~/.zcode/AGENTS.md" "$(grep -c 'fraim:begin' "$HOME/.zcode/AGENTS.md" 2>/dev/null)" "1"
 check "the shared directory still holds one copy" "$(find "$HOME/.agents/skills" -name SKILL.md | grep -c '/orient/')" "1"
 
 # The probe cell: a bare word is a binary, a $HOME path counts by existing, and once a
