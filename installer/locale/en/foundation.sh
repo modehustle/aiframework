@@ -1,0 +1,27 @@
+# The foundation verbs: find, arch, and the brief's own failure.
+M_fnd_err_tmp='could not create a temporary file'
+M_fnd_err_find_keys='keys are required: fraim find KEY [KEY…] — 2–4 of them, in both languages, as word stems (task задач)'
+M_fnd_find_nothing='nothing found for: {keys} — try other word forms or the other language'
+M_fnd_find_footer='— entries found: {count} · keys: {keys} —'
+
+M_fnd_err_in_file='--in needs a file'
+M_fnd_err_unknown_flag='unknown flag: {flag}'
+M_fnd_err_extra_arg='unexpected argument: {arg}'
+M_fnd_err_decisions_top='DECISIONS.md is written only on top: fraim decide'
+M_fnd_err_arch_files='fraim arch edits ARCHITECTURE.md, CONVENTIONS.md or STACK.md'
+M_fnd_err_need_section='a section name is required: fraim arch "Components & responsibilities" <<'\''EOF'\'' … EOF'
+M_fnd_err_pitfall_line='lessons are added as a line: fraim pitfall "…"'
+M_fnd_err_no_file='no {file}'
+M_fnd_err_body_stdin='the section body comes on stdin: fraim arch "{section}" <<'\''EOF'\'' … EOF'
+M_fnd_err_body_empty='the section body is empty'
+M_fnd_err_body_headings='the section body must not have headings — one section per call'
+M_fnd_err_section_exists='the section «{section}» already exists in {file} — without --new it is replaced'
+M_fnd_err_no_section='{file} has no section «{section}». There are:
+{list}
+A new section — with the --new flag'
+M_fnd_err_section_dup='the section «{section}» occurs {count} times in {file} — fix the file by hand once'
+M_fnd_err_write='could not write {file}'
+M_fnd_err_headings_touched='the edit touched other headings of {file} — nothing was written'
+M_fnd_arch_added='{file} ← section «{section}» added'
+M_fnd_arch_replaced='{file} ← section «{section}» replaced'
+M_fnd_arch_unsaved='not saved yet: add {file} to your fraim commit'
