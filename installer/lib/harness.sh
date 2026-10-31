@@ -80,8 +80,15 @@ harness_present() {
     done
     IFS=$_hp_ifs
     [ "$_hp_paths" -eq 1 ] && return 1
-    [ -d "$(dirname -- "$_hp_skills")" ] && return 0
+    [ -d "$(dirname -- "${_hp_skills%%,*}")" ] && return 0
     return 1
+}
+
+# The skills cell may name several directories, comma-separated, when one product
+# reads different ones in its different shapes (Antigravity: the IDE and the CLI).
+# Prints one directory per line; the first is the one presence and status look at.
+harness_dirs() {
+    printf '%s\n' "$1" | tr ',' '\n' | grep -v '^$' || :
 }
 
 # Emit one line per detected harness: key<TAB>label<TAB>skills-dir<TAB>instructions
@@ -123,4 +130,61 @@ harness_install() {
         _n_installed=$((_n_installed + 1))
     done
     printf '%s\n' "$_n_installed"
+}
+
+# ---------------------------------------------------------------------------
+# Retired locations
+#
+# Where earlier versions put our skills and our block, and the harness turned out
+# not to read: the row was wrong, or the harness moved. Nothing reads these copies,
+# so `fraim init` takes ours back — skills marked `source: fraim` and the block
+# between our markers, nothing else. A path some row of the table still uses is
+# never swept, whatever this list says.
+#   kind (skills | context)   path
+harness_retired_table() {
+    cat <<'TBL'
+skills	$HOME/.pi/skills
+context	$HOME/.pi/AGENTS.md
+skills	$HOME/.omp/skills
+context	$HOME/.omp/AGENTS.md
+skills	$HOME/.devin/skills
+context	$HOME/.devin/AGENTS.md
+context	$HOME/.hermes/AGENTS.md
+TBL
+}
+
+# Is this path in use by any row of the table (as a skills directory or a context file)?
+harness_path_in_use() {
+    _hpu_path=$1
+    harness_table | while IFS='	' read -r _hpu_k _hpu_l _hpu_p _hpu_s _hpu_i; do
+        [ -n "$_hpu_k" ] || continue
+        harness_dirs "$(harness_expand "$_hpu_s")"
+        harness_expand "$_hpu_i"
+    done | grep -qxF "$_hpu_path"
+}
+
+# Sweep the retired locations. Prints one line per path it took something from.
+harness_sweep_retired() {
+    harness_retired_table | while IFS='	' read -r _hsr_kind _hsr_path; do
+        [ -n "$_hsr_kind" ] || continue
+        _hsr_path=$(harness_expand "$_hsr_path")
+        harness_path_in_use "$_hsr_path" && continue
+        case $_hsr_kind in
+            skills)
+                [ -d "$_hsr_path" ] || continue
+                _hsr_n=0
+                for _hsr_d in "$_hsr_path"/*/; do
+                    [ -f "$_hsr_d/SKILL.md" ] || continue
+                    grep -q '^  source: fraim$' "$_hsr_d/SKILL.md" 2>/dev/null || continue
+                    rm -rf "$_hsr_d" && _hsr_n=$((_hsr_n + 1))
+                done
+                rmdir "$_hsr_path" 2>/dev/null || :
+                [ "$_hsr_n" -gt 0 ] && printf '%s\n' "$_hsr_path"
+                ;;
+            context)
+                context_uninstall "$_hsr_path" && printf '%s\n' "$_hsr_path"
+                ;;
+        esac
+    done
+    return 0
 }
