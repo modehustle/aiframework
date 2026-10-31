@@ -3,6 +3,26 @@
 > Newest on top. One entry per decision. Never rewrite history — supersede with a new
 > entry, or relocate stale entries to `ai/archive/decisions_log.md` via `/prune`.
 
+## 2026-10-31 — harness rows checked live: Junie writes no block, Junie and Droid share ~/.agents/skills
+
+Context: the owner asked why the harnesses were not simply installed and tried. Nineteen of them
+ship
+through npm or PyPI, which this environment reaches: each was installed into its own prefix, `fraim
+init` was run in a clean home, and the agent itself was asked — its own listing command, or the
+system prompt it sent to a local stand-in model server, with control runs removing one directory at
+a time.
+Decision: (1) Seventeen rows are confirmed as they are. (2) Junie gets no context block: a block in
+`~/.junie/AGENTS.md` never reached a request, while the project's `.junie/AGENTS.md` did. (3) Junie
+and Factory Droid read the shared `~/.agents/skills` (Droid live, Junie in its code), so by the
+one-copy rule they get their skills there and nowhere else. (4) The harness table states which rows
+were checked live and which rest on documentation (Cursor, Zed, Warp, Kiro, Devin, Antigravity,
+ZCode, Goose, Grok Build — their download sites are closed here).
+Alternatives: keeping documentation as the only evidence rejected — it was wrong for four rows
+already.
+Consequences: found on the way, not acted on: Hermes cuts a skill's description to 57 characters
+in what the model sees; OpenClaw with a profile does not read the shared directory; Gemini CLI
+writes `~/.gemini/settings.json` only after sign-in, so before that only its binary identifies it.
+
 ## 2026-10-31 — ZCode is a supported harness; the pi and Devin finding confirmed and narrowed
 
 Context: the owner pointed out that pi and Devin did read our skills, and asked for Z.ai's GLM

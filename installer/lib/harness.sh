@@ -21,10 +21,11 @@
 #
 # ONE COPY IN THE SHARED DIRECTORY. `~/.agents/skills` is the open standard's
 # user location and most harnesses read it next to their own directory. Several of
-# them warn on a second copy of the same name (Gemini CLI on screen, pi, omp,
-# Hermes), so a harness that reads `~/.agents/skills` gets its skills THERE and
-# nowhere else; only a harness that does not read it gets its own directory
-# (Claude Code, Hermes, Antigravity, Factory Droid, Grok, Kiro, Junie, Continue).
+# them warn on a second copy of the same name (Gemini CLI on screen, pi on its
+# startup screen; omp lets its own copy shadow the shared one silently), so a harness
+# that reads `~/.agents/skills` gets its skills THERE and nowhere else; only a harness
+# that does not read it gets its own directory (Claude Code, Hermes, Antigravity,
+# Grok, Kiro, Continue, ZCode).
 # Copies are still seen twice where a harness also reads another harness's own
 # directory (`~/.claude/skills` is read by Kilo, Cursor, Crush, Goose, Grok, Warp,
 # Augment, OpenCode, Copilot in VS Code) — the same text, so either copy is right.
@@ -71,6 +72,17 @@
 # `~/.agents/skills`, two agree on its own. Its docs host was unreachable — the row
 # rests on a quoted summary of them (`~/.zcode/AGENTS.md`, read every session).
 #
+# Junie has no user-level instructions file: a live run with a block in
+# `~/.junie/AGENTS.md` never put it into a request, while the project's
+# `.junie/AGENTS.md` was. It is a JVM program: it resolves its home from the account
+# (`user.home`) or `JUNIE_HOME`, not from `$HOME`, which differ only on unusual setups.
+#
+# LIVE-CHECKED (2026-10-31): 19 rows were installed from npm/PyPI into a clean home,
+# `fraim init` was run, and the agent itself was asked — its own listing command, or
+# the system prompt it sent to a local stand-in model server. Not checkable here
+# (closed download sites): Cursor, Zed, Warp, Kiro, Devin, Antigravity, ZCode, Goose,
+# Grok Build. installer/HARNESS_TARGETS.md has the commands and what each answered.
+#
 # Not here, on purpose: Roo Code (shut down 2026-05-15, repository archived),
 # Windsurf (Cascade became Devin Desktop, which shares `~/.config/devin` with the
 # Devin row), Amp and Trae (no primary source could be read for their paths).
@@ -90,7 +102,7 @@ kimi	Kimi Code	kimi,$HOME/.kimi-code	$HOME/.agents/skills	$HOME/.agents/AGENTS.m
 vibe	Mistral Vibe	vibe,$HOME/.vibe	$HOME/.agents/skills	$HOME/.vibe/AGENTS.md
 goose	Goose	goose,$HOME/.config/goose	$HOME/.agents/skills	$HOME/.agents/AGENTS.md
 crush	Crush	crush,$HOME/.config/crush	$HOME/.agents/skills	$HOME/.config/crush/CRUSH.md
-droid	Factory Droid	droid	$HOME/.factory/skills	$HOME/.factory/AGENTS.md
+droid	Factory Droid	droid,$HOME/.factory	$HOME/.agents/skills	$HOME/.factory/AGENTS.md
 grok	Grok Build	grok	$HOME/.grok/skills	$HOME/.grok/AGENTS.md
 openclaw	OpenClaw	openclaw,$HOME/.openclaw	$HOME/.agents/skills	-
 copilot	GitHub Copilot	copilot,$HOME/.copilot	$HOME/.agents/skills	$HOME/.copilot/copilot-instructions.md
@@ -101,7 +113,7 @@ zed	Zed	zed,zeditor,$HOME/.config/zed	$HOME/.agents/skills	$HOME/.config/zed/AGE
 warp	Warp	warp,warp-terminal,$HOME/.warp,$HOME/.config/warp-terminal	$HOME/.agents/skills	$HOME/.agents/AGENTS.md
 augment	Augment	auggie,$HOME/.augment	$HOME/.agents/skills	$HOME/.augment/rules/fraim.md
 kiro	Kiro	kiro-cli,kiro	$HOME/.kiro/skills	$HOME/.kiro/steering/fraim.md
-junie	Junie	junie	$HOME/.junie/skills	$HOME/.junie/AGENTS.md
+junie	Junie	junie,$HOME/.junie	$HOME/.agents/skills	-
 continue	Continue	cn	$HOME/.continue/skills	$HOME/.continue/rules/fraim.md
 zcode	ZCode	$HOME/.zcode,/Applications/ZCode.app	$HOME/.zcode/skills	$HOME/.zcode/AGENTS.md
 TBL

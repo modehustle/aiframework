@@ -172,7 +172,7 @@ fraim init
 | Mistral Vibe | CLI | `~/.agents/skills/` | `~/.vibe/AGENTS.md` |
 | Goose | CLI + десктоп | `~/.agents/skills/` | `~/.agents/AGENTS.md` |
 | Crush | CLI (TUI) | `~/.agents/skills/` | `~/.config/crush/CRUSH.md` |
-| Factory Droid | CLI | `~/.factory/skills/` | `~/.factory/AGENTS.md` |
+| Factory Droid | CLI | `~/.agents/skills/` | `~/.factory/AGENTS.md` |
 | Grok Build | CLI | `~/.grok/skills/` | `~/.grok/AGENTS.md` |
 | OpenClaw | персональный агент (мессенджеры) | `~/.agents/skills/` | — (см. ниже) |
 | GitHub Copilot | VS Code + CLI | `~/.agents/skills/` | `~/.copilot/copilot-instructions.md` |
@@ -183,7 +183,7 @@ fraim init
 | Warp | терминал с агентом | `~/.agents/skills/` | `~/.agents/AGENTS.md` |
 | Augment | расширение IDE + CLI `auggie` | `~/.agents/skills/` | `~/.augment/rules/fraim.md` |
 | Kiro | IDE + CLI | `~/.kiro/skills/` | `~/.kiro/steering/fraim.md` |
-| Junie (JetBrains) | плагин IDE + CLI | `~/.junie/skills/` | `~/.junie/AGENTS.md` |
+| Junie (JetBrains) | плагин IDE + CLI | `~/.agents/skills/` | — (глобального файла нет) |
 | Continue | расширение IDE + CLI `cn` | `~/.continue/skills/` | `~/.continue/rules/fraim.md` |
 | ZCode (Z.ai, GLM) | десктоп | `~/.zcode/skills/` | `~/.zcode/AGENTS.md` |
 
@@ -216,6 +216,14 @@ CLI — `~/.gemini/antigravity-cli/skills/` (так же ставит и гуг�
 `~/.hermes/AGENTS.md`, а ещё `~/.codex/skills/` (у Codex он устарел) и
 `~/.config/opencode/skills/`. `fraim init` забирает оттуда **только своё** — скиллы с
 `source: fraim` и блок между нашими маркерами; чужие скиллы и текст человека остаются.
+
+**Проверено вживую** (31.10.2026): 19 харнесов поставлены из npm/PyPI в чистый `HOME`, там
+запущен `fraim init`, и сам агент показал, что видит скилл `orient` и наш блок — своей
+командой (`skills list`, `debug skill`, `config`) или в системном промпте, который он отправил
+на подставной локальный сервер моделей. Так проверены Claude Code, Codex, pi, omp, OpenCode,
+Kilo Code, Gemini CLI, Qwen Code, Kimi Code, Mistral Vibe, Hermes, OpenClaw, Copilot CLI,
+Cline, Crush, Augment, Continue, Junie и Factory Droid. Не проверить из облачной среды (закрытые
+сайты загрузки): Cursor, Zed, Warp, Kiro, Devin, Antigravity, ZCode, Goose, Grok Build.
 
 Сознательно не поддержаны: Roo Code (закрыт 15 мая 2026, репозиторий в архиве),
 Windsurf (Cascade стал Devin Desktop, который делит `~/.config/devin` со строкой Devin),

@@ -50,9 +50,10 @@ openrouter.ai из этой среды недоступен, поэтому ср
 Goose, Crush, OpenClaw, Copilot (CLI и VS Code), Cursor, Cline, Kilo Code, Zed, Warp и
 Augment. Вторую копию того же имени часть харнесов не прощает: Gemini CLI показывает
 «Skill conflict detected» на экране, pi, omp и Hermes пишут предупреждение, Crush и OpenCode
-молча берут одну из двух. Поэтому каждый, кто читает общий каталог, получает скиллы только
-туда. Свой каталог — у тех, кто общий не читает: Claude Code, Hermes, Antigravity, Factory
-Droid, Grok Build, Kiro, Junie, Continue.
+молча берут одну из двух (живая проверка уточнила: pi предупреждает на стартовом экране,
+omp молча отдаёт предпочтение своей копии, Codex показывает модели обе). Поэтому каждый, кто читает общий каталог, получает скиллы только
+туда. Свой каталог — у тех, кто общий не читает: Claude Code, Hermes, Antigravity, Grok
+Build, Kiro, Continue, ZCode.
 
 Так же общий `~/.agents/AGENTS.md`: его читают Cline, Warp, Goose и Kimi Code.
 
@@ -74,7 +75,7 @@ Droid, Grok Build, Kiro, Junie, Continue.
 | Mistral Vibe | CLI | `~/.agents/skills` | `~/.vibe/AGENTS.md` | `vibe`, `~/.vibe` | — |
 | Goose | CLI + десктоп | `~/.agents/skills` | `~/.agents/AGENTS.md` | `goose`, `~/.config/goose` | — |
 | Crush | CLI (TUI) | `~/.agents/skills` | `~/.config/crush/CRUSH.md` | `crush`, `~/.config/crush` | `crush models` |
-| Factory Droid | CLI | `~/.factory/skills` | `~/.factory/AGENTS.md` | `droid`, `~/.factory` | — |
+| Factory Droid | CLI | `~/.agents/skills` | `~/.factory/AGENTS.md` | `droid`, `~/.factory` | — |
 | Grok Build | CLI | `~/.grok/skills` | `~/.grok/AGENTS.md` | `grok`, `~/.grok` | `grok models` |
 | OpenClaw | персональный агент | `~/.agents/skills` | нет (workspace `AGENTS.md` — его) | `openclaw`, `~/.openclaw` | — |
 | GitHub Copilot | VS Code + CLI | `~/.agents/skills` | `~/.copilot/copilot-instructions.md` | `copilot`, `~/.copilot` | — |
@@ -85,7 +86,7 @@ Droid, Grok Build, Kiro, Junie, Continue.
 | Warp | терминал | `~/.agents/skills` | `~/.agents/AGENTS.md` | `warp`, `~/.warp`, `~/.config/warp-terminal` | — |
 | Augment | IDE + `auggie` | `~/.agents/skills` | `~/.augment/rules/fraim.md` | `auggie`, `~/.augment` | — |
 | Kiro | IDE + CLI | `~/.kiro/skills` | `~/.kiro/steering/fraim.md` | `kiro-cli`, `~/.kiro` | — |
-| Junie | плагин JetBrains + CLI | `~/.junie/skills` | `~/.junie/AGENTS.md` | `junie`, `~/.junie` | — |
+| Junie | плагин JetBrains + CLI | `~/.agents/skills` | нет (проверено вживую) | `junie`, `~/.junie` | — |
 | Continue | IDE + `cn` | `~/.continue/skills` | `~/.continue/rules/fraim.md` | `cn`, `~/.continue` | — |
 | ZCode (Z.ai, GLM) | десктоп | `~/.zcode/skills` | `~/.zcode/AGENTS.md` | `~/.zcode`, `/Applications/ZCode.app` | — |
 
@@ -93,6 +94,56 @@ Droid, Grok Build, Kiro, Junie, Continue.
 Запуск воркера флота с моделью в argv по-прежнему встроен только для Devin и OpenCode:
 для остальных `--model` в интерактивном режиме либо не существует (Crush, Vibe, Goose),
 либо не проверен вживую, а неверный argv — это задача, которая молча не стартовала.
+
+### Живая проверка (31 октября 2026)
+
+Документация врёт и устаревает, поэтому 19 харнесов, которые ставятся из npm и PyPI,
+проверены настоящей установкой: пакет — в отдельный префикс, чистый `HOME`, настоящий
+`fraim init`, а потом вопрос самому агенту. Где агент без ключа не показывает список
+скиллов, подставлялся локальный сервер, притворяющийся моделью, и читался первый запрос,
+который агент отправил: в нём настоящий системный промпт со скиллами и правилами.
+Контрольные прогоны убирали по одному каталогу, чтобы убедиться, откуда именно читается.
+
+| Харнес (версия) | Как спросили | Скиллы | Блок |
+|---|---|---|---|
+| Claude Code 2.1.316 | запрос к подставному серверу | ✓ `~/.claude/skills` | ✓ `~/.claude/CLAUDE.md` |
+| Codex 0.166.0 | `codex debug prompt-input` | ✓ `~/.agents/skills` | ✓ `~/.codex/AGENTS.md` |
+| pi 1.4.0 | RPC `get_commands`, стартовый экран | ✓ `~/.agents/skills` | ✓ `~/.pi/agent/AGENTS.md` |
+| omp 18.14.1 | `omp skill list -g --json`, RPC | ✓ `~/.agents/skills` | ✓ `~/.omp/agent/AGENTS.md` |
+| OpenCode 1.19.5 | `opencode debug skill`, подставной провайдер | ✓ `~/.agents/skills` | ✓ `~/.config/opencode/AGENTS.md` |
+| Kilo Code 7.8.18 | `kilo debug skill`, подставной провайдер | ✓ `~/.agents/skills` | ✓ `~/.config/kilo/AGENTS.md` |
+| Gemini CLI 0.66.0 | `gemini skills list`, `/memory show` | ✓ `~/.agents/skills` | ✓ `~/.gemini/GEMINI.md` |
+| Qwen Code 0.26.4 | `-o stream-json`, подставной сервер | ✓ `~/.agents/skills` | ✓ `~/.qwen/AGENTS.md` |
+| Kimi Code 2.4.1 | подставной сервер | ✓ `~/.agents/skills` | ✓ `~/.agents/AGENTS.md` |
+| Mistral Vibe 3.0.4 | подставной сервер | ✓ `~/.agents/skills` | ✓ `~/.vibe/AGENTS.md` |
+| Hermes 0.19.0 | `hermes skills list`, подставной сервер | ✓ `~/.hermes/skills` | — не пишем |
+| OpenClaw 2026.9.2 | `openclaw skills info orient` | ✓ `~/.agents/skills` | — не пишем |
+| Copilot CLI 1.0.105 | `copilot skill list`, `copilot instruction list` | ✓ `~/.agents/skills` | ✓ `~/.copilot/copilot-instructions.md` |
+| Cline 3.0.74 | `cline config --json`, подставной сервер | ✓ `~/.agents/skills` | ✓ `~/.agents/AGENTS.md` |
+| Crush 0.99.0 | подставной провайдер | ✓ (и `~/.claude/skills`) | ✓ `~/.config/crush/CRUSH.md` |
+| Augment 0.36.0 | подставной сервер | ✓ (и `~/.claude/skills`) | ✓ `~/.augment/rules/fraim.md`, всегда |
+| Continue cn 1.5.47 | подставной сервер | ✓ `~/.continue/skills` | ✓ `~/.continue/rules/fraim.md`, всегда |
+| Factory Droid 1.1.0 | `droid exec`, подставная модель | ✓ `~/.agents/skills` | ✓ `~/.factory/AGENTS.md` |
+| Junie 1468.30 | TUI, подставная модель | ✓ | ✗ `~/.junie/AGENTS.md` не грузится |
+
+Что проверка изменила: Junie не читает пользовательский `AGENTS.md` вообще (проектный —
+читает), блок ему больше не пишем; Junie и Factory Droid читают общий `~/.agents/skills`,
+поэтому получают скиллы туда. Остальные 17 строк подтвердились как есть.
+
+Что всплыло попутно:
+- **Hermes обрезает описание скилла до 57 знаков** в списке, который видит модель
+  (`make-task: Only when the human wants work set aside for later or a p...`). Слова,
+  по которым скилл должен срабатывать, после 57-го знака до модели не доходят.
+- **OpenClaw с профилем** (`--profile`, `--dev`, свой `OPENCLAW_STATE_DIR`) общий каталог не
+  читает — скиллы видны только в состоянии по умолчанию.
+- **Gemini CLI** заводит `~/.gemini/settings.json` только когда человек выбрал способ входа;
+  до этого его опознаёт лишь бинарник `gemini` в `PATH`.
+- **OpenCode и Kilo** при стоящем рядом Claude Code видят каждый скилл дважды и пишут в лог
+  12 предупреждений «duplicate skill name» на старте — текст одинаковый, работе не мешает.
+- **omp** из npm не запускается без `bun` в `PATH`, хотя опознаётся и ставится нормально.
+
+Не проверить из облачной среды — закрытые сайты загрузки: Cursor, Zed, Warp, Kiro, Devin,
+Antigravity, ZCode, Goose, Grok Build. Для них строки по-прежнему держатся на документации.
 
 ### Что было неверно в августовском срезе
 
