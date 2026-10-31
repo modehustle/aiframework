@@ -3,3 +3,6 @@
 .env.*
 !.env.example
 data/
+
+# Local working copies of parallel agents.
+.claude/worktrees/
