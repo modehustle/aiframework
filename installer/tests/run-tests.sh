@@ -207,11 +207,12 @@ OUT=$(timeout 10 "$FRAIM" </dev/null 2>&1 | head -1)
 check "bare fraim without a terminal prints usage" \
       "$(printf '%s' "$OUT" | cut -c1-6)" "fraim "
 
-# The menu card is drawn AFTER the watchman, and POSIX sh has no local variables: the watchman
-# writes _w, _n, _msg while it runs. A menu that computed its width before wm_run got
-# «Illegal number: точек сохранения» and drew one empty line — exactly on the projects
-# with the most findings. The rail checks rendering on a project with a remote and
-# unpushed save points, i.e. in that very situation.
+# The screen's sections are built AFTER the watchman, and POSIX sh has no local variables:
+# the watchman writes _w, _n, _msg while it runs. The old menu computed its width before
+# wm_run and got «Illegal number: точек сохранения», and its item counter lived in the
+# watchman's `_n`, so arrows and digits stopped working after the first render. The rails
+# below build the project section on a project with a remote and unpushed save points —
+# that very situation — and then move.
 CARD="$SANDBOX/cardproj"
 mkdir -p "$CARD"
 git init -q --bare "$SANDBOX/card-remote.git"
@@ -225,57 +226,71 @@ for i in 1 2 3 4 5 6; do
     printf 'c%s\n' "$i" >> "$CARD/app.py"
     git -C "$CARD" add app.py >/dev/null; git -C "$CARD" commit -qm "fix: c$i" >/dev/null
 done
-CARDOUT=$(sh -c '
-    . "'"$REPO"'/installer/lib/core.sh"; . "'"$REPO"'/installer/lib/config.sh"
-    . "'"$REPO"'/installer/lib/registry.sh"; . "'"$REPO"'/installer/lib/context.sh"
-    . "'"$REPO"'/installer/lib/scaffold.sh"; . "'"$REPO"'/installer/lib/lang.sh"; . "'"$REPO"'/installer/lib/verbs.sh"; . "'"$REPO"'/installer/lib/tasks.sh"; . "'"$REPO"'/installer/lib/foundation.sh"; . "'"$REPO"'/installer/lib/verbtable.sh"
-    . "'"$REPO"'/installer/lib/ade.sh"; . "'"$REPO"'/installer/lib/watchman.sh"; . "'"$REPO"'/installer/lib/update.sh"; . "'"$REPO"'/installer/lib/menu.sh"
-    cd "'"$CARD"'" && menu_card && printf "%s\n" "$MENU_CARD"' 2>&1)
-check "menu card does not crash on watchman numbers" "$(printf '%s' "$CARDOUT" | grep -c 'Illegal number')" "0"
-check "menu card shows findings text" \
-      "$(printf '%s' "$CARDOUT" | grep -c 'не уехали в удалённую копию')" "1"
-# The card cuts a long line at the colon, not at a column: counting columns
-# correctly is only possible knowing the locale, and under LC_ALL=C Cyrillic gets cut in half.
-check "long finding is cut at a meaningful point" \
-      "$(printf '%s' "$CARDOUT" | grep -c 'скелет развёрнут, но не заполнен: …')" "1"
+UILIB='set -eu
+    for m in core skills harness ade registry context config scaffold lang verbs tasks foundation verbtable watchman clean publish update roles fleet dispatch menu; do
+        . "'"$REPO"'/installer/lib/$m.sh"; done
+    usage() { :; }
+    UI_ROOT=$(pwd -P); UI_MANAGED=; wm_managed "$UI_ROOT" && UI_MANAGED=1
+    UI_TMP=$(mktemp); UI_LOCALE=C; UI_COLS=100; UI_ROWS=30; ui_theme; ui_counts'
+export UILIB
+UIOUT=$(cd "$CARD" && sh -c "$UILIB"'; UI_SEC=1; ui_load; printf "%s\n" "$UI_LINES"' 2>&1)
+check "project section does not crash on watchman numbers" "$(printf '%s' "$UIOUT" | grep -c 'Illegal number')" "0"
+check "project section shows the findings" "$(printf '%s' "$UIOUT" | grep -c 'не уехали в удалённую копию')" "1"
+NAV=$(cd "$CARD" && sh -c "$UILIB"'; UI_SEC=1; UI_FOCUS=side; ui_load; ui_key down; ui_key down; ui_key chr:5; printf "%s/%s" "$UI_SEC" "$(ui_sec_n)"' 2>&1)
+check "keys move between sections after the watchman ran" "$NAV" "5/7"
+SEL=$(cd "$CARD" && sh -c "$UILIB"'; UI_SEC=6; UI_FOCUS=main; ui_load; ui_clamp; a=$UI_SEL; ui_key down; printf "%s<%s" "$a" "$UI_SEL"' 2>&1)
+check "a list selection moves" "$(printf '%s' "$SEL" | awk -F'<' '$1 < $2 { print "moved" }')" "moved"
+
+# Every section builds, in a project and outside one, in both shipped languages, with no
+# message key leaking onto the screen in place of its text.
+UILEAK=
+for dir in "$CARD" "$SANDBOX"; do
+    for lng in ru en; do
+        out=$(cd "$dir" && FRAIM_LANG=$lng sh -c "$UILIB"'; for i in 1 2 3 4 5 6 7; do UI_SEC=$i; ui_load; printf "%s\n" "$UI_LINES"; done' 2>&1) ||
+            UILEAK="$UILEAK $lng:$(basename "$dir"):failed"
+        k=$(printf '%s' "$out" | grep -oE '\b(ui|cfg)_[a-z_]+\b' | head -1)
+        [ -z "$k" ] || UILEAK="$UILEAK $lng:$(basename "$dir"):$k"
+    done
+done
+check "every section builds in both languages, in and out of a project" "${UILEAK:-clean}" "clean"
+check "the settings section lists every setting" \
+      "$(cd "$CARD" && sh -c "$UILIB"'; UI_SEC=6; ui_load; printf "%s\n" "$UI_KEYS" | grep -c "^cfg:[a-z]"' 2>&1 | awk '{ print ($1 >= 15) ? "all" : $1 }')" "all"
+
+# The frame: every line exactly as wide as the terminal, whatever the script inside —
+# Cyrillic, CJK (two columns each), colour escapes (none) and lines too long to fit.
+FRAME=$(printf 'Проект\n日本語のテキスト\n\036\nстрока с \033[33mцветом\033[0m\n中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文中文\nxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\n' |
+        sh -c "$UILIB"'; _UF_W=70 _UF_H=12 _UF_SW=20 _UF_TL=fraim _UF_TR="проект · main" _UF_FOOT=" подсказка" ui_frame_awk' 2>&1 |
+        sed 's/\x1b\[[0-9;?]*[A-Za-z]//g' | tr -d '\r')
+FW=$(printf '%s\n' "$FRAME" | while IFS= read -r l; do str_w=$(sh -c '. "'"$REPO"'/installer/lib/core.sh"; str_width "$1"' x "$l"); printf '%s\n' "$str_w"; done | sort -u | tr '\n' ' ')
+check "every frame line is exactly the terminal's width" "$FW" "70 "
+check "the frame has the terminal's height" "$(printf '%s\n' "$FRAME" | wc -l | tr -d ' ')" "12"
+check "a line too long is cut with an ellipsis" "$(printf '%s\n' "$FRAME" | grep -c 'xxx…│')" "1"
+check "fit pads CJK by columns" "$(printf '日本語\n' | sh -c "$UILIB"'; ui_fit 10' | sed 's/\x1b\[0m//; s/$/|/' | sh -c '. "'"$REPO"'/installer/lib/core.sh"; IFS= read -r l; str_width "$l"')" "11"
+
+# Backspace removes a character, not a byte: half a Cyrillic letter in the filter is a
+# string grep cannot match and the screen cannot print.
+check "backspace removes one whole character" "$(sh -c "$UILIB"'; ui_backspace "обн"')" "об"
+
+# Every action leaves the screen and survives its command's exit code: the CLI runs under
+# `set -e` and `fraim status` exits 1 whenever the project has something for the human.
+check "external commands run guarded" \
+      "$(sed -n '/^ui_external() {/,/^}/p' "$REPO/installer/lib/menu.sh" | grep -c '( "\$@" ) || true')" "1"
+# Every action offered (maintenance list, palette) has a branch that runs it.
+ACTS=$(sed -n 's/^    for _ui_a in \(.*\); do$/\1/p' "$REPO/installer/lib/menu.sh" | tr ' ' '\n' | sort -u)
+UIMISS=
+for a in $ACTS; do
+    sed -n '/^ui_act() {/,/^}/p' "$REPO/installer/lib/menu.sh" | grep -q "^        $a)" || UIMISS="$UIMISS $a"
+done
+check "every offered action has a branch" "${UIMISS:-clean}" "clean"
+
+# A real terminal: the screen takes the alternate screen and gives it back, q quits.
+if command -v script >/dev/null 2>&1 && script -qec true /dev/null >/dev/null 2>&1; then
+    (sleep 3; printf 'q') | (cd "$CARD" && timeout 30 script -qec "env TERM=xterm FRAIM_LANG=ru '$FRAIM'" /dev/null) > "$SANDBOX/screen.out" 2>&1
+    check "on a terminal the screen quits on q" "$?" "0"
+    check "it enters and leaves the alternate screen" \
+          "$(grep -c "$(printf '\033')\[?1049h" "$SANDBOX/screen.out")$(grep -c "$(printf '\033')\[?1049l" "$SANDBOX/screen.out")" "11"
+fi
 cd "$SANDBOX" || exit 1
-
-# Navigation after the watchman. POSIX sh has no local variables, and menu_card calls
-# the watchman, which writes its own `_n` (queue counter). The menu item counter lived
-# in the same `_n`, and after the very first card render it became zero: arrow down
-# honestly moved the selection and immediately returned it to the first line, and digits 1-8 did not
-# work at all. The rail reproduces exactly this sequence.
-NAV=$(sh -c '
-    . "'"$REPO"'/installer/lib/core.sh"; . "'"$REPO"'/installer/lib/config.sh"
-    . "'"$REPO"'/installer/lib/registry.sh"; . "'"$REPO"'/installer/lib/context.sh"
-    . "'"$REPO"'/installer/lib/scaffold.sh"; . "'"$REPO"'/installer/lib/lang.sh"; . "'"$REPO"'/installer/lib/verbs.sh"; . "'"$REPO"'/installer/lib/tasks.sh"; . "'"$REPO"'/installer/lib/foundation.sh"; . "'"$REPO"'/installer/lib/verbtable.sh"
-    . "'"$REPO"'/installer/lib/ade.sh"; . "'"$REPO"'/installer/lib/watchman.sh"; . "'"$REPO"'/installer/lib/update.sh"; . "'"$REPO"'/installer/lib/menu.sh"
-    cd "'"$CARD"'" || exit 1
-    MENU_N=$(menu_count); MENU_SEL=1
-    menu_card
-    MENU_SEL=$((MENU_SEL + 1)); [ "$MENU_SEL" -gt "$MENU_N" ] && MENU_SEL=1
-    printf "%s/%s\n" "$MENU_SEL" "$MENU_N"' 2>&1)
-ITEMS_N=$(sh -c '. "'"$REPO"'/installer/lib/menu.sh"; menu_count')
-check "arrow down moves selection after the watchman" "$NAV" "2/$ITEMS_N"
-
-# The menu must survive the exit code of each of its items. The CLI runs under `set -e`,
-# and `fraim status` exits with 1 as soon as the project has something to show the human — that
-# is, in the most ordinary case. Without a guard, choosing «Скан проекта» printed the verdict and killed
-# the process mid-screen, leaving the terminal without echo and without a cursor.
-MBR=$(sed -n '/^menu_exec() {/,/^    esac$/p' "$REPO/installer/lib/menu.sh" |
-      grep -cE '^        [0-9]+\)')
-MGUARD=$(sed -n '/^menu_exec() {/,/^    esac$/p' "$REPO/installer/lib/menu.sh" |
-      grep -c '|| true')
-check "every menu action survives its exit code" "$MGUARD" "$MBR"
-
-# A menu item and its action live in two places (menu_items and menu_exec). The rail
-# catches the class: a line added — a branch forgotten. The last item («Выход») has
-# no branch by construction.
-ITEMS=$(sed -n '/^menu_items() {/,/^}/p' "$REPO/installer/lib/menu.sh" |
-        sed -n '/<<.ITEMS./,/^ITEMS$/p' | grep -c '	')
-BRANCH=$(sed -n '/^menu_exec() {/,/^}/p' "$REPO/installer/lib/menu.sh" |
-         grep -cE '^        [0-9]+\)')
-check "every menu item has an action" "$BRANCH" "$((ITEMS - 1))"
 
 # ---------------------------------------------------------------- build
 printf '\nfraim build\n'

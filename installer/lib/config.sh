@@ -24,6 +24,7 @@
 config_table() {
     cat <<'TBL'
 lang||general|lang
+theme|fraim|general|enum:fraim,mono
 updates|notify|general|enum:notify,off
 update_check_days|1|general|int
 foundation_lag_commits|10|watchman|int
@@ -86,6 +87,14 @@ config_family() {
     config_families | while IFS='|' read -r _cf_p _cf_s; do
         case $1 in "$_cf_p"?*) printf '%s\n' "$_cf_p"; break ;; esac
     done
+}
+
+# Keys of one family set in either file, one per line, unique.
+config_family_keys() {
+    _cfk_root=$2
+    { [ -n "$_cfk_root" ] && cat "$(config_project_file "$_cfk_root")" 2>/dev/null
+      cat "$(config_machine_file)" 2>/dev/null; } |
+        sed -n "s/^[[:space:]]*\($1[A-Za-z0-9_-]*\)[[:space:]]*=.*/\1/p" | awk '!seen[$0]++'
 }
 
 # The key that replaced a retired one; empty output and status 1 when it is not retired.

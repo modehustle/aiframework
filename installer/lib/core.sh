@@ -184,7 +184,7 @@ i18n_detect() {
     # An explicit choice that we do not ship gives English, not the system's locale: that
     # is the honest answer to «I asked for X».
     for _id_v in "${FRAIM_LANG:-}" "$(i18n_configured)"; do
-        [ -n "$_id_v" ] || continue
+        case $_id_v in ''|auto) continue ;; esac
         _id_m=$(i18n_match "$_id_dir" "$_id_v")
         printf '%s\n' "${_id_m:-en}"; return 0
     done

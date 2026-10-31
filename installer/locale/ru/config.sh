@@ -7,6 +7,7 @@ M_cfg_sec_fleet='Флот'
 M_cfg_sec_expert='Для опытных'
 
 M_cfg_label_lang='Язык интерфейса'
+M_cfg_label_theme='Тема'
 M_cfg_label_updates='Обновления'
 M_cfg_label_update_check_days='Проверять обновления, дней'
 M_cfg_label_foundation_lag_commits='Фундамент отстал после, коммитов'
@@ -22,6 +23,7 @@ M_cfg_label_check_investigations='Расследования без исхода
 M_cfg_label_check_shape='Соответствие стандарту'
 
 M_cfg_desc_lang='Язык ваших экранов и сообщений fraim. Агент читает и пишет проект по-английски, какой бы язык вы ни выбрали. Пусто — как в системе.'
+M_cfg_desc_theme='Цвета экрана fraim: fraim — тёмная с оранжевым акцентом, mono — без цвета, только яркость и инверсия'
 M_cfg_desc_updates='Новая версия fraim: notify — проверять и сообщать, off — не проверять'
 M_cfg_desc_update_check_days='Как часто проверять, есть ли новая версия, дней'
 M_cfg_desc_foundation_lag_commits='Сколько коммитов кода без обновления ARCHITECTURE.md считать дрейфом (0 — не проверять)'
