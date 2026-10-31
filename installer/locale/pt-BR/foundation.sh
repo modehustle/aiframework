@@ -1,0 +1,27 @@
+# The foundation verbs: find, arch, and the brief's own failure.
+M_fnd_err_tmp='não foi possível criar um arquivo temporário'
+M_fnd_err_find_keys='informe as chaves: fraim find KEY [KEY…] — de 2 a 4, nos dois idiomas, como radicais (tarefa task)'
+M_fnd_find_nothing='nada encontrado para: {keys} — tente outras formas da palavra ou o outro idioma'
+M_fnd_find_footer='— entradas encontradas: {count} · chaves: {keys} —'
+
+M_fnd_err_in_file='--in exige um arquivo'
+M_fnd_err_unknown_flag='flag desconhecida: {flag}'
+M_fnd_err_extra_arg='argumento inesperado: {arg}'
+M_fnd_err_decisions_top='DECISIONS.md só recebe entradas no topo: fraim decide'
+M_fnd_err_arch_files='fraim arch edita ARCHITECTURE.md, CONVENTIONS.md ou STACK.md'
+M_fnd_err_need_section='informe o nome da seção: fraim arch "Components & responsibilities" <<'\''EOF'\'' … EOF'
+M_fnd_err_pitfall_line='lições são adicionadas como uma linha: fraim pitfall "…"'
+M_fnd_err_no_file='{file} não existe'
+M_fnd_err_body_stdin='o corpo da seção vem pelo stdin: fraim arch "{section}" <<'\''EOF'\'' … EOF'
+M_fnd_err_body_empty='o corpo da seção está vazio'
+M_fnd_err_body_headings='o corpo da seção não pode ter títulos — uma seção por chamada'
+M_fnd_err_section_exists='a seção «{section}» já existe em {file} — sem --new ela é substituída'
+M_fnd_err_no_section='{file} não tem a seção «{section}». Existem:
+{list}
+Uma seção nova — com a flag --new'
+M_fnd_err_section_dup='a seção «{section}» aparece {count} vezes em {file} — corrija o arquivo à mão uma vez'
+M_fnd_err_write='não foi possível gravar {file}'
+M_fnd_err_headings_touched='a edição alterou outros títulos de {file} — nada foi gravado'
+M_fnd_arch_added='{file} ← seção «{section}» adicionada'
+M_fnd_arch_replaced='{file} ← seção «{section}» substituída'
+M_fnd_arch_unsaved='ainda não salvo: inclua {file} no seu fraim commit'
