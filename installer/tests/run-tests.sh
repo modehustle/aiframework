@@ -238,7 +238,7 @@ for i in 1 2 3 4 5 6; do
     git -C "$CARD" add app.py >/dev/null; git -C "$CARD" commit -qm "fix: c$i" >/dev/null
 done
 UILIB='set -eu
-    for m in core skills harness ade registry context config scaffold lang verbs tasks foundation verbtable watchman clean publish update roles fleet dispatch menu; do
+    for m in core skills harness registry context config scaffold lang verbs tasks foundation verbtable watchman clean publish update dispatch menu; do
         . "'"$REPO"'/installer/lib/$m.sh"; done
     usage() { :; }
     UI_ROOT=$(pwd -P); UI_MANAGED=; wm_managed "$UI_ROOT" && UI_MANAGED=1
@@ -264,8 +264,9 @@ for dir in "$CARD" "$SANDBOX"; do
     done
 done
 check "every section builds in both languages, in and out of a project" "${UILEAK:-clean}" "clean"
+UINKEYS=$(sh -c "$UILIB"'; config_table | grep -c .' 2>/dev/null); export UINKEYS
 check "the settings section lists every setting" \
-      "$(cd "$CARD" && sh -c "$UILIB"'; UI_SEC=6; ui_load; printf "%s\n" "$UI_KEYS" | grep -c "^cfg:[a-z]"' 2>&1 | awk '{ print ($1 >= 15) ? "all" : $1 }')" "all"
+      "$(cd "$CARD" && sh -c "$UILIB"'; UI_SEC=6; ui_load; printf "%s\n" "$UI_KEYS" | grep -c "^cfg:[a-z]"' 2>&1 | awk -v n="$UINKEYS" '{ print ($1 >= n) ? "all" : $1 }')" "all"
 
 # The frame: every line exactly as wide as the terminal, whatever the script inside —
 # Cyrillic, CJK (two columns each), colour escapes (none) and lines too long to fit.
@@ -719,14 +720,12 @@ check "a number key refuses a word" "$?" "2"
 check "an enum key refuses a value outside its list" "$?" "2"
 "$FRAIM" config set check_git off >/dev/null 2>&1
 check "an always-on check cannot be switched off" "$?" "2"
+# The fleet's launch settings and the role table are gone with Orca (DECISIONS 2026-10-31).
 "$FRAIM" config set --machine launchcmd_devin 'devin --model %s' >/dev/null 2>&1
-check "a family key is accepted" "$(grep -c '^launchcmd_devin = ' "$FRAIM_HOME/config")" "1"
-"$FRAIM" config 2>/dev/null | grep -q 'launchcmd_devin'
-check "a set family key is listed" "$?" "0"
-"$FRAIM" config unset --machine launchcmd_devin >/dev/null 2>&1
-check "unset removes the line" "$(grep -c '^launchcmd_devin' "$FRAIM_HOME/config")" "0"
-"$FRAIM" config set role_investigate nonsense >/dev/null 2>&1
-check "a role value is checked for agent:model:effort" "$?" "2"
+check "a launch-command key is no longer accepted" "$?" "2"
+"$FRAIM" config set role_investigate claude:haiku:low >/dev/null 2>&1
+check "a role key is no longer accepted" "$?" "2"
+check "neither reached the machine file" "$(grep -c 'launchcmd_\|role_' "$FRAIM_HOME/config")" "0"
 
 # A check turned off must actually stop firing.
 for i in 1 2 3; do
@@ -1543,7 +1542,7 @@ printf '\nfraim publish (off-machine copy)\n'
 PUBLIB_CANCEL='. "'"$REPO"'/installer/lib/core.sh"; . "'"$REPO"'/installer/lib/config.sh"
     . "'"$REPO"'/installer/lib/registry.sh"; . "'"$REPO"'/installer/lib/context.sh"
     . "'"$REPO"'/installer/lib/scaffold.sh"; . "'"$REPO"'/installer/lib/lang.sh"; . "'"$REPO"'/installer/lib/verbs.sh"; . "'"$REPO"'/installer/lib/tasks.sh"; . "'"$REPO"'/installer/lib/foundation.sh"; . "'"$REPO"'/installer/lib/verbtable.sh"
-    . "'"$REPO"'/installer/lib/ade.sh"; . "'"$REPO"'/installer/lib/watchman.sh"; . "'"$REPO"'/installer/lib/update.sh"; . "'"$REPO"'/installer/lib/publish.sh"'
+    . "'"$REPO"'/installer/lib/watchman.sh"; . "'"$REPO"'/installer/lib/update.sh"; . "'"$REPO"'/installer/lib/publish.sh"'
 
 # Everything here works without network and without gh: a local bare repository serves as the «host».
 # This is not a simplification for the test — it is the same path --url takes, i.e. the floor
@@ -1827,7 +1826,7 @@ GIT_CONFIG_COUNT=0; export GIT_CONFIG_COUNT
 PUBLIB='. "'"$REPO"'/installer/lib/core.sh"; . "'"$REPO"'/installer/lib/config.sh"
         . "'"$REPO"'/installer/lib/registry.sh"; . "'"$REPO"'/installer/lib/context.sh"
         . "'"$REPO"'/installer/lib/scaffold.sh"; . "'"$REPO"'/installer/lib/lang.sh"; . "'"$REPO"'/installer/lib/verbs.sh"; . "'"$REPO"'/installer/lib/tasks.sh"; . "'"$REPO"'/installer/lib/foundation.sh"; . "'"$REPO"'/installer/lib/verbtable.sh"
-        . "'"$REPO"'/installer/lib/ade.sh"; . "'"$REPO"'/installer/lib/watchman.sh"; . "'"$REPO"'/installer/lib/update.sh"; . "'"$REPO"'/installer/lib/publish.sh"'
+        . "'"$REPO"'/installer/lib/watchman.sh"; . "'"$REPO"'/installer/lib/update.sh"; . "'"$REPO"'/installer/lib/publish.sh"'
 
 CONV=$(sh -c "$PUBLIB"'
     for u in git@github.com:me/proj.git ssh://git@gitlab.com/g/p.git https://github.com/a/b.git; do
@@ -2121,7 +2120,7 @@ git -C "$UPHOST" symbolic-ref HEAD refs/heads/main
 git clone -q "$UPHOST" "$UPSRC" >/dev/null 2>&1
 
 UPLIB='. "'"$REPO"'/installer/lib/core.sh"; . "'"$REPO"'/installer/lib/config.sh"
-    . "'"$REPO"'/installer/lib/update.sh"; . "'"$REPO"'/installer/lib/ade.sh"; . "'"$REPO"'/installer/lib/watchman.sh"'
+    . "'"$REPO"'/installer/lib/update.sh"; . "'"$REPO"'/installer/lib/watchman.sh"'
 
 # The check goes to the network and writes the verdict to the cache.
 sh -c "FRAIM_ROOT='$UPSRC' $UPLIB"'; update_probe' >/dev/null 2>&1
@@ -2204,7 +2203,7 @@ check "a non-git clone is not an update source" "$?" "1"
 rm -f "$FRAIM_HOME/update-check"
 
 # ---------------------------------------------------------------- fleet
-printf '\nfleet: checkouts and execution environment\n'
+printf '\nfleet: checkouts\n'
 
 # A project with two checkouts: one card on the board in the main one, two in the sibling. Before this
 # module the watchman did not see the second checkout at all.
@@ -2222,832 +2221,235 @@ FJ=$("$FRAIM" status "$FLEET" --json 2>/dev/null || true)
 printf '%s' "$FJ" | grep -q '"id": "worktree"'
 check "parallel checkout visible in the verdict" "$?" "0"
 
-# The checkout registry is kept by git, not by the environment: the answer is the same when there is no environment on the machine at all.
-# PATH is trimmed to system dirs: the developer's machine may have a real orca-ide,
-# and an inherited PATH would slip it into the «no environment» check.
-FLJ=$(env PATH="/usr/bin:/bin" "$FRAIM" fleet "$FLEET" --json 2>/dev/null || true)
+# The checkout registry is kept by git, whoever made the checkouts: a harness for its subagents,
+# `dispatch prepare`, or a human.
+FLJ=$("$FRAIM" fleet "$FLEET" --json 2>/dev/null || true)
 check "fleet lists both checkouts" "$(printf '%s' "$FLJ" | grep -c '"path"')" "2"
 printf '%s' "$FLJ" | grep -q '"path": ".*wt-rate-limit", "current": false, "open_tasks": 2'
 check "and counts each one's board" "$?" "0"
-check "without an environment its section is empty" "$(printf '%s' "$FLJ" | grep -c '"key": "orca"')" "0"
+check "no execution-environment section any more" "$(printf '%s' "$FLJ" | grep -c '"ade"')" "0"
 
-# --- execution environment ---------------------------------------------------
-# A stub instead of Orca: we do not have it and CI never will, and we depend not on the installed
-# program but on the SHAPE of its answer. If the contract breaks, the test fails, not the user.
-ADEBIN="$SANDBOX/adebin"; mkdir -p "$ADEBIN"
-cat > "$ADEBIN/orca-ide" <<'STUB'
-#!/bin/sh
-case "$1 $2" in
-  "status --json")     [ -n "${STUB_DEAD:-}" ] && exit 1; printf '{"running":true}\n' ;;
-  "automations list")  printf '[{"name":"n","prompt":"%s","repo":"%s"}]\n' "${STUB_PROMPT:-разбери очередь}" "$STUB_REPO" ;;
-  *) exit 1 ;;
-esac
-STUB
-chmod +x "$ADEBIN/orca-ide"
+# ---------------------------------------------------------------- the conductor's control layer
+# The harness raises its own subagents; fraim checks the split before and accepts the round after
+# (DECISIONS 2026-10-31). Everything below runs without any execution environment at all.
+printf '\ndispatcher: plan from the board\n'
 
-ADEENV="PATH=$ADEBIN:$PATH STUB_REPO=$FLEET"
-AJ=$(env PATH="$ADEBIN:$PATH" STUB_REPO="$FLEET" "$FRAIM" status "$FLEET" --json 2>/dev/null || true)
-printf '%s' "$AJ" | grep -q '"id": "ade-automation"'
-check "free-form scheduled prompt is a finding" "$?" "0"
-printf '%s' "$AJ" | grep -q '"id": "ade-automation", "severity": "info"'
-check "and it is info: a foreign environment, we do not forbid it" "$?" "0"
+DP="$SANDBOX/dispatchproj"; mkdir -p "$DP/ai/tasks" "$DP/web/login" "$DP/api" "$DP/lib"; export DP
+git -C "$DP" init -q; git -C "$DP" config user.email t@t; git -C "$DP" config user.name t
+git -C "$DP" symbolic-ref HEAD refs/heads/main
+cat > "$DP/ai/tasks/login-form.md" <<'CARD'
+---
+kind: task
+created: 2026-10-31
+---
+# Login form
 
-# A scheduled watchman is layer 2 of SCHEDULING.md, not a finding.
-AJ2=$(env PATH="$ADEBIN:$PATH" STUB_REPO="$FLEET" STUB_PROMPT="fraim status" \
-        "$FRAIM" status "$FLEET" --json 2>/dev/null || true)
-check "scheduled watchman does not become a finding" "$(printf '%s' "$AJ2" | grep -c 'ade-automation')" "0"
+## What and why
+A login form for the web app, so that people can sign in.
 
-# The runtime does not answer — silence: whether it is running or not is the human's call (C1).
-AJ3=$(env PATH="$ADEBIN:$PATH" STUB_REPO="$FLEET" STUB_DEAD=1 \
-        "$FRAIM" status "$FLEET" --json 2>/dev/null || true)
-check "closed runtime produces no findings" "$(printf '%s' "$AJ3" | grep -c 'ade-automation')" "0"
-FLJ2=$(env PATH="$ADEBIN:$PATH" STUB_REPO="$FLEET" STUB_DEAD=1 "$FRAIM" fleet "$FLEET" --json 2>/dev/null || true)
-printf '%s' "$FLJ2" | grep -q '"alive": false'
-check "but fleet honestly says it does not answer" "$?" "0"
+## Done when
+The form posts email and password to the login endpoint.
+CARD
+printf -- '---\nkind: master\ncreated: 2026-10-31\n---\n# Shop\n\n## What and why\nA shop.\n\n## Done when\nIt sells.\n' > "$DP/ai/tasks/shop.md"
+printf 'base\n' > "$DP/web/login/index.html"; printf 'base\n' > "$DP/api/auth.ts"
+printf 'base\n' > "$DP/lib/util.sh"; printf 'base\n' > "$DP/README.md"
+printf 'build_check = test -f web/login/parts/field.html\n' > "$DP/ai/fraim.conf"
+git -C "$DP" add -A >/dev/null; git -C "$DP" commit -qm init >/dev/null
 
-# Name trap: on Linux a bare `orca` is the GNOME screen reader, and
-# launching it turns on speech synthesis on the human's machine. We check not «we picked another name»,
-# but «we did not call it»: a decoy orca leaves a trace that must not be there.
-cat > "$ADEBIN/orca" <<STUB
-#!/bin/sh
-printf 'spoke\n' > "$SANDBOX/screen-reader-ran"
-STUB
-chmod +x "$ADEBIN/orca"
-rm -f "$SANDBOX/screen-reader-ran"
-env PATH="$ADEBIN:$PATH" STUB_REPO="$FLEET" "$FRAIM" fleet "$FLEET" >/dev/null 2>&1 || true
-check "bare orca on Linux is not launched" "$([ -f "$SANDBOX/screen-reader-ran" ] && echo ran || echo silent)" "silent"
+DPL="$SANDBOX/dplans"; mkdir -p "$DPL"; export DPL
+cat > "$DPL/good.md" <<'PLAN'
+## Contract
+POST /api/login {email, password} → 200 {token} | 401
 
-# And the liveness check picks the safe name, not the first one that comes along.
-rm -f "$ADEBIN/orca-ide"
-# PATH is trimmed the same as above: a real orca-ide from the developer's machine does not count.
-env PATH="$ADEBIN:/usr/bin:/bin" "$FRAIM" fleet "$FLEET" --json 2>/dev/null | grep -q '"key": "orca"'
-check "without orca-ide the environment on Linux is not considered found" "$?" "1"
-check "and the decoy orca is still silent" "$([ -f "$SANDBOX/screen-reader-ran" ] && echo ran || echo silent)" "silent"
-rm -f "$ADEBIN/orca"
+## Subtask: login-form
+**Files**: `web/login/`
 
-# Both checks can be turned off, like any watchman check.
-"$FRAIM" config set --machine check_parallel off >/dev/null 2>&1
-"$FRAIM" status "$FLEET" --json 2>/dev/null | grep -q '"id": "worktree'
-check "check_parallel off — no checkout findings" "$?" "1"
-env PATH="$ADEBIN:$PATH" STUB_REPO="$FLEET" "$FRAIM" status "$FLEET" --json 2>/dev/null | grep -q 'ade-automation'
-check "check_parallel off — no environment findings" "$?" "1"
-"$FRAIM" config unset --machine check_parallel >/dev/null 2>&1
-
-# The watchman's contract: no network, no model. We ask the local runtime and read git.
-NETADE=$(grep -c 'curl\|wget\|https\?://' "$REPO/installer/lib/ade.sh" || true)
-check "environment module does not go to the network" "$NETADE" "0"
-
-# Rail: a library put in lib/ and not sourced in bin/fraim breaks not right away
-# and not there. That already happened with ade.sh — the menu test failed, not the one that added it.
-UNWIRED=""
-for _l in "$REPO"/installer/lib/*.sh; do
-    _n=$(basename "$_l")
-    grep -q "_libdir/$_n" "$REPO/installer/bin/fraim" || UNWIRED="$UNWIRED $_n"
-done
-check "every library is sourced in the dispatcher" "${UNWIRED:-clean}" "clean"
-
-# ------------------------------------------------- fleet worker launch
-printf '\nfleet: launch lifecycle with confirmed readiness\n'
-
-# An Orca stub with a call log: each test reads the call LOG, not human
-# output — the shape of the contract is checked (which subcommands, with which flags), not the text.
-# Behaviour is switched with STUB_* variables: that way one section covers the happy
-# path, the readiness timeout, and a failure at every stage.
-FLHOME="$SANDBOX/fraim-home"; mkdir -p "$FLHOME"; export FLHOME
-FLPROJ="$SANDBOX/flproj"; mkdir -p "$FLPROJ"; export FLPROJ
-git -C "$FLPROJ" init -q; git -C "$FLPROJ" config user.email t@t; git -C "$FLPROJ" config user.name t
-printf '# arch\n' > "$FLPROJ/ARCHITECTURE.md"
-git -C "$FLPROJ" add -A >/dev/null 2>&1; git -C "$FLPROJ" commit -qm init >/dev/null 2>&1
-
-cat > "$ADEBIN/orca-ide" <<'STUB'
-#!/bin/sh
-printf '%s\n' "$*" >> "${STUB_LOG:?}"
-case "$1 $2" in
-  "worktree rm")
-       printf '{"ok":true}\n' ;;
-  "status --json")
-       printf '{"running":true}\n' ;;
-  "worktree"*)
-       [ -n "${STUB_WC_FAIL:-}" ] && { printf '{"ok":false}\n'; exit 1; }
-       printf '{"ok":true,"worktree":{"path":"%s","createdAt":%s}}\n' \
-           "${STUB_WT:-/tmp/stub-wt}" "${STUB_WT_CREATED_AT:-$(($(date +%s) * 1000))}" ;;
-  "terminal create")
-       [ -n "${STUB_TC_FAIL:-}" ] && { printf '{"ok":false}\n'; exit 1; }
-       printf '{"ok":true,"terminal":{"handle":"term_aabf0418-1234abcd"}}\n' ;;
-  "terminal wait")
-       [ -n "${STUB_WAIT_FAIL:-}" ] && exit 1
-       printf '{"ok":true,"state":"tui-idle"}\n' ;;
-  "terminal read")
-       printf '{"ok":true,"result":{"terminal":{"handle":"term_x","tail":["%s"]}}}\n' \
-           "${STUB_TAIL:-Devin CLI v3000.5.20 · Pro}" ;;
-  "terminal list")
-       printf '{"ok":true,"result":{"terminals":[{"handle":"%s"}]}}\n' "${STUB_LIST_TERM:-term_aabf0418-1234abcd}" ;;
-  "orchestration worker-start")
-       [ -n "${STUB_WS_FAIL:-}" ] && { printf '{"ok":false,"stage":"dispatch_input"}\n'; exit 1; }
-       printf '{"ok":true,"dispatchId":"ctx_1234abcd5678"}\n' ;;
-  "orchestration dispatch-show")
-       printf '{"ok":true,"dispatchId":"ctx_1234abcd5678"}\n' ;;
-  "orchestration worker-release"|"terminal stop"|"worktree rm")
-       printf '{"ok":true}\n' ;;
-  *) exit 1 ;;
-esac
-STUB
-chmod +x "$ADEBIN/orca-ide"
-
-FLLIB='. "'"$REPO"'/installer/lib/core.sh"; . "'"$REPO"'/installer/lib/config.sh"
-    . "'"$REPO"'/installer/lib/ade.sh"; . "'"$REPO"'/installer/lib/fleet.sh"'
-
-# 1. Launch command: the built-in devin template substitutes the model; an unknown agent
-# has no command — we do not invent one; launchcmd_<agent> from config decides everything.
-DLC=$(FRAIM_HOME="$FLHOME" PATH="$ADEBIN:/usr:/bin" sh -c "$FLLIB"'; fleet_launch_command devin glm-5-2')
-check "devin: built-in launch command with model" "$DLC" "devin --permission-mode bypass --model glm-5-2"
-DLC=$(FRAIM_HOME="$FLHOME" PATH="$ADEBIN:/usr:/bin" sh -c "$FLLIB"'; fleet_launch_command no-such glm-5-2; printf rc=%s "$?"' 2>/dev/null)
-check "we do not invent a command for an unknown agent" "$DLC" "rc=1"
-DLC=$(FRAIM_HOME="$FLHOME" PATH="$ADEBIN:/usr:/bin" sh -c "$FLLIB"'; fleet_launch_command opencode zai/glm-5.3-flash')
-check "opencode: built-in launch command with provider/model" "$DLC" "opencode --model zai/glm-5.3-flash"
-DLC=$(FRAIM_HOME="$FLHOME" PATH="$ADEBIN:/usr:/bin" sh -c "$FLLIB"'; fleet_launch_command opencode ""')
-check "opencode: no model — the bare agent" "$DLC" "opencode"
-printf 'launchcmd_grok = grok --model %%s --yolo\n' > "$FLPROJ/ai/fraim.conf" 2>/dev/null || {
-    mkdir -p "$FLPROJ/ai"; printf 'launchcmd_grok = grok --model %%s --yolo\n' > "$FLPROJ/ai/fraim.conf"; }
-DLC=$(FRAIM_HOME="$FLHOME" PATH="$ADEBIN:/usr:/bin" sh -c "$FLLIB"'; fleet_launch_command grok glm-9 "$FLPROJ"')
-check "launchcmd_<agent> from config substitutes the model" "$DLC" "grok --model glm-9 --yolo"
-: > "$FLPROJ/ai/fraim.conf"
-
-# 2. Full devin lifecycle with a model: worktree → terminal with the model in argv →
-# tui-idle → worker-start --terminal, and not a single --model in orchestration.
-STUB_LOG="$SANDBOX/fleet-calls.log"; STUB_WT="$SANDBOX/stub-wt"; : > "$STUB_LOG"
-FLD=$(STUB_LOG="$STUB_LOG" STUB_WT="$STUB_WT" FRAIM_HOME="$FLHOME" PATH="$ADEBIN:/usr:/bin" \
-      sh -c "$FLLIB"'; fleet_worker_start task_1a05eb1321c1 devin glm-5-2 high b1-t1 "$FLPROJ" main' 2>/dev/null)
-check "devin: worker up, ctx_… id returned" "$FLD" "ctx_1234abcd5678"
-grep -q 'worktree create' "$STUB_LOG" && grep -q 'terminal create' "$STUB_LOG" && \
-  grep -q 'terminal wait' "$STUB_LOG" && grep -q 'worker-start' "$STUB_LOG"
-check "devin: sequence create → terminal → wait → worker-start" "$?" "0"
-grep -q -- '--model glm-5-2' "$STUB_LOG" && grep -q 'devin --permission-mode bypass --model glm-5-2' "$STUB_LOG"
-check "devin: model went into the terminal launch command" "$?" "0"
-grep 'worker-start' "$STUB_LOG" | grep -q -- '--model'
-check "devin: orchestration worker-start without --model" "$?" "1"
-grep 'worker-start' "$STUB_LOG" | grep -q -- '--terminal term_aabf0418'
-check "devin: dispatch bound to the ready terminal" "$?" "0"
-
-# 3. An agent that accepts the model natively takes the old path — and without extra steps.
-: > "$STUB_LOG"
-FLD=$(STUB_LOG="$STUB_LOG" STUB_WT="$STUB_WT" FRAIM_HOME="$FLHOME" PATH="$ADEBIN:/usr:/bin" \
-      sh -c "$FLLIB"'; fleet_worker_start task_1a05eb1321c1 claude opus high b1-t2 "$PWD" main' 2>/dev/null)
-check "claude: worker up natively" "$FLD" "ctx_1234abcd5678"
-grep -q 'worktree create\|terminal create\|terminal wait' "$STUB_LOG"
-check "claude: no explicit lifecycle — Orca creates the checkout itself" "$?" "1"
-grep 'worker-start' "$STUB_LOG" | grep -q -- '--model opus --effort high'
-check "claude: model and effort passed to Orca" "$?" "0"
-
-# 4. Readiness timeout: no task, no Dispatch, resources cleaned up, the culprit named.
-: > "$STUB_LOG"
-STUB_WAIT_FAIL=1 STUB_LOG="$STUB_LOG" STUB_WT="$STUB_WT" FRAIM_HOME="$FLHOME" PATH="$ADEBIN:/usr:/bin" \
-    sh -c "$FLLIB"'; fleet_worker_start task_1a05eb1321c1 devin glm-5-2 high b1-t3 "$PWD" main' >/dev/null 2>"$SANDBOX/wait-err"
-check "tui-idle timeout fails the launch" "$?" "1"
-grep -q 'tui-idle' "$SANDBOX/wait-err"
-check "error names the readiness state" "$?" "0"
-grep -c 'worker-start' "$STUB_LOG" | grep -q '^0$'
-check "no Dispatch created after the timeout" "$?" "0"
-grep -q 'terminal stop' "$STUB_LOG" && grep -q 'worktree rm' "$STUB_LOG"
-check "and partial resources cleaned up" "$?" "0"
-
-# 5. Failure before Dispatch is created: there is nothing to call worker-release on.
-: > "$STUB_LOG"
-STUB_TC_FAIL=1 STUB_LOG="$STUB_LOG" STUB_WT="$STUB_WT" FRAIM_HOME="$FLHOME" PATH="$ADEBIN:/usr:/bin" \
-    sh -c "$FLLIB"'; fleet_worker_start task_x devin glm-5-2 high b1-t4 "$PWD" main' >/dev/null 2>&1
-check "terminal create failure fails the launch" "$?" "1"
-grep -q 'worker-release' "$STUB_LOG"
-check "without Dispatch worker-release is not called" "$?" "1"
-grep -q 'terminal stop' "$STUB_LOG" && grep -q 'worktree rm' "$STUB_LOG"
-check "terminal and worktree cleaned up" "$?" "0"
-
-# 6. Failure after Dispatch is created: release first, then the terminal, then the worktree.
-: > "$STUB_LOG"
-STUB_WS_FAIL=1 STUB_LOG="$STUB_LOG" STUB_WT="$STUB_WT" FRAIM_HOME="$FLHOME" PATH="$ADEBIN:/usr:/bin" \
-    sh -c "$FLLIB"'; fleet_worker_start task_x devin glm-5-2 high b1-t5 "$PWD" main' >/dev/null 2>&1
-check "Dispatch binding failure fails the launch" "$?" "1"
-grep -q 'worker-release' "$STUB_LOG"
-check "created Dispatch released" "$?" "0"
-grep -q 'terminal stop' "$STUB_LOG" && grep -q 'worktree rm' "$STUB_LOG"
-check "terminal and worktree cleaned up" "$?" "0"
-
-# 7. Retry: each attempt creates a fresh checkout and does not reuse
-# a dead terminal — no duplicate active workers appear.
-: > "$STUB_LOG"
-FLD1=$(STUB_LOG="$STUB_LOG" STUB_WT="$STUB_WT" FRAIM_HOME="$FLHOME" PATH="$ADEBIN:/usr:/bin" \
-       sh -c "$FLLIB"'; fleet_worker_start task_r devin glm-5-2 high b1-t5 "$PWD" main' 2>/dev/null)
-FLD2=$(STUB_LOG="$STUB_LOG" STUB_WT="$STUB_WT" FRAIM_HOME="$FLHOME" PATH="$ADEBIN:/usr:/bin" \
-       sh -c "$FLLIB"'; fleet_worker_start task_r devin glm-5-2 high b1-t5 "$PWD" main' 2>/dev/null)
-check "launch retry returns a worker again" "$(printf '%s' "$FLD2" | grep -c ctx_)" "1"
-check "and creates exactly one new checkout per attempt" \
-      "$(grep -c 'worktree create' "$STUB_LOG")" "2"
-
-# 8. The readiness timeout is read from config, not hardcoded.
-FLRT=$(FRAIM_HOME="$FLHOME" PATH="$ADEBIN:/usr:/bin" sh -c "$FLLIB"'; fleet_ready_timeout_ms')
-check "readiness timeout defaults to 120000" "$FLRT" "120000"
-printf 'fleet_ready_timeout_ms = 5000\n' >> "$FLPROJ/ai/fraim.conf"
-FLRT=$(FRAIM_HOME="$FLHOME" PATH="$ADEBIN:/usr:/bin" sh -c "$FLLIB"'; fleet_ready_timeout_ms "$FLPROJ"')
-check "and is overridden from the project" "$FLRT" "5000"
-printf 'fleet_ready_timeout = 7\n' >> "$FLPROJ/ai/fraim.conf"
-FLRT=$(FRAIM_HOME="$FLHOME" PATH="$ADEBIN:/usr:/bin" sh -c "$FLLIB"'; fleet_ready_timeout_ms "$FLPROJ"')
-check "the new key in seconds wins over the retired one in ms" "$FLRT" "7000"
-rm -f "$FLPROJ/ai/fraim.conf"
-
-# 9. Capabilities cache and report: no-launch-model no longer means «model lost».
-FRAIM_HOME="$FLHOME" PATH="$ADEBIN:/usr:/bin" sh -c "$FLLIB"'; fleet_caps_note devin no-launch-model' >/dev/null 2>&1
-: > "$STUB_LOG"
-STUB_LOG="$STUB_LOG" STUB_WT="$STUB_WT" FRAIM_HOME="$FLHOME" PATH="$ADEBIN:/usr:/bin" \
-    sh -c "$FLLIB"'; fleet_worker_start task_c devin glm-5-2 high b1-t6 "$PWD" main' >/dev/null 2>&1
-grep -q -- '--model glm-5-2' "$STUB_LOG"
-check "known refusal does not lose the model: it is in the launch command" "$?" "0"
-
-# 10. Under set -eu — as in the real dispatcher: an uninitialized variable in
-# the launch path kills the build run, not one worker.
-: > "$STUB_LOG"
-FLD=$(STUB_LOG="$STUB_LOG" STUB_WT="$STUB_WT" FRAIM_HOME="$FLHOME" PATH="$ADEBIN:/usr:/bin" \
-      sh -eu -c "$FLLIB"'; fleet_worker_start task_e devin glm-5-2 high b1-t7 "$PWD" main' 2>/dev/null)
-check "launch survives set -eu (no unset variables)" "$FLD" "ctx_1234abcd5678"
-
-# 11. A reused checkout (left over from a previous attempt) is not deleted by cleanup.
-: > "$STUB_LOG"
-STUB_WT_CREATED_AT=$(( $(date +%s) * 1000 - 3600000 )) STUB_WS_FAIL=1 \
-    STUB_LOG="$STUB_LOG" STUB_WT="$STUB_WT" FRAIM_HOME="$FLHOME" PATH="$ADEBIN:/usr:/bin" \
-    sh -c "$FLLIB"'; fleet_worker_start task_x devin glm-5-2 high b1-t8 "$PWD" main' >/dev/null 2>&1
-grep -q 'worktree rm' "$STUB_LOG"
-check "foreign (reused) worktree not deleted" "$?" "1"
-grep -q 'terminal stop' "$STUB_LOG"
-check "but its terminal is stopped" "$?" "0"
-rm -f "$ADEBIN/orca-ide"
-
-# ------------------------------------------------- model discovery for roles
-printf '\nroles: model discovery\n'
-
-# Parsers are checked against saved fixtures — real output of the sources —
-# without installed agents (the parser is separate from the call and takes text on stdin).
-# Each call is its own sh -c, so sections do not depend on order or a neighbour's failure.
-roles_parse_out() {
-    sh -c '
-        . "'"$REPO"'/installer/lib/roles.sh"
-        "$@" <<EOF2
-'"$2"'
-EOF2
-' sh "$1" 2>&1
-}
-
-check "devin parser: ids only, no headers or aliases" \
-      "$(roles_parse_out roles_parse_devin_models 'Claude Opus 5 (claude-opus-5)
-  aliases: opus
-  claude-opus-5-medium                   Claude Opus 5 Medium  [1M context, $5]
-  claude-opus-5-high                     Claude Opus 5 High  [1M context, $5]')" \
-      "claude-opus-5-high
-claude-opus-5-medium"
-
-check "cursor-agent parser: id up to the dash, no header" \
-      "$(roles_parse_out roles_parse_cursor_models 'Available models
-
-auto - Auto (current, default)
-gpt-5.3-codex-low - Codex 5.3 Low
-gpt-5.3-codex-high - Codex 5.3 High')" \
-      "auto
-gpt-5.3-codex-high
-gpt-5.3-codex-low"
-
-check "pi parser: model field, no header or tilde" \
-      "$(roles_parse_out roles_parse_pi_models 'provider    model                          context  thinking
-openrouter  ~anthropic/claude-haiku-latest 200K     yes
-openai      gpt-5                          1M       yes')" \
-      "anthropic/claude-haiku-latest
-gpt-5"
-
-check "codex parser: slug from the JSON cache (pretty and single-line)" \
-      "$(roles_parse_out roles_parse_codex_models '{
-  "models": [ { "slug": "gpt-5.6-sol" }, { "slug": "gpt-5.4-mini" } ]
-}
-{"models":[{"slug":"codex-auto-review"}]}')" \
-      "codex-auto-review
-gpt-5.4-mini
-gpt-5.6-sol"
-
-check "claude parser: id from the binary's embedded catalogue" \
-      "$(roles_parse_out roles_parse_claude_models 'noise {id:"claude-opus-5",family:"opus",display_name:"Opus 5"} noise
-{ id: "claude-haiku-4-5", family: "haiku" } tail')" \
-      "claude-haiku-4-5
-claude-opus-5"
-
-check "opencode parser: provider/model lines, nested slashes and colons kept, noise dropped" \
-      "$(roles_parse_out roles_parse_opencode_models 'INFO  loading providers
-anthropic/claude-sonnet-5-5
-openrouter/z-ai/glm-5.3-flash:free
-zai/glm-5.3-flash
-
-Warning: cache is stale')" \
-      "anthropic/claude-sonnet-5-5
-openrouter/z-ai/glm-5.3-flash:free
-zai/glm-5.3-flash"
-
-check "grok parser: bulleted ids, the default's marker and the headers dropped" \
-      "$(roles_parse_out roles_parse_grok_models 'Default model: grok-code-fast-2
-Available models:
-  * grok-code-fast-2 (default)
-  - grok-5
-  - grok-5-mini')" \
-      "grok-5
-grok-5-mini
-grok-code-fast-2"
-
-check "kilo and crush list models the way opencode does" \
-      "$(sh -c '. "'"$REPO"'/installer/lib/roles.sh"; roles_models_table' | awk -F'\t' '$1 == "kilo" || $1 == "crush" { print $1 "=" $4 }' | tr '\n' ' ')" \
-      "kilo=roles_parse_opencode_models crush=roles_parse_opencode_models "
-
-# Empty and broken input is a legal empty answer with exit code 0: an agent update
-# that broke the parser degrades into «enter your own», not into an error.
-for _p in roles_parse_devin_models roles_parse_cursor_models roles_parse_pi_models roles_parse_codex_models roles_parse_claude_models roles_parse_opencode_models roles_parse_grok_models; do
-    _out=$(roles_parse_out "$_p" '' 2>/dev/null; roles_parse_out "$_p" 'garbage !! ##' 2>/dev/null)
-    check "parser $_p: empty/broken input — empty, exit code 0" "$_out|" "|"
-done
-
-# roles_models_of: unknown agent — empty, exit code 0 (the source is not queried).
-UNK=$(sh -c '. "'"$REPO"'/installer/lib/roles.sh"; roles_models_of no-such-agent; printf rc=%s "$?"' 2>&1)
-check "roles_models_of for an unknown agent is empty and error-free" "$UNK" "rc=0"
-
-# roles_agents_available: the agent list comes from harness_detect, not from Orca.
-# Check that the output is harness keys (one per line), without orca providers
-# (kimi, grok, minimax) and without "(недоступен: …)" labels.
-_AGENTS=$(sh -c '. "'"$REPO"'/installer/lib/harness.sh"; . "'"$REPO"'/installer/lib/roles.sh"; roles_agents_available' 2>/dev/null)
-check "roles_agents_available: has output (harnesses detected)" "$_AGENTS" "$_AGENTS"
-[ -n "$_AGENTS" ] && check "roles_agents_available: no orca providers (kimi/grok/minimax)" \
-    "$(printf '%s\n' "$_AGENTS" | grep -E 'kimi|grok|minimax' || true)" ""
-[ -n "$_AGENTS" ] && check "roles_agents_available: no unavailability labels" \
-    "$(printf '%s\n' "$_AGENTS" | grep 'недоступен' || true)" ""
-
-# ---------------------------------------------------- build plan: waves and arithmetic
-printf '\ndispatcher: build waves and arithmetic\n'
-
-DLIB='. "'"$REPO"'/installer/lib/core.sh"; . "'"$REPO"'/installer/lib/config.sh"
-    . "'"$REPO"'/installer/lib/harness.sh"; . "'"$REPO"'/installer/lib/ade.sh"
-    . "'"$REPO"'/installer/lib/fleet.sh"; . "'"$REPO"'/installer/lib/roles.sh"
-    . "'"$REPO"'/installer/lib/dispatch.sh"'
-PLANS="$SANDBOX/plans"; mkdir -p "$PLANS"; export PLANS
-
-# A plan without order is one wave; the behaviour of old plans does not change by a single byte.
-cat > "$PLANS/flat.md" <<'PLAN'
-## Subtask: a
+## Subtask: auth-api
+**Summary**: the login endpoint
+**Done when**: it returns a token
 **Role**: run-task
-**Summary**: раз
 
-### `a1.py`
-- почему
-
-### `a2.py`
-- почему
-
-## Subtask: b
-**Role**: run-task
-**Summary**: два
-
-### `b1.py`
-- почему
-
-### `b2.py`
-- почему
+### `api/auth.ts`
+- the endpoint
 PLAN
-check "plan without After — one wave" \
-      "$(sh -c "$DLIB"'; dispatch_wave_count "$PLANS/flat.md"')" "1"
-
-# A plan with order: contract → backend + frontend, and wave 2 shares a file with wave 1.
-cat > "$PLANS/waves.md" <<'PLAN'
-## Subtask: contract
-**Role**: run-task
-**Summary**: контракт
-
-### `docs/events.md`
-- формат
-
-### `docs/schema.json`
-- схема
-
-## Subtask: backend
-**Role**: run-task
-**After**: contract
-**Summary**: бэкенд
-
-### `src/api.py`
-- отправка
-
-### `docs/events.md`
-- пример
-
-## Subtask: frontend
-**Role**: run-task
-**After**: contract
-**Summary**: фронт
-
-### `web/app.js`
-- приём
-
-### `web/style.css`
-- вид
-PLAN
-check "waves derived from After" \
-      "$(sh -c "$DLIB"'; dispatch_waves "$PLANS/waves.md"' | tr '\t' ':' | tr '\n' ' ')" \
-      "contract:1 backend:2 frontend:2 "
-check "wave 2 subtasks" \
-      "$(sh -c "$DLIB"'; dispatch_wave_ids "$PLANS/waves.md" 2' | tr '\n' ' ')" "backend frontend "
-
-# After pointing nowhere and a cycle — refusal, not silent levelling: either one costs
-# N launches if discovered after handing out.
-cat > "$PLANS/ghost.md" <<'PLAN'
-## Subtask: a
-**Role**: run-task
-**After**: nosuch
-**Summary**: раз
-
-### `a1.py`
-- почему
-PLAN
-sh -c "$DLIB"'; dispatch_waves "$PLANS/ghost.md"' >/dev/null 2>&1
-check "After pointing to a nonexistent subtask — refused" "$?" "1"
-check "refusal names the subtask" \
-      "$(sh -c "$DLIB"'; dispatch_waves "$PLANS/ghost.md"' 2>&1 >/dev/null | grep -c 'nosuch')" "1"
-
-cat > "$PLANS/cycle.md" <<'PLAN'
-## Subtask: a
-**Role**: run-task
-**After**: b
-**Summary**: раз
-
-### `a1.py`
-- почему
-
-## Subtask: b
-**Role**: run-task
-**After**: a
-**Summary**: два
-
-### `b1.py`
-- почему
-PLAN
-sh -c "$DLIB"'; dispatch_waves "$PLANS/cycle.md"' >/dev/null 2>&1
-check "dependency cycle — refused" "$?" "1"
-check "refusal names the cycle" \
-      "$(sh -c "$DLIB"'; dispatch_waves "$PLANS/cycle.md"' 2>&1 >/dev/null | grep -c 'цикл')" "1"
-
-# Arithmetic: warnings are printed but NEVER change the exit code — otherwise
-# a metric that does not measure work would start failing plans.
-cat > "$PLANS/big.md" <<'PLAN'
-## Subtask: a
-**Role**: run-task
-**Summary**: раз
-
-### `a1.py`
-- x
-
-## Subtask: b
-**Role**: run-task
-**Summary**: два
-
-### `b1.py`
-- x
-
-## Subtask: c
-**Role**: run-task
-**Summary**: три
-
-### `c1.py`
-- x
-
-## Subtask: d
-**Role**: run-task
-**Summary**: четыре
-
-### `d1.py`
-- x
-
-## Subtask: e
-**Role**: run-task
-**Summary**: пять
-
-### `e1.py`
-- x
-
-## Subtask: f
-**Role**: run-task
-**Summary**: шесть
-
-### `f1.py`
-- x
-
-## Subtask: g
-**Role**: run-task
-**Summary**: семь
-
-### `g1.py`
-- x
-PLAN
-check "7 subtasks — acceptance ceiling warning" \
-      "$(sh -c "$DLIB"'; dispatch_size_notes "$PLANS/big.md"' 2>&1 >/dev/null | grep -c 'потолок 6')" "1"
-check "wide wave — warning" \
-      "$(sh -c "$DLIB"'; dispatch_size_notes "$PLANS/big.md"' 2>&1 >/dev/null | grep -c 'одновременно')" "1"
-# There are no lower thresholds: one subtask with one path for one cheap worker is a legitimate
-# build (DECISIONS 2026-09-15). The ceilings remain.
-check "subtask with one path — not a warning" \
-      "$(sh -c "$DLIB"'; dispatch_size_notes "$PLANS/big.md"' 2>&1 >/dev/null | grep -c 'мельче цены раздачи')" "0"
-check "small flat build warns about nothing" \
-      "$(sh -c "$DLIB"'; dispatch_size_notes "$PLANS/flat.md"' 2>&1 >/dev/null)" ""
-sh -c "$DLIB"'; dispatch_size_notes "$PLANS/big.md"' >/dev/null 2>&1
-check "warnings do not change the exit code" "$?" "0"
-check "clean plan warns about nothing" \
-      "$(sh -c "$DLIB"'; dispatch_size_notes "$PLANS/waves.md"' 2>&1 >/dev/null)" ""
-
-# The composition line: what this build costs, before a single launch.
-check "composition line counts subtasks, waves and width" \
-      "$(sh -c "$DLIB"'; dispatch_cost_line "$PLANS/waves.md"')" \
-      "состав: 3 подзадачи, 2 волны, 2 воркера одновременно"
-check "composition line on a flat plan" \
-      "$(sh -c "$DLIB"'; dispatch_cost_line "$PLANS/flat.md"')" \
-      "состав: 2 подзадачи, 1 волна, 2 воркера одновременно"
-
-# ---------------------------------------------------- per-wave plan check
-printf '\ndispatcher: per-wave plan check\n'
-
-# One file shared by two subtasks of the SAME wave — refusal, as before.
-cat > "$PLANS/clash.md" <<'PLAN'
-## Subtask: a
-**Role**: run-task
-**Summary**: раз
-
-### `shared.py`
-- почему
-
-### `a1.py`
-- почему
-
-## Subtask: b
-**Role**: run-task
-**Summary**: два
-
-### `shared.py`
-- почему
-
-### `b1.py`
-- почему
-PLAN
-sh -c "$DLIB"'; dispatch_check "$PLANS/clash.md"' >/dev/null 2>&1
-check "overlap within a wave — refused" "$?" "1"
-CLASH=$(sh -c "$DLIB"'; dispatch_check "$PLANS/clash.md"' 2>&1 >/dev/null)
-check "refusal names the wave" "$(printf '%s' "$CLASH" | grep -c 'волна 1')" "1"
-check "refusal shows the ladder of ways out" "$(printf '%s' "$CLASH" | grep -c 'After')" "1"
-
-# The same file, but the subtasks are split across waves — passes. That is exit #3.
-sh -c "$DLIB"'; dispatch_check "$PLANS/waves.md"' >/dev/null 2>&1
-check "overlap across waves — passes" "$?" "0"
-
-# An order that cannot be parsed fails the whole check.
-sh -c "$DLIB"'; dispatch_check "$PLANS/cycle.md"' >/dev/null 2>&1
-check "cycle fails dispatch-check" "$?" "1"
-sh -c "$DLIB"'; dispatch_check "$PLANS/ghost.md"' >/dev/null 2>&1
-check "After pointing nowhere fails dispatch-check" "$?" "1"
-
-# The report shows each subtask's wave — before handing out, not after.
-check "report names the subtask's wave" \
-      "$(sh -c "$DLIB"'; dispatch_report "$PLANS/waves.md"' | awk 'NR>1 { printf "%s%s", $1, $2 }' | tr -d ' ')" \
-      "1contract2backend2frontend"
-
-# ---------------------------------------------------- collecting a wave into the build branch
-# Real worktrees and real commits, no environment stub: the checkout registry is kept by git, and
-# collecting must work the same no matter who created the checkout — Orca or a human.
-printf '\ndispatcher: wave collection\n'
-
-CB="$SANDBOX/collect"; mkdir -p "$CB"; export CB
-git -C "$CB" init -q; git -C "$CB" config user.email t@t; git -C "$CB" config user.name t
-mkdir -p "$CB/ai/builds"
-printf 'base\n' > "$CB/one.py"; printf 'base\n' > "$CB/two.py"; printf 'base\n' > "$CB/three.py"
-git -C "$CB" add -A >/dev/null; git -C "$CB" commit -qm init >/dev/null
-
-cat > "$CB/plan.md" <<'PLAN'
-## Subtask: one
-**Role**: run-task
-**Summary**: первая
-
-### `one.py`
-- почему
-
-## Subtask: two
-**Role**: run-task
-**Summary**: вторая
-
-### `two.py`
-- почему
-PLAN
-
-BID=build-test; export BID
-BDIR="$CB/ai/builds/$BID"
-sh -c "$DLIB"'; build_seal "$CB" "$BID" "$CB/plan.md"' >/dev/null 2>&1
-check "build created branch fraim/build-test" \
-      "$(git -C "$CB" rev-parse --verify --quiet refs/heads/fraim/build-test >/dev/null 2>&1 && echo yes || echo no)" "yes"
-
-# Two workers: their own checkouts off the build branch, their own commits in their own paths. The checkout name is
-# «build-subtask», as dispatch_launch builds it: dispatch_worker_tree looks it up by that name.
-git -C "$CB" worktree add -q -b w-one "$SANDBOX/$BID-one" fraim/build-test
-git -C "$CB" worktree add -q -b w-two "$SANDBOX/$BID-two" fraim/build-test
-printf 'one\n' >> "$SANDBOX/$BID-one/one.py"
-git -C "$SANDBOX/$BID-one" commit -qam "one" >/dev/null
-printf 'two\n' >> "$SANDBOX/$BID-two/two.py"
-git -C "$SANDBOX/$BID-two" commit -qam "two" >/dev/null
-
-OUT=$(sh -c "$DLIB"'; dispatch_collect "$CB" "'"$BID"'"' 2>&1)
-check "collection passed" "$?" "0"
-check "both subtasks merged" "$(printf '%s' "$OUT" | grep -c 'слита')" "2"
-check "combined wave diff is printed" "$(printf '%s' "$OUT" | grep -c 'изменила целиком')" "1"
-check "build branch carries both edits" \
-      "$(git -C "$CB" show fraim/build-test:one.py | tail -1)$(git -C "$CB" show fraim/build-test:two.py | tail -1)" \
-      "onetwo"
-check "conductor's working tree untouched" \
-      "$(git -C "$CB" rev-parse --abbrev-ref HEAD)" "master"
-check "no temporary checkouts left" \
-      "$(git -C "$CB" worktree list --porcelain | grep -c 'fraim-collect')" "0"
-check "journal got a collection entry" "$(grep -c 'Wave 1 collected' "$BDIR/journal.md")" "1"
-check "collected.tsv remembers what came back" "$(grep -c "	one	" "$BDIR/collected.tsv")" "1"
-
-# Repeat: what is collected is not collected twice.
-OUT=$(sh -c "$DLIB"'; dispatch_collect "$CB" "'"$BID"'" 1' 2>&1)
-check "repeated collection merges nothing" "$(printf '%s' "$OUT" | grep -c 'уже собрана')" "2"
-
-# Refusal 1: uncommitted work. Only a commit can be merged.
-cat > "$CB/plan2.md" <<'PLAN'
-## Subtask: three
-**Role**: run-task
-**Summary**: третья
-
-### `three.py`
-- почему
-PLAN
-BID2=build-dirty; export BID2
-sh -c "$DLIB"'; build_seal "$CB" "'"$BID2"'" "$CB/plan2.md"' >/dev/null 2>&1
-git -C "$CB" worktree add -q -b w-three "$SANDBOX/$BID2-three" fraim/build-dirty 2>/dev/null
-printf 'three\n' >> "$SANDBOX/$BID2-three/three.py"
-OUT=$(sh -c "$DLIB"'; dispatch_collect "$CB" "'"$BID2"'"' 2>&1)
-check "uncommitted work — refused" "$?" "1"
-check "refusal names the uncommitted work" "$(printf '%s' "$OUT" | grep -c 'незакоммиченное')" "1"
-check "build branch did not move on refusal" \
-      "$(git -C "$CB" show fraim/build-dirty:three.py | tail -1)" "base"
-
-# Refusal 2: an edit outside the declared paths. The reconciliation with the tree exists precisely for this line.
-git -C "$SANDBOX/$BID2-three" commit -qam "three" >/dev/null
-printf 'stray\n' >> "$SANDBOX/$BID2-three/one.py"
-git -C "$SANDBOX/$BID2-three" commit -qam "stray" >/dev/null
-OUT=$(sh -c "$DLIB"'; dispatch_collect "$CB" "'"$BID2"'"' 2>&1)
-check "edit outside its paths — refused" "$?" "1"
-check "refusal names the foreign file" "$(printf '%s' "$OUT" | grep -c 'one.py')" "1"
-check "build branch did not accept the foreign edit" \
-      "$(git -C "$CB" show fraim/build-dirty:three.py | tail -1)" "base"
-
-# ------------------------------------------------- barrier: which wave goes up
-# Until a wave is collected, the next one does not go up — that is the barrier, and it rests not
-# on an environment signal but on the collection record in git.
-printf '\ndispatcher: barrier between waves\n'
-
-WB="$SANDBOX/waves-build"; mkdir -p "$WB/ai/builds"; export WB
-git -C "$WB" init -q 2>/dev/null; git -C "$WB" config user.email t@t; git -C "$WB" config user.name t
-printf 'x\n' > "$WB/f.py"; git -C "$WB" add -A >/dev/null; git -C "$WB" commit -qm init >/dev/null
-cp "$PLANS/waves.md" "$WB/plan.md"
-WBID=build-waves; export WBID
-sh -c "$DLIB"'; build_seal "$WB" "$WBID" "$WB/plan.md"' >/dev/null 2>&1
-
-check "first uncollected wave — the first one" \
-      "$(sh -c "$DLIB"'; build_next_wave "$WB" "$WBID"')" "1"
-printf '1\tcontract\tabc123\t2026-09-09T00:00:00Z\n' > "$WB/ai/builds/$WBID/collected.tsv"
-check "wave 1 collected — next is the second" \
-      "$(sh -c "$DLIB"'; build_next_wave "$WB" "$WBID"')" "2"
-printf '2\tbackend\tdef456\t2026-09-09T00:00:00Z\n' >> "$WB/ai/builds/$WBID/collected.tsv"
-check "half-collected wave stays the next one" \
-      "$(sh -c "$DLIB"'; build_next_wave "$WB" "$WBID"')" "2"
-printf '2\tfrontend\tghi789\t2026-09-09T00:00:00Z\n' >> "$WB/ai/builds/$WBID/collected.tsv"
-sh -c "$DLIB"'; build_next_wave "$WB" "$WBID"' >/dev/null 2>&1
-check "all waves collected — nothing to raise" "$?" "1"
-
-# ------------------------------------------------------- conductor acceptance end to end
-# Acceptance is the conductor's whole job: verify after the workers, run the master check, tidy up,
-# take it into the trunk and print the report to the output. The human types no commands, so what is checked
-# is how this output and this merge could lie: an incomplete collection, a red check, a dirty
-# working tree, a checkout with uncommitted work — and reversibility of the trunk write.
-printf '\ndispatcher: conductor acceptance\n'
-
-DLIBV="$DLIB"'
-    . "'"$REPO"'/installer/lib/lang.sh"; . "'"$REPO"'/installer/lib/verbs.sh"; . "'"$REPO"'/installer/lib/tasks.sh"; . "'"$REPO"'/installer/lib/foundation.sh"; . "'"$REPO"'/installer/lib/verbtable.sh"'
-
-AB="$SANDBOX/accept"; mkdir -p "$AB/ai/builds"; export AB
-git -C "$AB" init -q; git -C "$AB" config user.email t@t; git -C "$AB" config user.name t
-git -C "$AB" symbolic-ref HEAD refs/heads/main
-printf 'base\n' > "$AB/one.py"; printf 'base\n' > "$AB/two.py"; printf '# d\n' > "$AB/DECISIONS.md"
-git -C "$AB" add -A >/dev/null; git -C "$AB" commit -qm init >/dev/null
-
-cat > "$AB/plan.md" <<'PLAN'
-## Subtask: one
-**Role**: run-task
-**Summary**: первая
-
-### `one.py`
-- почему
-
-## Subtask: two
-**Role**: run-task
-**Summary**: вторая
-**After**: one
-
-### `two.py`
-- почему
-PLAN
-
-ABID=build-accept; export ABID
-ABDIR="$AB/ai/builds/$ABID"
-sh -c "$DLIB"'; build_seal "$AB" "$ABID" "$AB/plan.md"' >/dev/null 2>&1
-
-# Refusal before collection: a report on a half-collected build would describe work other than what exists.
-OUT=$(sh -c "$DLIB"'; build_accept "$AB" "$ABID"' 2>&1); RC=$?
-check "uncollected build is not accepted" "$RC" "2"
-check "refusal names the uncollected subtasks" "$(printf '%s' "$OUT" | grep -c 'two')" "1"
-check "trunk untouched" "$(git -C "$AB" log --oneline | wc -l | tr -d ' ')" "1"
-
-git -C "$AB" worktree add -q -b aw-one "$SANDBOX/$ABID-one" "fraim/$ABID"
-printf 'one\n' >> "$SANDBOX/$ABID-one/one.py"
-git -C "$SANDBOX/$ABID-one" commit -qam one >/dev/null
-sh -c "$DLIB"'; dispatch_collect "$AB" "$ABID" 1' >/dev/null 2>&1
-git -C "$AB" worktree add -q -b aw-two "$SANDBOX/$ABID-two" "fraim/$ABID"
-printf 'two\n' >> "$SANDBOX/$ABID-two/two.py"
-git -C "$SANDBOX/$ABID-two" commit -qam two >/dev/null
-sh -c "$DLIB"'; dispatch_collect "$AB" "$ABID" 2' >/dev/null 2>&1
-
-# The second subtask's worker kept working after collection — its checkout must not be touched.
-printf 'черновик\n' >> "$SANDBOX/$ABID-two/two.py"
-# The build's foundation is written by the conductor into the build branch; no subtask declared it.
-git -C "$AB" worktree add -q "$SANDBOX/$ABID-fnd" "fraim/$ABID"
-printf -- '- решение\n' >> "$SANDBOX/$ABID-fnd/DECISIONS.md"
-git -C "$SANDBOX/$ABID-fnd" commit -qam foundation >/dev/null
-git -C "$AB" worktree remove --force "$SANDBOX/$ABID-fnd"
-
-# A red master check: what was collected does not go to the trunk. This is not a judgement but a fact,
-# and so a machine decides it, not a human.
-printf 'build_check = sh -c "exit 3"\n' > "$AB/ai/fraim.conf"
-OUT=$(sh -c "$DLIB"'; build_accept "$AB" "$ABID"' 2>&1); RC=$?
-check "red check blocks the trunk" "$RC" "1"
-check "output names the check's exit code" \
-      "$(printf '%s' "$OUT" | grep -c 'проектная проверка вернула код 3')" "1"
-check "trunk untouched on a red check" \
-      "$(git -C "$AB" log --oneline | wc -l | tr -d ' ')" "1"
-check "build not marked accepted" "$([ -f "$ABDIR/accepted" ] && echo yes || echo no)" "no"
-check "report lives in the output, not in a file" \
-      "$([ -f "$ABDIR/report.md" ] && echo yes || echo no)" "no"
-
-# Green check, but a dirty working tree: the merge would drag in someone else's unsaved work.
-printf 'build_check = true\n' > "$AB/ai/fraim.conf"
-printf 'чужое\n' >> "$AB/one.py"
-OUT=$(sh -c "$DLIB"'; build_accept "$AB" "$ABID"' 2>&1); RC=$?
-check "dirty tree blocks the trunk" "$RC" "1"
-check "output names the unsaved work" "$(printf '%s' "$OUT" | grep -c 'несохранённое')" "1"
-git -C "$AB" checkout -q -- one.py
-
-# Everything matched: verification, check, cleanup, trunk — in one command and without a single command for the human.
-OUT=$(sh -c "$DLIB"'; build_accept "$AB" "$ABID"' 2>&1); RC=$?
-check "acceptance passed" "$RC" "0"
-check "both subtasks in the output" \
-      "$(printf '%s' "$OUT" | grep -cE '^    (one|two) +волна')" "2"
-check "file nobody declared is named" \
-      "$(printf '%s' "$OUT" | grep -c 'не объявлял никто: DECISIONS.md')" "1"
-check "output names the merge into the trunk" "$(printf '%s' "$OUT" | grep -c 'в ствол: main')" "1"
-check "output names the undo command" "$(printf '%s' "$OUT" | grep -c 'fraim undo')" "1"
-check "collected work really is in the trunk" \
-      "$(git -C "$AB" show main:two.py | tail -1)" "two"
-check "merge marked as ours" \
-      "$(git -C "$AB" log -1 --format=%B main | grep -c '^fraim: ')" "1"
-check "build marked accepted" "$(grep -c '^Accepted by: conductor' "$ABDIR/accepted")" "1"
-check "journal knows about the trunk" "$(grep -c 'merged into the trunk by the conductor' "$ABDIR/journal.md")" "1"
-check "list knows the build is in the trunk" \
-      "$(sh -c "$DLIB"'; build_list "$AB"' | grep -c 'в стволе')" "1"
-
-# Cleanup: only what is provably redundant is removed. A checkout with uncommitted work is what
-# the mode exists for, and it stays untouched whatever the acceptance outcome.
-check "cleanup removed the collected subtask's checkout" \
-      "$(git -C "$AB" worktree list --porcelain | grep -c "$ABID-one")" "0"
-check "checkout with uncommitted work kept" \
-      "$(git -C "$AB" worktree list --porcelain | grep -c "$ABID-two")" "1"
-check "worker's work intact" "$(tail -1 "$SANDBOX/$ABID-two/two.py")" "черновик"
-check "output warned about the kept checkout" \
-      "$(printf '%s' "$OUT" | grep -c 'оставлен: есть незакоммиченное')" "1"
-
-# The same thing is not taken into the trunk twice.
-sh -c "$DLIB"'; build_accept "$AB" "$ABID"' >/dev/null 2>&1
-check "accepted build is not accepted a second time" "$?" "2"
-
-# The human's feedback is in words, and there is one lever for it: undoing the merge with one command.
-# Without -m 1 revert fails on a merge, and that is exactly why writing to the trunk is acceptable at all.
-AMERGE=$(git -C "$AB" rev-parse --short main)
-sh -c "$DLIBV"'; verb_undo "$AB" "'"$AMERGE"'"' >/dev/null 2>&1
-check "trunk write is undone with one command" "$?" "0"
-check "after undo the trunk is back to before" \
-      "$(git -C "$AB" show main:two.py | tail -1)" "base"
-check "build branch intact after undo too" \
-      "$(git -C "$AB" show "fraim/$ABID:two.py" | tail -1)" "two"
+OUT=$(cd "$DP" && "$FRAIM" dispatch check "$DPL/good.md" 2>&1); RC=$?
+check "a plan of a card and a plain subtask passes" "$RC" "0"
+check "the card's subtask takes its title from the board" \
+      "$(printf '%s' "$OUT" | grep -c 'login-form — задача с доски, путей: 1 — Login form')" "1"
+check "the plain subtask carries its own summary" \
+      "$(printf '%s' "$OUT" | grep -c 'auth-api — из плана, путей: 1 — the login endpoint')" "1"
+check "a contract is there, so no note about it" "$(printf '%s' "$OUT" | grep -c 'Contract» нет')" "0"
+
+# Refusals: each one is a fact the machine knows before a single worker starts.
+printf '## Subtask: login-form\n' > "$DPL/no-files.md"
+OUT=$(cd "$DP" && "$FRAIM" dispatch check "$DPL/no-files.md" 2>&1); RC=$?
+check "a subtask with no paths is refused" "$RC" "2"
+check "and the refusal says what is missing" "$(printf '%s' "$OUT" | grep -c 'нет «\*\*Files\*\*:»')" "1"
+
+printf '## Subtask: ghost\n**Files**: lib/util.sh\n' > "$DPL/no-intent.md"
+OUT=$(cd "$DP" && "$FRAIM" dispatch check "$DPL/no-intent.md" 2>&1); RC=$?
+check "no card and no summary — refused" "$RC" "2"
+check "the refusal names the subtask" "$(printf '%s' "$OUT" | grep -c 'подзадача ghost')" "1"
+
+printf '## Subtask: shop\n**Files**: lib/\n' > "$DPL/master.md"
+(cd "$DP" && "$FRAIM" dispatch check "$DPL/master.md" >/dev/null 2>&1)
+check "a project card is not a subtask" "$?" "2"
+
+printf '## Subtask: a\n**Summary**: one\n**Files**: lib/util.sh\n\n## Subtask: a\n**Summary**: two\n**Files**: README.md\n' > "$DPL/dup.md"
+(cd "$DP" && "$FRAIM" dispatch check "$DPL/dup.md" >/dev/null 2>&1)
+check "the same subtask twice is refused" "$?" "2"
+
+printf '## Subtask: a\n**Summary**: one\n**Files**: lib/util.sh\n\n## Subtask: b\n**Summary**: two\n**After**: a\n**Files**: README.md\n' > "$DPL/after.md"
+OUT=$(cd "$DP" && "$FRAIM" dispatch check "$DPL/after.md" 2>&1); RC=$?
+check "After is refused: order lives on the board" "$RC" "2"
+check "the refusal says where order went" "$(printf '%s' "$OUT" | grep -c 'на доске')" "1"
+
+printf '## Subtask: a\n**Summary**: one\n**Files**: lib/util.sh\n\n## Subtask: b\n**Summary**: two\n**Files**: lib/util.sh\n' > "$DPL/overlap.md"
+OUT=$(cd "$DP" && "$FRAIM" dispatch check "$DPL/overlap.md" 2>&1); RC=$?
+check "one file in two subtasks is refused" "$RC" "2"
+check "the overlap is named with both owners" "$(printf '%s' "$OUT" | grep -c 'a: lib/util.sh  ↔  b: lib/util.sh')" "1"
+
+printf '## Subtask: a\n**Summary**: one\n**Files**: web/\n\n## Subtask: b\n**Summary**: two\n**Files**: web/login/index.html\n' > "$DPL/overlap-dir.md"
+(cd "$DP" && "$FRAIM" dispatch check "$DPL/overlap-dir.md" >/dev/null 2>&1)
+check "a directory covers the files under it" "$?" "2"
+
+printf '## Subtask: a\n**Summary**: one\n**Files**: web/login/\n\n## Subtask: b\n**Summary**: two\n**Files**: web/loginx.html\n' > "$DPL/near-dir.md"
+OUT=$(cd "$DP" && "$FRAIM" dispatch check "$DPL/near-dir.md" 2>&1); RC=$?
+check "a directory is a whole path segment, not a prefix of a name" "$RC" "0"
+check "two subtasks and no contract — a note, not a refusal" "$(printf '%s' "$OUT" | grep -c 'Contract» нет')" "1"
+
+# Outside a project there is no board to read: every subtask must say what it is for itself.
+printf '## Subtask: login-form\n**Files**: web/login/\n' > "$DPL/card-only.md"
+(cd "$SANDBOX" && "$FRAIM" dispatch check "$DPL/card-only.md" >/dev/null 2>&1)
+check "outside a project a card name alone is not enough" "$?" "2"
+
+: > "$DPL/wide.md"
+for i in 1 2 3 4 5 6 7; do printf '## Subtask: s%s\n**Summary**: piece %s\n**Files**: f%s.txt\n\n' "$i" "$i" "$i" >> "$DPL/wide.md"; done
+OUT=$(cd "$DP" && "$FRAIM" dispatch check "$DPL/wide.md" 2>&1); RC=$?
+check "seven subtasks — a warning, not a refusal" "$RC" "0"
+check "the warning names the size" "$(printf '%s' "$OUT" | grep -c 'подзадач 7')" "1"
+
+printf '\ndispatcher: build, briefs, checkouts\n'
+OUT=$(cd "$DP" && "$FRAIM" dispatch "$DPL/good.md" 2>&1); RC=$?
+check "a build is set up from the plan" "$RC" "0"
+B1=$(ls "$DP/ai/builds" | head -1); export B1
+check "the build branch exists" "$(git -C "$DP" branch --list "fraim/$B1" | grep -c .)" "1"
+check "briefs live next to the plan, in one folder" "$([ -f "$DP/ai/builds/$B1/login-form.md" ] && [ -f "$DP/ai/builds/$B1/auth-api.md" ] && echo yes)" "yes"
+check "no second folder for tasks any more" "$([ -d "$DP/ai/parallel" ] && echo yes || echo no)" "no"
+BR="$DP/ai/builds/$B1/login-form.md"
+check "the brief takes what and why from the card" "$(grep -c 'so that people can sign in' "$BR")" "1"
+check "the brief takes done-when from the card" "$(grep -c 'posts email and password' "$BR")" "1"
+check "a directory path is spelled out" "$(grep -c '`web/login/` — and everything under it' "$BR")" "1"
+check "the contract goes into every brief" \
+      "$(grep -c 'POST /api/login' "$BR" "$DP/ai/builds/$B1/auth-api.md" | grep -c ':1$')" "2"
+check "the brief asks for the branch in the report" "$(grep -c 'Branch: <name>' "$BR")" "1"
+check "the plain subtask's brief carries its done-when" "$(grep -c 'it returns a token' "$DP/ai/builds/$B1/auth-api.md")" "1"
+check "the journal names the card" "$(grep -c '| login-form | ai/tasks/login-form.md |' "$DP/ai/builds/$B1/journal.md")" "1"
+
+OUT=$(cd "$DP" && "$FRAIM" dispatch prepare "$B1" 2>&1); RC=$?
+check "prepare makes a checkout per subtask" "$RC" "0"
+check "the checkouts live under .fraim/worktrees" \
+      "$([ -d "$DP/.fraim/worktrees/$B1-login-form" ] && [ -d "$DP/.fraim/worktrees/$B1-auth-api" ] && echo yes)" "yes"
+check "each on a branch of its own" "$(git -C "$DP" branch --list "fraim/$B1-*" | grep -c .)" "2"
+check "the project's status does not see them" "$(git -C "$DP" status --porcelain | grep -c fraim)" "0"
+(cd "$DP" && "$FRAIM" dispatch prepare "$B1" >/dev/null 2>&1)
+check "prepare again reuses what exists" "$(git -C "$DP" worktree list | grep -c "$B1-")" "2"
+
+printf '\ndispatcher: collecting the round\n'
+# One worker in a prepared checkout; the other in a worktree its harness made — branched from the
+# trunk, named by the harness — that adds a new file inside its directory.
+T1="$DP/.fraim/worktrees/$B1-auth-api"
+printf 'endpoint\n' > "$T1/api/auth.ts"; git -C "$T1" commit -qam 'auth endpoint' >/dev/null
+git -C "$DP" worktree add -q -b agent-1 "$SANDBOX/agent-1" main >/dev/null 2>&1
+mkdir -p "$SANDBOX/agent-1/web/login/parts"
+printf 'form\n' > "$SANDBOX/agent-1/web/login/index.html"; printf 'field\n' > "$SANDBOX/agent-1/web/login/parts/field.html"
+git -C "$SANDBOX/agent-1" add -A >/dev/null; git -C "$SANDBOX/agent-1" commit -qm 'login form' >/dev/null
+
+VOUT=$(cd "$DP" && "$FRAIM" dispatch verify "$B1" login-form agent-1 2>&1)
+check "verify sees a new file inside the directory as inside" "$(printf '%s' "$VOUT" | grep -c '^inside:web/login/parts/field.html$')" "1"
+
+OUT=$(cd "$DP" && "$FRAIM" dispatch collect "$B1" 2>&1); RC=$?
+check "collect without the harness branch: the empty checkout changed nothing" \
+      "$(printf '%s' "$OUT" | grep 'login-form' | grep -c 'ничего не изменила')" "1"
+check "the prepared checkout is merged" "$(git -C "$DP" show "fraim/$B1:api/auth.ts")" "endpoint"
+OUT=$(cd "$DP" && "$FRAIM" dispatch collect "$B1" login-form=agent-1 2>&1); RC=$?
+check "a later collect with the branch takes the real result" "$RC" "0"
+check "the harness worktree's new file is in the build branch" "$(git -C "$DP" show "fraim/$B1:web/login/parts/field.html")" "field"
+check "the other subtask is not merged twice" "$(printf '%s' "$OUT" | grep 'auth-api' | grep -c 'уже собрана')" "1"
+(cd "$DP" && "$FRAIM" dispatch collect "$B1" nobody=agent-1 >/dev/null 2>&1)
+check "a pair for a subtask the plan does not have is refused" "$?" "2"
+(cd "$DP" && "$FRAIM" dispatch collect "$B1" login-form >/dev/null 2>&1)
+check "a pair without a branch is refused" "$?" "2"
+
+# A second round, for the refusals.
+printf '## Subtask: w1\n**Summary**: util\n**Files**: lib/util.sh\n\n## Subtask: w2\n**Summary**: readme\n**Files**: README.md\n\n## Contract\nnone\n' > "$DPL/round2.md"
+(cd "$DP" && "$FRAIM" dispatch "$DPL/round2.md" >/dev/null 2>&1)
+B2=$(ls "$DP/ai/builds" | grep -v "^$B1$" | head -1); export B2
+(cd "$DP" && "$FRAIM" dispatch prepare "$B2" >/dev/null 2>&1)
+W1="$DP/.fraim/worktrees/$B2-w1"; W2="$DP/.fraim/worktrees/$B2-w2"
+printf 'util\n' > "$W1/lib/util.sh"; mkdir -p "$W1/web"; printf 'stray\n' > "$W1/web/x.html"
+git -C "$W1" add -A >/dev/null; git -C "$W1" commit -qm 'util and a stray file' >/dev/null
+printf 'draft\n' >> "$W2/README.md"
+printf 'leak\n' >> "$DP/lib/util.sh"
+OUT=$(cd "$DP" && "$FRAIM" dispatch collect "$B2" 2>&1); RC=$?
+check "a round with refusals is not collected" "$RC" "2"
+check "a file outside the lane is named" "$(printf '%s' "$OUT" | grep -c 'web/x.html')" "1"
+check "uncommitted work is refused" "$(printf '%s' "$OUT" | grep 'w2' | grep -c 'незакоммиченное')" "1"
+check "a write into the main checkout inside the build's paths is pointed out" \
+      "$(printf '%s' "$OUT" | grep -A3 'основном чекауте' | grep -c 'lib/util.sh')" "1"
+git -C "$DP" checkout -- lib/util.sh
+(cd "$DP" && "$FRAIM" dispatch collect "$B2" w1=no-such-branch >/dev/null 2>&1)
+check "a branch that does not exist is refused" "$?" "2"
+OUT=$(cd "$DP" && "$FRAIM" dispatch accept "$B2" 2>&1); RC=$?
+check "a round that is not collected is not accepted" "$RC" "2"
+
+printf '\ndispatcher: acceptance\n'
+OUT=$(cd "$DP" && "$FRAIM" dispatch accept "$B1" 2>&1); RC=$?
+check "the round is accepted" "$RC" "0"
+check "the trunk has the round's merge" "$(git -C "$DP" log -1 --format=%s main)" "build: $B1"
+check "the new file is in the trunk" "$(git -C "$DP" show main:web/login/parts/field.html)" "field"
+check "the card left the board" "$([ -f "$DP/ai/tasks/login-form.md" ] && echo yes || echo no)" "no"
+check "and is closed in the archive" "$(grep -l 'outcome: done' "$DP"/ai/archive/tasks/*_login-form.md | grep -c .)" "1"
+check "a project card is never closed by a round" "$([ -f "$DP/ai/tasks/shop.md" ] && echo yes)" "yes"
+check "the report names the closed card" "$(printf '%s' "$OUT" | grep -c 'тем же слиянием: login-form$')" "1"
+check "the accepted marker records the cards" "$(grep -c '^Cards closed: login-form$' "$DP/ai/builds/$B1/accepted")" "1"
+check "fraim's own checkouts are removed" "$(git -C "$DP" worktree list | grep -c "$B1-")" "0"
+check "with their branches" "$(git -C "$DP" branch --list "fraim/$B1-*" | grep -c .)" "0"
+check "the harness's own worktree is not ours to remove" "$(git -C "$DP" worktree list | grep -c 'agent-1')" "1"
+check "list knows the round is in the trunk" \
+      "$(cd "$DP" && "$FRAIM" dispatch list 2>/dev/null | grep "$B1" | grep -c 'в стволе')" "1"
+
+# One undo takes back the code and reopens the card: they came in one merge.
+MERGE=$(git -C "$DP" rev-parse --short main)
+(cd "$DP" && "$FRAIM" undo "$MERGE" >/dev/null 2>&1)
+check "undo of the round" "$?" "0"
+check "the card is back on the board" "$([ -f "$DP/ai/tasks/login-form.md" ] && echo yes)" "yes"
+check "the code is back too" "$([ -f "$DP/web/login/parts/field.html" ] && echo yes || echo no)" "no"
+
+# A red project check: what was collected does not go into the trunk, and the board is untouched.
+printf '## Subtask: login-form\n**Files**: web/login/\n' > "$DPL/red.md"
+(cd "$DP" && "$FRAIM" dispatch "$DPL/red.md" >/dev/null 2>&1)
+B3=$(ls "$DP/ai/builds" | grep -v "^$B1$" | grep -v "^$B2$" | head -1)
+(cd "$DP" && "$FRAIM" dispatch prepare "$B3" >/dev/null 2>&1)
+T3="$DP/.fraim/worktrees/$B3-login-form"
+printf 'red\n' > "$T3/web/login/index.html"; git -C "$T3" commit -qam red >/dev/null
+(cd "$DP" && "$FRAIM" dispatch collect "$B3" >/dev/null 2>&1)
+OUT=$(cd "$DP" && "$FRAIM" dispatch accept "$B3" 2>&1); RC=$?
+check "a red project check keeps the round out of the trunk" "$RC" "1"
+check "the card stays open" "$([ -f "$DP/ai/tasks/login-form.md" ] && echo yes)" "yes"
+check "the build branch stays for the fix" "$(git -C "$DP" show "fraim/$B3:web/login/index.html")" "red"
+
+printf '\ndispatcher: what is gone\n'
+OUT=$("$FRAIM" dispatch run x 2>&1); RC=$?
+check "dispatch run answers where it went" "$RC" "2"
+check "and points to the harness's subagents" "$(printf '%s' "$OUT" | grep -c 'субагенты харнеса')" "1"
+("$FRAIM" dispatch watch x >/dev/null 2>&1)
+check "dispatch watch too" "$?" "2"
+OUT=$("$FRAIM" roles 2>&1); RC=$?
+check "fraim roles answers where it went" "$RC" "2"
+check "workers run on the agent's own model" "$(printf '%s' "$OUT" | grep -c 'модели самого агента')" "1"
+("$FRAIM" dispatch --help >/dev/null 2>&1)
+check "dispatch --help is help, not a plan name" "$?" "0"
 
 
 printf '\n%s passed, %s failed\n' "$PASS" "$FAIL"

@@ -11,7 +11,7 @@
 #   - one frame is composed by ONE awk process (ui_frame_awk) that fits every line to its
 #     column width — CJK as two columns, colour escapes as none — and draws the box;
 #   - data is read once per section and cached (UI_CACHE_*), never on an arrow key;
-#   - anything that needs the full terminal (an update, cleanup, the roles picker) leaves
+#   - anything that needs the full terminal (an update, a cleanup, a publish) leaves
 #     the alternate screen, runs the ordinary command, and comes back.
 #
 # Hard rule, unchanged: the screen appears ONLY when stdin and stdout are both terminals.
@@ -398,13 +398,12 @@ ui_build_projects() {
     fi
 }
 
-# Where a setting of this key is written from the screen: the operator's own (general,
-# models) on the machine, the rest in the project when there is one.
+# Where a setting of this key is written from the screen: the operator's own (general) on
+# the machine, the rest in the project when there is one.
 ui_cfg_scope() {
     case $(config_section "$1") in
         general) printf 'machine\n'; return ;;
     esac
-    case $1 in tier_*|role_*|launchcmd_*|readypattern_*|modelcmd_*) printf 'machine\n'; return ;; esac
     if [ -n "$UI_MANAGED" ]; then printf 'project\n'; else printf 'machine\n'; fi
 }
 ui_cfg_file() {
@@ -451,7 +450,7 @@ ui_cols() {
 }
 
 ui_build_settings() {
-    for _ui_sec in general watchman saving models fleet expert; do
+    for _ui_sec in general watchman saving fleet expert; do
         ui_add - ""
         ui_add - "  $UI_ACC$(t "cfg_sec_$_ui_sec")$UI_OFF"
         config_table > "${UI_TMP}.ct"
@@ -459,20 +458,6 @@ ui_build_settings() {
             [ "$_ui_s" = "$_ui_sec" ] || continue
             ui_cfg_row "$_ui_k" "$(t "cfg_label_$_ui_k")"
         done < "${UI_TMP}.ct"
-        if [ "$_ui_sec" = models ]; then
-            for _ui_tier in cheap capable strong; do
-                ui_cfg_row "tier_$_ui_tier" "$(t "ui_tier_$_ui_tier")"
-            done
-            for _ui_rk in $(config_family_keys role_ "$UI_ROOT"); do
-                ui_cfg_row "$_ui_rk" "$_ui_rk"
-            done
-        fi
-        if [ "$_ui_sec" = expert ]; then
-            for _ui_p in launchcmd_ readypattern_ modelcmd_; do
-                for _ui_fk in $(config_family_keys "$_ui_p" "$UI_ROOT"); do ui_cfg_row "$_ui_fk" "$_ui_fk"; done
-            done
-            ui_add - "  $UI_DIM$(t ui_expert_hint)$UI_OFF"
-        fi
     done
 }
 
@@ -549,9 +534,7 @@ ui_main_lines() {
     _ui_k=$(ui_key_at "$UI_SEL")
     case $_ui_k in cfg:*)
         _ui_ck=${_ui_k#cfg:}
-        _ui_fam=$(config_family "$_ui_ck")
-        if [ -n "$_ui_fam" ]; then _ui_desc=$(t "cfg_fam_${_ui_fam%_}")
-        else _ui_desc=$(t "cfg_desc_$_ui_ck"); fi
+        _ui_desc=$(t "cfg_desc_$_ui_ck")
         _ui_rows=$((_ui_bh - 5)) ;;
     esac
     printf '%s\n' "$UI_LINES" | awk -v top="$UI_TOP" -v n="$_ui_rows" -v sel="$UI_SEL" \
@@ -752,9 +735,6 @@ ui_edit_cfg() {
             done)
             ui_dlg_open value "$(t "cfg_label_$_ui_k")" "$_ui_items" "$_ui_k" ;;
         *)
-            case $_ui_k in
-                tier_*|role_*) ui_external cmd_roles_set "$_ui_k"; return 0 ;;
-            esac
             ui_prompt "$_ui_k" ""
             [ -n "$UI_INPUT" ] || return 0
             if config_known "$_ui_k" && ! config_valid "$_ui_k" "$UI_INPUT"; then

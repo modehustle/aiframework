@@ -22,10 +22,6 @@ M_ui_projects_empty='注册表为空——在项目里运行 fraim init 即可�
 M_ui_project_gone='目录已不存在'
 M_ui_act_register='把这个项目加入注册表'
 M_ui_registered='项目已加入注册表'
-M_ui_tier_cheap='经济型模型'
-M_ui_tier_capable='均衡型模型'
-M_ui_tier_strong='强力型模型'
-M_ui_expert_hint='在舰队中启动智能体——fraim config set --machine launchcmd_<agent> "…"'
 
 M_ui_act_status='扫描项目'
 M_ui_act_status_hint='哨兵的完整判定'

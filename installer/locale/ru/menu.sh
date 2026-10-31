@@ -28,10 +28,6 @@ M_ui_projects_empty='реестр пуст — fraim init в проекте до
 M_ui_project_gone='каталог пропал'
 M_ui_act_register='Добавить этот проект в реестр'
 M_ui_registered='проект добавлен в реестр'
-M_ui_tier_cheap='Дешёвые модели'
-M_ui_tier_capable='Средние модели'
-M_ui_tier_strong='Сильные модели'
-M_ui_expert_hint='Запуск агентов во флоте: fraim config set --machine launchcmd_<агент> "…"'
 
 M_ui_act_status='Скан проекта'
 M_ui_act_status_hint='вердикт сторожа целиком'

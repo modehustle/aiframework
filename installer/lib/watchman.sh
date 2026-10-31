@@ -213,13 +213,13 @@ wm_check_dirty() {
 
 # 4f. Parallel checkouts. Until the fleet appeared, «the project» and «the directory» were
 #     the same thing, and every other check in this file still assumes it: they read
-#     $_root and nothing else. One `git worktree add` — by hand, or by an ADE creating a
-#     checkout per task — and the verdict describes one directory while the work happens
+#     $_root and nothing else. One `git worktree add` — by hand, by a harness giving its
+#     subagent a worktree, or by `fraim dispatch prepare` — and the verdict describes one
+#     directory while the work happens
 #     in another. That is drift of exactly the kind this file exists to catch, on a layer
 #     that did not exist when it was written.
 #
-#     The register of checkouts is git itself, not the ADE. That matters twice: the answer
-#     stays true when the runtime is closed or was never installed, and it costs no
+#     The register of checkouts is git itself, whoever made them: the answer costs no
 #     dependency — git already keeps this list, so there is nothing to keep in sync (A3).
 wm_check_worktrees() {
     _root=$1
@@ -250,36 +250,6 @@ wm_check_worktrees() {
     wm_add worktree info \
         "$(tp "$_wt_n" wm_worktrees names="$_wt_names")" \
         "fraim fleet"
-    return 0
-}
-
-# 4g. The fleet runtime, when there is one. Read-only, offline, no model: the same contract
-#     as every other check here (SCHEDULING.md). An environment that is installed but not
-#     running is silence, not a finding — whether it runs is the operator's business (C1).
-#
-#     The one thing worth saying out loud is a scheduled free-form prompt against this
-#     project. It is not forbidden and we do not touch it, but it explains drift that
-#     otherwise looks causeless: code appears in the morning and nothing in the git log
-#     says who asked for it. A scheduled watchman is the opposite case and stays silent —
-#     that is layer 2 of SCHEDULING.md working as designed.
-wm_check_ade() {
-    _root=$1
-    _ade_det=$(ade_detect)
-    [ -n "$_ade_det" ] || return 0
-    _ade_old_ifs=$IFS
-    IFS='
-'
-    for _ade_row in $_ade_det; do
-        _ade_label=$(printf '%s' "$_ade_row" | cut -f2)
-        _ade_cmd=$(printf '%s' "$_ade_row" | cut -f3)
-        ade_alive "$_ade_cmd" || continue
-        _ade_a=$(ade_automations "$_ade_cmd" "$_root")
-        [ "$(printf '%s' "$_ade_a" | cut -f1)" = 1 ] || continue
-        [ "$(printf '%s' "$_ade_a" | cut -f2)" = 0 ] || continue
-        wm_add ade-automation info \
-            "$(t wm_ade label="$_ade_label")" "fraim fleet"
-    done
-    IFS=$_ade_old_ifs
     return 0
 }
 
@@ -509,7 +479,6 @@ wm_run() {
     config_threshold_on unpushed_threshold "$_root" && wm_check_remote "$_root"
     config_is_on check_dirty          "$_root" && wm_check_dirty "$_root"
     config_is_on check_parallel       "$_root" && wm_check_worktrees "$_root"
-    config_is_on check_parallel       "$_root" && wm_check_ade "$_root"
     wm_check_queue
     config_threshold_on foundation_lag_commits "$_root" && wm_check_foundation "$_root"
     config_threshold_on lessons_lag_commits "$_root" && wm_check_lessons "$_root"

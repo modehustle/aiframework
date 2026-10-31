@@ -16,7 +16,6 @@ M_wm_remote_unpushed_other='リモートのコピーに送られていないセ�
 M_wm_dirty_other='最後のセーブポイント以降に、基盤と ai/ のファイルが {n} 個変更されています'
 
 M_wm_worktrees_other='並列のチェックアウト {n} 個: {names}'
-M_wm_ade='{label}: スケジュール実行のエージェントがこのプロジェクトで作業しています'
 
 M_wm_queue_other='ボード上の未完了のタスク {n} 件'
 

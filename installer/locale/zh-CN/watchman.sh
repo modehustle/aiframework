@@ -16,7 +16,6 @@ M_wm_remote_unpushed_other='{n} 个保存点尚未推送到远程副本'
 M_wm_dirty_other='基础文档和 ai/ 中有 {n} 个文件在上个保存点之后被改动'
 
 M_wm_worktrees_other='{n} 个并行检出——{names}'
-M_wm_ade='{label}——有定时运行的智能体在处理这个项目'
 
 M_wm_queue_other='看板上有 {n} 个未关闭的任务'
 

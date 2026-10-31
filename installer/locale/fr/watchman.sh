@@ -21,7 +21,6 @@ M_wm_dirty_other='{n} fichiers du socle et de ai/ modifiés depuis le dernier po
 
 M_wm_worktrees_one='{n} checkout parallèle : {names}'
 M_wm_worktrees_other='{n} checkouts parallèles : {names}'
-M_wm_ade='{label} : un agent planifié travaille sur ce projet'
 
 M_wm_queue_one='{n} tâche ouverte sur le tableau'
 M_wm_queue_other='{n} tâches ouvertes sur le tableau'

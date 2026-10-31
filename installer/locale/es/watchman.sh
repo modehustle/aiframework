@@ -21,7 +21,6 @@ M_wm_dirty_other='{n} archivos de los cimientos y de ai/ cambiaron desde el últ
 
 M_wm_worktrees_one='{n} checkout en paralelo: {names}'
 M_wm_worktrees_other='{n} checkouts en paralelo: {names}'
-M_wm_ade='{label}: un agente programado trabaja en este proyecto'
 
 M_wm_queue_one='{n} tarea abierta en el tablero'
 M_wm_queue_other='{n} tareas abiertas en el tablero'

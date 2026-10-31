@@ -22,10 +22,6 @@ M_ui_projects_empty='レジストリは空です。プロジェクト内で frai
 M_ui_project_gone='ディレクトリがなくなっています'
 M_ui_act_register='このプロジェクトをレジストリに追加'
 M_ui_registered='プロジェクトをレジストリに追加しました'
-M_ui_tier_cheap='安価なモデル'
-M_ui_tier_capable='中位のモデル'
-M_ui_tier_strong='高性能なモデル'
-M_ui_expert_hint='フリートでのエージェントの起動: fraim config set --machine launchcmd_<agent> "…"'
 
 M_ui_act_status='プロジェクトをスキャン'
 M_ui_act_status_hint='見張り番の判定をすべて表示'

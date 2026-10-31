@@ -21,7 +21,6 @@ M_wm_dirty_other='{n} files of the foundation and ai/ changed since the last sav
 
 M_wm_worktrees_one='{n} parallel checkout: {names}'
 M_wm_worktrees_other='{n} parallel checkouts: {names}'
-M_wm_ade='{label}: a scheduled agent is working on this project'
 
 M_wm_queue_one='{n} open task on the board'
 M_wm_queue_other='{n} open tasks on the board'

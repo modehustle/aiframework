@@ -25,10 +25,6 @@ M_ui_projects_empty='le registre est vide — fraim init dans un projet l'\''y a
 M_ui_project_gone='le répertoire a disparu'
 M_ui_act_register='Ajouter ce projet au registre'
 M_ui_registered='projet ajouté au registre'
-M_ui_tier_cheap='Modèles économiques'
-M_ui_tier_capable='Modèles compétents'
-M_ui_tier_strong='Modèles puissants'
-M_ui_expert_hint='Lancement des agents dans la flotte : fraim config set --machine launchcmd_<agent> "…"'
 
 M_ui_act_status='Analyser le projet'
 M_ui_act_status_hint='le verdict complet de la sentinelle'
