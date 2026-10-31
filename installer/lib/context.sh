@@ -257,3 +257,28 @@ context_install() {
     rm -f "$_tmp" "$_blk"
     return 0
 }
+
+# Take our block out of a file, leaving everything else as it was. A file that held
+# nothing but the block (we created it) is removed. Exit 0 when a block was removed,
+# 1 when there was none — so a caller can report only what it actually changed.
+context_uninstall() {
+    _cu_target=$1
+    [ -f "$_cu_target" ] && grep -qxF "$CTX_BEGIN" "$_cu_target" 2>/dev/null || return 1
+    _cu_tmp="$_cu_target.fraim.$$"
+    awk -v b="$CTX_BEGIN" -v e="$CTX_END" '
+        $0 == b { skipping = 1; next }
+        $0 == e { skipping = 0; next }
+        !skipping { print }
+    ' "$_cu_target" > "$_cu_tmp" || { rm -f "$_cu_tmp"; return 1; }
+    if grep -q '[^[:space:]]' "$_cu_tmp"; then
+        # context_install put one blank line before the block it appended; drop the
+        # trailing blank lines so a round trip leaves the human's file as it was.
+        awk '{ line[NR] = $0 } /[^[:space:]]/ { last = NR }
+             END { for (i = 1; i <= last; i++) print line[i] }' "$_cu_tmp" > "$_cu_target.fraim.out.$$" &&
+            mv "$_cu_target.fraim.out.$$" "$_cu_target"
+        rm -f "$_cu_tmp"
+    else
+        rm -f "$_cu_tmp" "$_cu_target"
+    fi
+    return 0
+}

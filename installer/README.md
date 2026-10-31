@@ -147,39 +147,93 @@ fraim init
 
 ## Что куда ставится
 
-Один артефакт — каталог формата Agent Skills — закрывает все P0-харнесы. Разница
-между ними сводится к целевому каталогу:
+Один артефакт — каталог формата Agent Skills — закрывает все харнесы. Разница
+между ними сводится к целевому каталогу и к файлу глобальных правил.
 
-| Харнес | Скиллы | Контекстный блок |
-|---|---|---|
-| Hermes Agent | `~/.hermes/skills/` | `~/.hermes/AGENTS.md` |
-| Claude Code | `~/.claude/skills/` | `~/.claude/CLAUDE.md` |
-| Codex | `~/.codex/skills/` | `~/.codex/AGENTS.md` |
-| omp | `~/.omp/skills/` | `~/.omp/AGENTS.md` |
-| pi | `~/.pi/skills/` | `~/.pi/AGENTS.md` |
-| Devin CLI | `~/.devin/skills/` | `~/.devin/AGENTS.md` |
-| Antigravity | `~/.gemini/config/skills/` | `~/.gemini/AGENTS.md` |
-| OpenCode | `~/.config/opencode/skills/` | `~/.config/opencode/AGENTS.md` |
+**Одна копия в общем каталоге.** `~/.agents/skills` — пользовательский каталог открытого
+стандарта, и большинство харнесов читают его рядом со своим. Вторую копию того же скилла
+часть из них не прощает: Gemini CLI показывает конфликт на экране, pi, omp и Hermes пишут
+предупреждение. Поэтому харнес, который читает `~/.agents/skills`, получает скиллы **только
+туда**; свой каталог — только у тех, кто общий не читает.
 
-У Antigravity обе клетки нетипичные, и обе намеренные: бинарник называется `agy`, а не
-`antigravity`; каталог скиллов — `~/.gemini/config/skills/`, единственный, который читают
-все три его обличья (IDE, CLI и сам агент); блок контекста уходит в `~/.gemini/AGENTS.md`,
-а не в соседний `GEMINI.md` — тот же каталог использует Gemini CLI, и `GEMINI.md` он
-переписывает как свой. Признаком присутствия служит `~/.gemini/config`, а не `~/.gemini`:
-голый `~/.gemini` — это Gemini CLI, другой продукт.
+| Харнес | Класс | Скиллы | Контекстный блок |
+|---|---|---|---|
+| Hermes Agent | CLI-агент | `~/.hermes/skills/` | — (см. ниже) |
+| Claude Code | CLI + IDE + десктоп | `~/.claude/skills/` | `~/.claude/CLAUDE.md` |
+| Codex | CLI + IDE + десктоп | `~/.agents/skills/` | `~/.codex/AGENTS.md` |
+| omp | CLI | `~/.agents/skills/` | `~/.omp/agent/AGENTS.md` |
+| pi | CLI | `~/.agents/skills/` | `~/.pi/agent/AGENTS.md` |
+| Devin CLI (и Devin Desktop) | CLI + десктоп | `~/.agents/skills/` | `~/.config/devin/AGENTS.md` |
+| Antigravity | IDE + CLI | `~/.gemini/config/skills/` и `~/.gemini/antigravity-cli/skills/` | `~/.gemini/AGENTS.md` |
+| OpenCode | CLI (TUI) | `~/.agents/skills/` | `~/.config/opencode/AGENTS.md` |
+| Gemini CLI | CLI | `~/.agents/skills/` | `~/.gemini/GEMINI.md` |
+| Qwen Code | CLI | `~/.agents/skills/` | `~/.qwen/AGENTS.md` |
+| Kimi Code | CLI | `~/.agents/skills/` | `~/.agents/AGENTS.md` |
+| Mistral Vibe | CLI | `~/.agents/skills/` | `~/.vibe/AGENTS.md` |
+| Goose | CLI + десктоп | `~/.agents/skills/` | `~/.agents/AGENTS.md` |
+| Crush | CLI (TUI) | `~/.agents/skills/` | `~/.config/crush/CRUSH.md` |
+| Factory Droid | CLI | `~/.agents/skills/` | `~/.factory/AGENTS.md` |
+| Grok Build | CLI | `~/.grok/skills/` | `~/.grok/AGENTS.md` |
+| OpenClaw | персональный агент (мессенджеры) | `~/.agents/skills/` | — (см. ниже) |
+| GitHub Copilot | VS Code + CLI | `~/.agents/skills/` | `~/.copilot/copilot-instructions.md` |
+| Cursor | IDE + CLI | `~/.agents/skills/` | — (правила только в настройках) |
+| Cline | расширение VS Code + CLI | `~/.agents/skills/` | `~/.agents/AGENTS.md` |
+| Kilo Code | расширение VS Code + CLI | `~/.agents/skills/` | `~/.config/kilo/AGENTS.md` |
+| Zed | редактор | `~/.agents/skills/` | `~/.config/zed/AGENTS.md` |
+| Warp | терминал с агентом | `~/.agents/skills/` | `~/.agents/AGENTS.md` |
+| Augment | расширение IDE + CLI `auggie` | `~/.agents/skills/` | `~/.augment/rules/fraim.md` |
+| Kiro | IDE + CLI | `~/.kiro/skills/` | `~/.kiro/steering/fraim.md` |
+| Junie (JetBrains) | плагин IDE + CLI | `~/.agents/skills/` | — (глобального файла нет) |
+| Continue | расширение IDE + CLI `cn` | `~/.continue/skills/` | `~/.continue/rules/fraim.md` |
+| ZCode (Z.ai, GLM) | десктоп | `~/.zcode/skills/` | `~/.zcode/AGENTS.md` |
 
-OpenCode живёт в `~/.config/opencode/`, и признак присутствия — именно этот каталог, а не
-голый `~/.config`, который есть на любой машине. Каталог скиллов — `skills/` во
-множественном числе (на сторонних страницах ещё встречается старый `skill/`). OpenCode
-вдобавок читает `~/.claude/skills`, поэтому при стоящем рядом Claude Code наши скиллы он
-находит дважды под теми же именами — текст одинаковый, так что это безвредно. И он читает
-`~/.claude/CLAUDE.md` только пока нет своего `AGENTS.md`: файл, который заводит наш блок,
-этот запасной путь закрывает — свои глобальные правила человеку тогда стоит держать в
-`~/.config/opencode/AGENTS.md`.
+`~/.agents/AGENTS.md` так же общий: его читают Cline, Warp, Goose и Kimi Code, поэтому
+блок там один на всех. Где харнес читает **каталог** правил, а не один файл (Kiro, Augment,
+Continue), мы кладём туда свой файл `fraim.md`, а не блок в чужой.
 
-Харнес считается установленным, если его бинарник есть в `PATH` **или** существует его
-домашний каталог. Оба признака нужны: харнес бывает поставлен, но ещё не в `PATH` этой
-сессии, и бывает в `PATH` до первого запуска.
+Двойное чтение остаётся там, где харнес читает ещё и чужой собственный каталог:
+`~/.claude/skills` читают Kilo, Cursor, Crush, Goose, Grok, Warp, Augment, OpenCode и Copilot
+в VS Code, а `~/.claude/CLAUDE.md` — Devin, Kilo и Grok. Текст одинаковый, так что любая
+копия верна.
+
+У Antigravity клетки нетипичные, и обе намеренные: бинарник называется `agy`, а не
+`antigravity`; скиллы — в два каталога, потому что IDE читает `~/.gemini/config/skills/`, а
+CLI — `~/.gemini/antigravity-cli/skills/` (так же ставит и гугловский `agents-cli`); блок —
+в `~/.gemini/AGENTS.md`, а не в соседний `GEMINI.md`: тот принадлежит Gemini CLI, и его
+строка пишет туда сама. Каталог `~/.gemini` общий у двух продуктов, поэтому Antigravity
+опознаётся по `~/.gemini/config`, а Gemini CLI — по бинарнику `gemini` или по
+`~/.gemini/settings.json`, который пишет только он.
+
+У Hermes нет глобального `AGENTS.md`: всегда грузится только `~/.hermes/SOUL.md` — его
+«личность», которую он заводит сам, и туда мы не пишем. У OpenClaw всегда грузится
+`AGENTS.md` его рабочего пространства, которое заводит его онбординг по шаблону, — туда
+тоже не пишем. Обоим остаются скиллы, мастер-скилл `fraim` срабатывает по описанию.
+
+Прежние версии клали файлы туда, где харнес их не читает: `~/.pi/`, `~/.omp/` (pi и omp
+живут на уровень глубже, в `…/agent/`; на живой машине pi действительно не нашёл
+`/skill:orient`), `~/.devin/` (Devin CLI живёт в `~/.config/devin/`; наши скиллы он видел
+только через копию Claude Code в `~/.claude/skills`, которую читает по умолчанию),
+`~/.hermes/AGENTS.md`, а ещё `~/.codex/skills/` (у Codex он устарел) и
+`~/.config/opencode/skills/`. `fraim init` забирает оттуда **только своё** — скиллы с
+`source: fraim` и блок между нашими маркерами; чужие скиллы и текст человека остаются.
+
+**Проверено вживую** (31.10.2026): 19 харнесов поставлены из npm/PyPI в чистый `HOME`, там
+запущен `fraim init`, и сам агент показал, что видит скилл `orient` и наш блок — своей
+командой (`skills list`, `debug skill`, `config`) или в системном промпте, который он отправил
+на подставной локальный сервер моделей. Так проверены Claude Code, Codex, pi, omp, OpenCode,
+Kilo Code, Gemini CLI, Qwen Code, Kimi Code, Mistral Vibe, Hermes, OpenClaw, Copilot CLI,
+Cline, Crush, Augment, Continue, Junie и Factory Droid. Не проверить из облачной среды (закрытые
+сайты загрузки): Cursor, Zed, Warp, Kiro, Devin, Antigravity, ZCode, Goose, Grok Build.
+
+Сознательно не поддержаны: Roo Code (закрыт 15 мая 2026, репозиторий в архиве),
+Windsurf (Cascade стал Devin Desktop, который делит `~/.config/devin` со строкой Devin),
+Amp и Trae (пути не удалось подтвердить первоисточником).
+
+Харнес считается установленным, если один из его бинарников есть в `PATH` **или**
+существует его домашний каталог. Оба признака нужны: харнес бывает поставлен, но ещё не в
+`PATH` этой сессии, и бывает в `PATH` до первого запуска. Домашний каталог — родитель
+каталога скиллов; строка называет свои пути явно, когда родитель общий (`~/.agents`,
+`~/.gemini`).
 
 Ставятся только свои скиллы: каждый помечен `source: fraim` во фронтматтере, поэтому
 `init` подчищает устаревшие наши и **не трогает** чужие рядом.

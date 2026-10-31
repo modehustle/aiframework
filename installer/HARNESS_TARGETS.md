@@ -4,9 +4,14 @@
 > в него встроиться, и в какой из них имеет смысл целиться нам.
 > Срез популярности — рейтинг приложений OpenRouter по расходу токенов (август 2026),
 > плюс Devin CLI и Devin Desktop, которых в топ-10 нет, но которые важны как класс.
+>
+> **Октябрь 2026: список расширен до 28 харнесов, пути сверены по первоисточникам.** Раздел
+> [Срез октябрь 2026](#срез-октябрь-2026) действует поверх всего, что ниже: часть путей
+> августовского среза оказалась неверной (pi, omp, Devin, Hermes, Antigravity CLI).
 
 ## Оглавление
 
+- [Срез октябрь 2026](#срез-октябрь-2026)
 - [Главный вывод](#главный-вывод)
 - [Что мы вообще встраиваем](#что-мы-вообще-встраиваем)
 - [Сводная таблица](#сводная-таблица)
@@ -14,6 +19,195 @@
 - [Рекомендация по инсталлеру](#рекомендация-по-инсталлеру)
 - [Что это меняет в репозитории](#что-это-меняет-в-репозитории)
 - [Открытые вопросы](#открытые-вопросы)
+
+---
+
+## Срез октябрь 2026
+
+### Зачем
+
+Августовский список был почти целиком терминальным: из восьми харнесов только Antigravity —
+IDE. Тем временем Agent Skills приняли редакторы и расширения (Cursor, Copilot, Cline, Kilo
+Code, Zed, Kiro, Junie, Augment, Continue), терминал Warp и персональный агент OpenClaw, а у
+открытого стандарта появился общий пользовательский каталог `~/.agents/skills`.
+
+### Популярность
+
+openrouter.ai из этой среды недоступен, поэтому срез собран по выдаче поиска на неделю
+с 19 октября 2026 — неполный и с разными датами снимков:
+
+- все приложения: Codex (~2.62T токенов), Claude Code (~2.13T), Hermes Agent (~731B), pi
+  (~582B); Kilo Code — №3 в категориях Coding Agents и CLI Agents;
+- в верхних ~25 видны ещё OpenClaw (~714B), Cline (~139B, №9 CLI Agents), Qwen Code
+  (~81B), Goose (~13.5B), Crush (~2.9B);
+- Cursor, Copilot, Zed, Kiro, Junie, Augment, Warp ходят к моделям не через OpenRouter и в
+  его рейтинге не видны — но это и есть та не-терминальная половина рынка, ради которой
+  список расширяется.
+
+### Главное правило: одна копия в `~/.agents/skills`
+
+Его читают Codex, pi, omp, OpenCode, Devin, Gemini CLI, Qwen Code, Kimi Code, Mistral Vibe,
+Goose, Crush, OpenClaw, Copilot (CLI и VS Code), Cursor, Cline, Kilo Code, Zed, Warp и
+Augment. Вторую копию того же имени часть харнесов не прощает: Gemini CLI показывает
+«Skill conflict detected» на экране, pi, omp и Hermes пишут предупреждение, Crush и OpenCode
+молча берут одну из двух (живая проверка уточнила: pi предупреждает на стартовом экране,
+omp молча отдаёт предпочтение своей копии, Codex показывает модели обе). Поэтому каждый, кто читает общий каталог, получает скиллы только
+туда. Свой каталог — у тех, кто общий не читает: Claude Code, Hermes, Antigravity, Grok
+Build, Kiro, Continue, ZCode.
+
+Так же общий `~/.agents/AGENTS.md`: его читают Cline, Warp, Goose и Kimi Code.
+
+### Таблица
+
+| Харнес | Класс | Скиллы | Глобальные правила | Опознаётся по | Модели |
+|---|---|---|---|---|---|
+| Hermes Agent | CLI-агент | `~/.hermes/skills` | нет (только `SOUL.md`) | `hermes`, `~/.hermes` | — |
+| Claude Code | CLI + IDE + десктоп | `~/.claude/skills` | `~/.claude/CLAUDE.md` | `claude`, `~/.claude` | каталог в бинарнике |
+| Codex | CLI + IDE + десктоп | `~/.agents/skills` | `~/.codex/AGENTS.md` | `codex`, `~/.codex` | `~/.codex/models_cache.json` |
+| omp | CLI | `~/.agents/skills` | `~/.omp/agent/AGENTS.md` | `omp`, `~/.omp/agent` | — |
+| pi | CLI | `~/.agents/skills` | `~/.pi/agent/AGENTS.md` | `pi`, `~/.pi/agent` | `pi --list-models` |
+| Devin CLI / Desktop | CLI + десктоп | `~/.agents/skills` | `~/.config/devin/AGENTS.md` | `devin`, `~/.config/devin` | `devin models list` |
+| Antigravity | IDE + CLI | `~/.gemini/config/skills` + `~/.gemini/antigravity-cli/skills` | `~/.gemini/AGENTS.md` | `agy`, `~/.gemini/config` | — |
+| OpenCode | CLI (TUI) | `~/.agents/skills` | `~/.config/opencode/AGENTS.md` | `opencode`, `~/.config/opencode` | `opencode models` |
+| Gemini CLI | CLI | `~/.agents/skills` | `~/.gemini/GEMINI.md` | `gemini`, `~/.gemini/settings.json` | — |
+| Qwen Code | CLI | `~/.agents/skills` | `~/.qwen/AGENTS.md` | `qwen`, `~/.qwen` | — |
+| Kimi Code | CLI | `~/.agents/skills` | `~/.agents/AGENTS.md` | `kimi`, `~/.kimi-code` | — |
+| Mistral Vibe | CLI | `~/.agents/skills` | `~/.vibe/AGENTS.md` | `vibe`, `~/.vibe` | — |
+| Goose | CLI + десктоп | `~/.agents/skills` | `~/.agents/AGENTS.md` | `goose`, `~/.config/goose` | — |
+| Crush | CLI (TUI) | `~/.agents/skills` | `~/.config/crush/CRUSH.md` | `crush`, `~/.config/crush` | `crush models` |
+| Factory Droid | CLI | `~/.agents/skills` | `~/.factory/AGENTS.md` | `droid`, `~/.factory` | — |
+| Grok Build | CLI | `~/.grok/skills` | `~/.grok/AGENTS.md` | `grok`, `~/.grok` | `grok models` |
+| OpenClaw | персональный агент | `~/.agents/skills` | нет (workspace `AGENTS.md` — его) | `openclaw`, `~/.openclaw` | — |
+| GitHub Copilot | VS Code + CLI | `~/.agents/skills` | `~/.copilot/copilot-instructions.md` | `copilot`, `~/.copilot` | — |
+| Cursor | IDE + CLI | `~/.agents/skills` | нет (только в настройках) | `cursor-agent`, `cursor`, `~/.cursor` | `cursor-agent models` |
+| Cline | VS Code + CLI | `~/.agents/skills` | `~/.agents/AGENTS.md` | `cline`, `~/.cline` | — |
+| Kilo Code | VS Code + CLI | `~/.agents/skills` | `~/.config/kilo/AGENTS.md` | `kilo`, `~/.config/kilo`, `~/.kilo`, `~/.kilocode` | `kilo models` |
+| Zed | редактор | `~/.agents/skills` | `~/.config/zed/AGENTS.md` | `zed`, `~/.config/zed` | — |
+| Warp | терминал | `~/.agents/skills` | `~/.agents/AGENTS.md` | `warp`, `~/.warp`, `~/.config/warp-terminal` | — |
+| Augment | IDE + `auggie` | `~/.agents/skills` | `~/.augment/rules/fraim.md` | `auggie`, `~/.augment` | — |
+| Kiro | IDE + CLI | `~/.kiro/skills` | `~/.kiro/steering/fraim.md` | `kiro-cli`, `~/.kiro` | — |
+| Junie | плагин JetBrains + CLI | `~/.agents/skills` | нет (проверено вживую) | `junie`, `~/.junie` | — |
+| Continue | IDE + `cn` | `~/.continue/skills` | `~/.continue/rules/fraim.md` | `cn`, `~/.continue` | — |
+| ZCode (Z.ai, GLM) | десктоп | `~/.zcode/skills` | `~/.zcode/AGENTS.md` | `~/.zcode`, `/Applications/ZCode.app` | — |
+
+«Модели» — откуда выбор ролей (`fraim roles`) берёт список; прочерк значит «введи сам».
+Запуск воркера флота с моделью в argv по-прежнему встроен только для Devin и OpenCode:
+для остальных `--model` в интерактивном режиме либо не существует (Crush, Vibe, Goose),
+либо не проверен вживую, а неверный argv — это задача, которая молча не стартовала.
+
+### Живая проверка (31 октября 2026)
+
+Документация врёт и устаревает, поэтому 19 харнесов, которые ставятся из npm и PyPI,
+проверены настоящей установкой: пакет — в отдельный префикс, чистый `HOME`, настоящий
+`fraim init`, а потом вопрос самому агенту. Где агент без ключа не показывает список
+скиллов, подставлялся локальный сервер, притворяющийся моделью, и читался первый запрос,
+который агент отправил: в нём настоящий системный промпт со скиллами и правилами.
+Контрольные прогоны убирали по одному каталогу, чтобы убедиться, откуда именно читается.
+
+| Харнес (версия) | Как спросили | Скиллы | Блок |
+|---|---|---|---|
+| Claude Code 2.1.316 | запрос к подставному серверу | ✓ `~/.claude/skills` | ✓ `~/.claude/CLAUDE.md` |
+| Codex 0.166.0 | `codex debug prompt-input` | ✓ `~/.agents/skills` | ✓ `~/.codex/AGENTS.md` |
+| pi 1.4.0 | RPC `get_commands`, стартовый экран | ✓ `~/.agents/skills` | ✓ `~/.pi/agent/AGENTS.md` |
+| omp 18.14.1 | `omp skill list -g --json`, RPC | ✓ `~/.agents/skills` | ✓ `~/.omp/agent/AGENTS.md` |
+| OpenCode 1.19.5 | `opencode debug skill`, подставной провайдер | ✓ `~/.agents/skills` | ✓ `~/.config/opencode/AGENTS.md` |
+| Kilo Code 7.8.18 | `kilo debug skill`, подставной провайдер | ✓ `~/.agents/skills` | ✓ `~/.config/kilo/AGENTS.md` |
+| Gemini CLI 0.66.0 | `gemini skills list`, `/memory show` | ✓ `~/.agents/skills` | ✓ `~/.gemini/GEMINI.md` |
+| Qwen Code 0.26.4 | `-o stream-json`, подставной сервер | ✓ `~/.agents/skills` | ✓ `~/.qwen/AGENTS.md` |
+| Kimi Code 2.4.1 | подставной сервер | ✓ `~/.agents/skills` | ✓ `~/.agents/AGENTS.md` |
+| Mistral Vibe 3.0.4 | подставной сервер | ✓ `~/.agents/skills` | ✓ `~/.vibe/AGENTS.md` |
+| Hermes 0.19.0 | `hermes skills list`, подставной сервер | ✓ `~/.hermes/skills` | — не пишем |
+| OpenClaw 2026.9.2 | `openclaw skills info orient` | ✓ `~/.agents/skills` | — не пишем |
+| Copilot CLI 1.0.105 | `copilot skill list`, `copilot instruction list` | ✓ `~/.agents/skills` | ✓ `~/.copilot/copilot-instructions.md` |
+| Cline 3.0.74 | `cline config --json`, подставной сервер | ✓ `~/.agents/skills` | ✓ `~/.agents/AGENTS.md` |
+| Crush 0.99.0 | подставной провайдер | ✓ (и `~/.claude/skills`) | ✓ `~/.config/crush/CRUSH.md` |
+| Augment 0.36.0 | подставной сервер | ✓ (и `~/.claude/skills`) | ✓ `~/.augment/rules/fraim.md`, всегда |
+| Continue cn 1.5.47 | подставной сервер | ✓ `~/.continue/skills` | ✓ `~/.continue/rules/fraim.md`, всегда |
+| Factory Droid 1.1.0 | `droid exec`, подставная модель | ✓ `~/.agents/skills` | ✓ `~/.factory/AGENTS.md` |
+| Junie 1468.30 | TUI, подставная модель | ✓ | ✗ `~/.junie/AGENTS.md` не грузится |
+
+Что проверка изменила: Junie не читает пользовательский `AGENTS.md` вообще (проектный —
+читает), блок ему больше не пишем; Junie и Factory Droid читают общий `~/.agents/skills`
+(оба проверены вживую, при двух копиях скилл виден один раз), поэтому получают скиллы туда. Остальные 17 строк подтвердились как есть.
+
+Что всплыло попутно:
+- **Hermes обрезает описание скилла до 57 знаков** в списке, который видит модель
+  (`make-task: Only when the human wants work set aside for later or a p...`). Слова,
+  по которым скилл должен срабатывать, после 57-го знака до модели не доходят.
+- **OpenClaw с профилем** (`--profile`, `--dev`, свой `OPENCLAW_STATE_DIR`) общий каталог не
+  читает — скиллы видны только в состоянии по умолчанию.
+- **Gemini CLI** заводит `~/.gemini/settings.json` только когда человек выбрал способ входа;
+  до этого его опознаёт лишь бинарник `gemini` в `PATH`.
+- **OpenCode и Kilo** при стоящем рядом Claude Code видят каждый скилл дважды и пишут в лог
+  12 предупреждений «duplicate skill name» на старте — текст одинаковый, работе не мешает.
+- **omp** из npm не запускается без `bun` в `PATH`, хотя опознаётся и ставится нормально.
+
+Не проверить из облачной среды — закрытые сайты загрузки: Cursor, Zed, Warp, Kiro, Devin,
+Antigravity, ZCode, Goose, Grok Build. Для них строки по-прежнему держатся на документации.
+
+### Что было неверно в августовском срезе
+
+- **pi** читает `~/.pi/agent/skills`, `~/.agents/skills` и `~/.pi/agent/AGENTS.md`, а не
+  `~/.pi/…` (`~/.claude/skills` и `~/.codex/skills` он перестал читать в 0.50, январь 2026).
+  Подтверждено на живой машине: `/skill:orient` pi не нашёл. **omp** — то же самое, `~/.omp/agent/`.
+- **Devin CLI** живёт в `~/.config/devin/`, а не в `~/.devin/` (тот — у Devin Local). Наши
+  скиллы он при этом видел — через копию Claude Code: Devin CLI по умолчанию читает
+  `~/.claude/skills` и `~/.claude/CLAUDE.md`. Без Claude Code на машине не видел бы.
+- **Hermes**: `~/.hermes/AGENTS.md` грузится, только когда рабочий каталог — `~/.hermes`.
+  Всегда грузится лишь `SOUL.md` — «личность», которую Hermes заводит сам.
+- **Antigravity**: `~/.gemini/config/skills` читают IDE и Antigravity 2.0, а CLI `agy` —
+  `~/.gemini/antigravity-cli/skills`. Ставим в оба, как и гугловский `agents-cli`.
+- **Codex**: `~/.codex/skills` помечен в исходниках устаревшим; основной — `~/.agents/skills`.
+
+`fraim init` забирает наши копии с этих мест сам (только `source: fraim` и блок между
+маркерами).
+
+### Не вошли
+
+- **Roo Code** — закрыт 15 мая 2026, репозиторий в архиве; пользователей отправили в Cline.
+- **Windsurf** — Cascade закрыт 1 июля 2026; преемник Devin Desktop делит `~/.config/devin`
+  со строкой Devin CLI, отдельная строка не нужна.
+- **Amp, Trae** — пути нашлись только во вторичных источниках; добавить, когда подтвердятся.
+
+**ZCode** (агент Z.ai под модели GLM, в августовском срезе — «пропустить»: точки входа не
+нашлось) теперь добавлен: `~/.zcode/AGENTS.md` читается в каждой сессии (пересказ его
+документации в [ripr-swarm#3038](https://github.com/EffortlessMetrics/ripr-swarm/issues/3038)),
+скиллы — `~/.zcode/skills` (два вторичных источника). Сайт zcode.z.ai отсюда недоступен,
+строку надо сверить на машине с ZCode. Сами модели GLM и так работают в Claude Code,
+OpenCode, Kilo Code, Cline и других через GLM Coding Plan — ZCode нужен тем, кто сидит в
+родном приложении Z.ai.
+- **Gemini CLI** в строю, но с 18 июня 2026 он только для Code Assist Standard/Enterprise;
+  частных пользователей Google перевёл на Antigravity CLI.
+
+### Источники (октябрь 2026)
+
+Прочитаны в исходниках или официальной документации на GitHub:
+[codex `host_roots.rs`](https://github.com/openai/codex/blob/main/codex-rs/ext/skills/src/host_roots.rs) ·
+[pi skills.md](https://github.com/badlogic/pi-mono/blob/main/packages/coding-agent/docs/skills.md) ·
+[oh-my-pi `discovery/builtin.ts`](https://github.com/can1357/oh-my-pi/blob/main/packages/coding-agent/src/discovery/builtin.ts) ·
+[hermes `prompt_builder.py`](https://github.com/NousResearch/hermes-agent/blob/main/agent/prompt_builder.py) ·
+[google/agents-cli `_antigravity.py`](https://github.com/google/agents-cli/blob/main/src/google/agents/cli/setup/_antigravity.py) ·
+[gemini-cli skills.md](https://github.com/google-gemini/gemini-cli/blob/main/docs/cli/skills.md) ·
+[qwen-code skills.md](https://github.com/QwenLM/qwen-code/blob/main/docs/users/features/skills.md) ·
+[kimi-code skills.md](https://github.com/MoonshotAI/kimi-code/blob/main/docs/en/customization/skills.md) ·
+[mistral-vibe README](https://github.com/mistralai/mistral-vibe) ·
+[goose `skills/mod.rs`](https://github.com/block/goose/blob/main/crates/goose/src/skills/mod.rs) ·
+[crush README](https://github.com/charmbracelet/crush) ·
+[Factory docs](https://github.com/Factory-AI/factory) ·
+[grok-build user guide](https://github.com/xai-org/grok-build) ·
+[openclaw skills.md](https://github.com/openclaw/openclaw/blob/main/docs/tools/skills.md) ·
+[Copilot CLI reference (github/docs)](https://github.com/github/docs) ·
+[VS Code `chat.agentSkillsLocations`](https://github.com/microsoft/vscode-docs) ·
+[cline `skill-directories.ts`](https://github.com/cline/cline/blob/main/apps/vscode/src/core/storage/skill-directories.ts) ·
+[kilocode `instruction.ts`](https://github.com/Kilo-Org/kilocode) ·
+[zed skills.md](https://github.com/zed-industries/zed/blob/main/docs/src/ai/skills.md) ·
+[warp docs](https://github.com/warpdotdev/docs) ·
+[continue `loadMarkdownSkills.ts`](https://github.com/continuedev/continue) ·
+[Roo-Code (архив)](https://github.com/RooCodeInc/Roo-Code).
+Только по выдаче поиска с официальных страниц (сверить на живой машине): Cursor, Devin,
+Kiro, Junie, Augment, ZCode. Отправная точка для поиска — реестр
+[vercel-labs/skills](https://github.com/vercel-labs/skills/blob/main/docs/agents.md); сам он
+источником не служил и в нескольких строках расходится с первоисточниками.
 
 ---
 
