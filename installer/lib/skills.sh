@@ -22,7 +22,7 @@ fraim_build_dir() { printf '%s/skills\n' "$FRAIM_HOME"; }
 # so the text an agent reads is exactly the text under version control.
 skill_render() {
     _name=$1
-    _src=$(fraim_procedure_file "$_name") || die "нет такой процедуры: $_name"
+    _src=$(fraim_procedure_file "$_name") || die "$(t skills_no_procedure name="$_name")"
     _ver=$(fraim_version)
     _desc=$(fm_get "$_src" description)
     _tier=$(fm_get "$_src" tier)

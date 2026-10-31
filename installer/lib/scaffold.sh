@@ -46,13 +46,13 @@ scaffold_gitignore_extend() {
     done
 
     if [ -z "$_added" ]; then
-        dim "  .gitignore — секреты уже закрыты, не трогаю"
+        dim "  $(t scaf_gitignore_closed)"
     else
         {
-            printf '\n# fraim — секреты не место в истории\n'
+            printf '\n# fraim — secrets do not belong in the history\n'
             for _pat in $_added; do printf '%s\n' "$_pat"; done
         } >> "$_gi" || return 1
-        ok ".gitignore — дописано:$_added"
+        ok "$(t scaf_gitignore_added patterns="$_added")"
     fi
 
     # .gitignore does nothing about a file git already tracks, and this is exactly the
@@ -60,9 +60,9 @@ scaffold_gitignore_extend() {
     if git -C "$_root" rev-parse --git-dir >/dev/null 2>&1; then
         _tracked=$(git -C "$_root" ls-files -- '.env' '.env.*' 2>/dev/null | grep -v '\.example$' | head -3)
         if [ -n "$_tracked" ]; then
-            warn ".env уже в истории git — .gitignore его оттуда не убирает"
+            warn "$(t scaf_env_tracked)"
             printf '%s\n' "$_tracked" | while read -r _f; do dim "    $_f"; done
-            dim "    смени секреты и убери файл из индекса; чистка истории — отдельная работа"
+            dim "    $(t scaf_env_tracked_hint)"
         fi
     fi
     return 0
@@ -70,8 +70,8 @@ scaffold_gitignore_extend() {
 
 scaffold_run() {
     _root=$1
-    _tpl=$(scaffold_templates) || die "не найдены шаблоны фундамента — установка повреждена"
-    [ -d "$_tpl" ] || die "не найдены шаблоны фундамента: $_tpl"
+    _tpl=$(scaffold_templates) || die "$(t scaf_no_templates_broken)"
+    [ -d "$_tpl" ] || die "$(t scaf_no_templates path="$_tpl")"
     _project=$(basename -- "$_root")
 
     _created=0; _skipped=0
@@ -86,7 +86,7 @@ scaffold_run() {
         if [ "$_res" = created ]; then
             _created=$((_created + 1)); ok "$_rel"
         else
-            _skipped=$((_skipped + 1)); dim "  $_rel — уже есть, не трогаю"
+            _skipped=$((_skipped + 1)); dim "  $(t scaf_exists path="$_rel")"
         fi
     done
 
@@ -124,7 +124,7 @@ scaffold_run() {
         } > "$_root/ai/fraim.conf"
         _created=$((_created + 1)); ok "ai/fraim.conf"
     else
-        dim "  ai/fraim.conf — уже есть, не трогаю"
+        dim "  $(t scaf_exists path=ai/fraim.conf)"
     fi
 
     # The repository has to describe itself to whoever opens it. Until this existed the
@@ -142,10 +142,10 @@ scaffold_run() {
             if [ "$_existed" = no ]; then
                 _created=$((_created + 1)); ok "$_ctx"
             else
-                dim "  $_ctx — блок fraim обновлён, остальное не тронуто"
+                dim "  $(t scaf_ctx_updated file="$_ctx")"
             fi
         else
-            warn "не удалось записать $_ctx"
+            warn "$(t scaf_err_write file="$_ctx")"
         fi
     done
 
@@ -160,9 +160,9 @@ scaffold_run() {
 
     say ""
     if [ "$_skipped" -eq 0 ]; then
-        ok "создано: $_created"
+        ok "$(t scaf_created created="$_created")"
     else
-        ok "создано: $_created, оставлено как было: $_skipped"
+        ok "$(t scaf_created_skipped created="$_created" skipped="$_skipped")"
     fi
     return 0
 }
@@ -182,30 +182,30 @@ scaffold_run() {
 scaffold_git() {
     _root=$1
     command -v git >/dev/null 2>&1 || {
-        warn "git не найден — точек сохранения не будет"
-        dim "    установи git: без него глаголы не могут сохранить ни одного изменения"
+        warn "$(t scaf_git_missing)"
+        dim "    $(t scaf_git_missing_hint)"
         return 0
     }
     if git -C "$_root" rev-parse --show-toplevel >/dev/null 2>&1; then
         _top=$(git -C "$_root" rev-parse --show-toplevel 2>/dev/null)
         if [ "$_top" = "$_root" ]; then
-            dim "  git — репозиторий уже есть, не трогаю"
+            dim "  $(t scaf_git_exists)"
         else
-            dim "  git — проект внутри репозитория $_top, свой не завожу"
+            dim "  $(t scaf_git_nested top="$_top")"
         fi
     else
         git -C "$_root" init -q >/dev/null 2>&1 || {
-            warn "не удалось завести репозиторий"
+            warn "$(t scaf_git_init_failed)"
             return 0
         }
-        ok "git — репозиторий заведён"
+        ok "$(t scaf_git_init_done)"
     fi
 
     if [ -z "$(git -C "$_root" config user.email 2>/dev/null)" ]; then
         git -C "$_root" config user.email "fraim@localhost" 2>/dev/null || return 0
         git -C "$_root" config user.name "${USER:-fraim}" 2>/dev/null || return 0
-        dim "  подписи коммитов не были настроены — поставил локальные для этого проекта"
-        dim "    сменить: git config user.name \"Имя\" && git config user.email \"почта\""
+        dim "  $(t scaf_git_identity)"
+        dim "    $(t scaf_git_identity_hint)"
     fi
     return 0
 }
@@ -223,8 +223,8 @@ scaffold_copy_notice() {
     verb_is_git "$_root" 2>/dev/null || return 0
     [ -z "$(git -C "$_root" remote 2>/dev/null)" ] || return 0
     say ""
-    dim "История проекта лежит в этой же папке — копии вне этой машины нет."
-    dim "Нужна копия кода и истории (данные и секреты в неё не попадают) — fraim publish."
+    dim "$(t scaf_copy_notice_where)"
+    dim "$(t scaf_copy_notice_how)"
     return 0
 }
 
@@ -259,7 +259,7 @@ scaffold_sections() {
             printf '\n'
             scaffold_section_source CONVENTIONS.md "$_head"
         } >> "$_f" || return 1
-        ok "CONVENTIONS.md — дописан раздел «$_head»"
+        ok "$(t scaf_section_added section="$_head")"
         SCAFFOLD_SECTIONS_ADDED=$((SCAFFOLD_SECTIONS_ADDED + 1))
     fi
     return 0

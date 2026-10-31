@@ -116,7 +116,7 @@ fm_get() {
 # Every procedure, ordered by metadata.order. Emits one name per line.
 # This is the roster: everything that enumerates procedures goes through here.
 fraim_procedures() {
-    _r=$(fraim_root) || die "не найден каталог procedures/ — установка повреждена"
+    _r=$(fraim_root) || die "$(t core_no_procedures)"
     for _f in "$_r"/procedures/*.md; do
         [ -f "$_f" ] || continue
         _n=$(fm_get "$_f" name)
