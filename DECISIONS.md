@@ -13,7 +13,7 @@ system prompt it sent to a local stand-in model server, with control runs removi
 a time.
 Decision: (1) Seventeen rows are confirmed as they are. (2) Junie gets no context block: a block in
 `~/.junie/AGENTS.md` never reached a request, while the project's `.junie/AGENTS.md` did. (3) Junie
-and Factory Droid read the shared `~/.agents/skills` (Droid live, Junie in its code), so by the
+and Factory Droid read the shared `~/.agents/skills` (both checked live), so by the
 one-copy rule they get their skills there and nowhere else. (4) The harness table states which rows
 were checked live and which rest on documentation (Cursor, Zed, Warp, Kiro, Devin, Antigravity,
 ZCode, Goose, Grok Build — their download sites are closed here).
