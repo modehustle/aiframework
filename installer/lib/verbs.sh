@@ -376,10 +376,12 @@ $(printf '%s\n' "$_m" | sed 's/^## /  · /')"
     # Newest on top: the entry goes above the first existing one, and when there is
     # none yet, after the header block. The stub marker goes away with the first real
     # entry — a file with a decision in it is no longer an unfilled scaffold (D1).
-    # Text travels through ENVIRON, not -v: awk -v expands backslash escapes, and a body
-    # that quotes a regex or a Windows path would be silently rewritten.
-    FND_ENTRY=$_entry FND_BODY=$_body FND_SUP=$_supersedes FND_STUB=$SCAFFOLD_STUB awk '
-        BEGIN { entry = ENVIRON["FND_ENTRY"]; body = ENVIRON["FND_BODY"]
+    # Short text travels through ENVIRON, not -v: awk -v expands backslash escapes, and a
+    # body that quotes a regex or a Windows path would be silently rewritten. The body can
+    # be long and travels through a file (fnd_text_file in foundation.sh).
+    _bf=$(fnd_text_file "$_body") || die "не удалось создать временный файл"
+    FND_ENTRY=$_entry FND_BODY_FILE=$_bf FND_SUP=$_supersedes FND_STUB=$SCAFFOLD_STUB awk "$FND_SLURP"'
+        BEGIN { entry = ENVIRON["FND_ENTRY"]; body = slurp("FND_BODY_FILE")
                 sup = ENVIRON["FND_SUP"]; stub = ENVIRON["FND_STUB"] }
         index($0, stub) { next }
         !done && /^## / {
@@ -400,7 +402,8 @@ $(printf '%s\n' "$_m" | sed 's/^## /  · /')"
                 print body
             }
         }
-    ' "$_file" > "$_tmp" || { rm -f "$_tmp"; die "не удалось записать DECISIONS.md"; }
+    ' "$_file" > "$_tmp" || { rm -f "$_tmp" "$_bf"; die "не удалось записать DECISIONS.md"; }
+    rm -f "$_bf"
     mv "$_tmp" "$_file" || die "не удалось записать DECISIONS.md"
 
     ok "DECISIONS.md ← $_entry"
@@ -434,8 +437,10 @@ verb_pitfall() {
     # Appended at the END of that one section, not at the end of the file: the
     # section is what every session reads first, and a line that lands under the
     # wrong heading is a lesson nobody will ever be shown again.
-    FND_HEAD=$_head FND_ITEMS=$_items awk '
-        BEGIN { head = ENVIRON["FND_HEAD"]; items = ENVIRON["FND_ITEMS"] }
+    # The lines can arrive on stdin and be long: they travel through a file.
+    _if=$(fnd_text_file "$_items") || die "не удалось создать временный файл"
+    FND_HEAD=$_head FND_ITEMS_FILE=$_if awk "$FND_SLURP"'
+        BEGIN { head = ENVIRON["FND_HEAD"]; items = slurp("FND_ITEMS_FILE") }
         $0 == head { inside = 1; print; next }
         inside && /^## / {
             print items
@@ -447,7 +452,8 @@ verb_pitfall() {
         inside && $0 == "- None yet." { next }
         { print }
         END { if (inside && !done) print items }
-    ' "$_file" > "$_tmp" || { rm -f "$_tmp"; die "не удалось записать CONVENTIONS.md"; }
+    ' "$_file" > "$_tmp" || { rm -f "$_tmp" "$_if"; die "не удалось записать CONVENTIONS.md"; }
+    rm -f "$_if"
     mv "$_tmp" "$_file" || die "не удалось записать CONVENTIONS.md"
 
     _n=$(printf '%s\n' "$_lines" | grep -c '[^[:space:]]')

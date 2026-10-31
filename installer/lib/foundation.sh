@@ -16,6 +16,31 @@
 
 FND_WIDTH=100
 
+# Text a verb hands to awk travels through a FILE, and only the file's path through the
+# environment. Not `awk -v`: it expands backslash escapes, and a table cell's `\|` would
+# lose its slash and split the cell. Not the text itself in ENVIRON either: Linux caps one
+# environment string at 128 KiB (MAX_ARG_STRLEN), and a large section or decision failed
+# with «Argument list too long» — a limit nobody meets in tests and every big map meets.
+#
+# fnd_text_file TEXT prints the path of a temp file holding TEXT plus a newline; the caller
+# removes it. In awk, prepend "$FND_SLURP" to the program and call slurp("ENVVAR"): it
+# returns the file's content without the last newline — the string the shell variable held.
+# A file that cannot be read exits awk with 2, so the caller's `|| die` fires.
+fnd_text_file() {
+    _tf_p=$(mktemp) || return 1
+    printf '%s\n' "$1" > "$_tf_p" || { rm -f "$_tf_p"; return 1; }
+    printf '%s\n' "$_tf_p"
+}
+FND_SLURP='
+function slurp(v,   f, l, s, n, r) {
+    f = ENVIRON[v]; s = ""; n = 0
+    while ((r = (getline l < f)) > 0) s = (n++ ? s "\n" : "") l
+    if (r < 0) exit 2
+    close(f)
+    return s
+}
+'
+
 # Wrap long prose lines at FND_WIDTH characters. Tables, fenced code, headings, HTML
 # comments and frontmatter pass through untouched — rewrapping those changes what they
 # mean. A list item continues under its own text; a quote continues as a quote.
@@ -268,15 +293,16 @@ $_list
     if [ "$_new" = 1 ]; then
         { cat "$_p"; printf '\n## %s\n%s\n' "$_sec" "$_wrapped"; } > "$_tmp"
     else
-        # Text travels through ENVIRON, not -v: awk -v expands backslash escapes, and a
-        # table cell's `\|` would lose its slash and split the cell.
-        FND_HEAD="## $_sec" FND_BODY=$_wrapped awk '
-            BEGIN { h = ENVIRON["FND_HEAD"]; body = ENVIRON["FND_BODY"] }
+        # The body goes through a file, not -v or ENVIRON (see fnd_text_file).
+        _bf=$(fnd_text_file "$_wrapped") || die "не удалось создать временный файл"
+        FND_HEAD="## $_sec" FND_BODY_FILE=$_bf awk "$FND_SLURP"'
+            BEGIN { h = ENVIRON["FND_HEAD"]; body = slurp("FND_BODY_FILE") }
             $0 == h { print; print body; print ""; skip = 1; next }
             skip && /^#{1,2} / { skip = 0 }
             skip { next }
             { print }
         ' "$_p" > "$_tmp"
+        _rc=$?; rm -f "$_bf"; [ "$_rc" -eq 0 ]
     fi || { rm -f "$_tmp"; die "не удалось записать $_file"; }
     # Every other heading must survive. A rewrite that loses one is a bug in this verb,
     # and the file is left as it was rather than saved half-right.
@@ -304,20 +330,25 @@ fnd_move_decision() {
     _md_root=$1; _md_head=$2
     _md_src="$_md_root/DECISIONS.md"; _md_log="$_md_root/ai/archive/decisions_log.md"
     mkdir -p "$_md_root/ai/archive" || return 1
-    # Text travels through ENVIRON, not -v: awk -v expands backslash escapes.
+    # The heading is short and travels through ENVIRON, not -v: awk -v expands backslash
+    # escapes. The entry can be long and travels through a file (see fnd_text_file).
     _md_entry=$(FND_HEAD=$_md_head awk 'BEGIN { h = ENVIRON["FND_HEAD"] }
         $0 == h { f = 1; print; next } f && /^## / { exit } f { print }' "$_md_src")
     [ -n "$_md_entry" ] || return 1
+    _md_ef=$(fnd_text_file "$_md_entry") || return 1
     FND_HEAD=$_md_head awk 'BEGIN { h = ENVIRON["FND_HEAD"] }
         $0 == h { skip = 1; next } skip && /^## / { skip = 0 } skip { next } { print }' \
-        "$_md_src" > "$_md_src.fraim.tmp" && mv "$_md_src.fraim.tmp" "$_md_src" || return 1
+        "$_md_src" > "$_md_src.fraim.tmp" && mv "$_md_src.fraim.tmp" "$_md_src" ||
+        { rm -f "$_md_ef"; return 1; }
     if [ ! -f "$_md_log" ]; then
         printf '# DECISIONS — archive (append-only)\n\n> Superseded entries moved out of DECISIONS.md, newest on top.\n' > "$_md_log"
     fi
-    FND_ENTRY=$_md_entry awk 'BEGIN { entry = ENVIRON["FND_ENTRY"] }
+    FND_ENTRY_FILE=$_md_ef awk "$FND_SLURP"'BEGIN { entry = slurp("FND_ENTRY_FILE") }
         !done && /^## / { print entry; print ""; done = 1 }
         { print }
         END { if (!done) { print ""; print entry } }
-    ' "$_md_log" > "$_md_log.fraim.tmp" && mv "$_md_log.fraim.tmp" "$_md_log" || return 1
+    ' "$_md_log" > "$_md_log.fraim.tmp" && mv "$_md_log.fraim.tmp" "$_md_log" ||
+        { rm -f "$_md_ef"; return 1; }
+    rm -f "$_md_ef"
     FND_MOVED=$_md_head
 }

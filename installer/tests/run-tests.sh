@@ -1023,6 +1023,30 @@ mkdir -p "$PROJ2/src/deep"
 (cd "$PROJ2/src/deep" && printf 'from below\n' | "$FRAIM" arch "Stack" >/dev/null 2>&1)
 check "verb finds the project root from a subdirectory" "$(grep -c '^from below$' "$PROJ2/ARCHITECTURE.md")" "1"
 
+# --- large text: over the 128 KiB a single environment string may hold ------
+# The verbs once handed their text to awk through ENVIRON, and Linux refuses to exec a
+# program with one environment string over 128 KiB: a big section failed with «Argument
+# list too long». Its own project, so the counts the tests below rely on stay put.
+BIGP="$SANDBOX/bigtext"
+mkdir -p "$BIGP" && git -C "$BIGP" init -q
+(cd "$BIGP" && "$FRAIM" scaffold >/dev/null 2>&1)
+printf '# A\n\n## Stack\nold\n\n## Data flow\nflow stays\n' > "$BIGP/ARCHITECTURE.md"
+BIGB="$SANDBOX/big-body.txt"
+awk 'BEGIN { for (i = 1; i <= 4000; i++) printf "- item %d of the map, a cell `a \\| b`\n", i }' > "$BIGB"
+check "the fixture is over 128 KiB" "$([ "$(wc -c < "$BIGB")" -gt 131072 ] && echo yes)" "yes"
+(cd "$BIGP" && "$FRAIM" arch "Stack" < "$BIGB" >/dev/null 2>&1)
+check "arch writes a section over 128 KiB" "$?" "0"
+check "the large section is byte for byte the body" \
+      "$(sed -n '/^## Stack$/,/^## Data flow$/p' "$BIGP/ARCHITECTURE.md" | sed '1d;$d' | sed '$d' | cmp -s - "$BIGB" && echo same)" "same"
+check "the next section survived" "$(grep -c '^flow stays$' "$BIGP/ARCHITECTURE.md")" "1"
+(cd "$BIGP" && { printf 'Decision: a large one.\n\n'; cat "$BIGB"; } | "$FRAIM" decide "large decision" >/dev/null 2>&1)
+check "decide writes a body over 128 KiB" "$?$(grep -c '^- item' "$BIGP/DECISIONS.md")" "04000"
+(cd "$BIGP" && printf 'Decision: smaller.\n' | "$FRAIM" decide "smaller" --supersedes "large decision" >/dev/null 2>&1)
+check "supersede moves an entry over 128 KiB" \
+      "$?$(grep -c '^- item' "$BIGP/ai/archive/decisions_log.md")$(grep -c '^- item' "$BIGP/DECISIONS.md")" "040000"
+(cd "$BIGP" && sed 's/^- //' "$BIGB" | "$FRAIM" pitfall >/dev/null 2>&1)
+check "pitfall appends lines over 128 KiB" "$?$(grep -c '^- item' "$BIGP/CONVENTIONS.md")" "04000"
+
 # --- brief and find: the whole foundation and the whole entry ---------------
 B=$("$FRAIM" brief 2>/dev/null)
 check "brief ends with a completeness mark" "$(printf '%s\n' "$B" | tail -1 | grep -c 'nothing cut')" "1"
