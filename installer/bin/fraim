@@ -21,7 +21,8 @@ while [ -L "$_self" ]; do
     esac
 done
 _libdir=$(cd -- "$(dirname -- "$_self")/../lib" 2>/dev/null && pwd -P) || {
-    printf 'fraim: не найден каталог lib/ рядом с исполняемым файлом\n' >&2
+    # No lib/ means no catalogs either, so this one line is in the fallback language.
+    printf 'fraim: lib/ directory not found next to the executable\n' >&2
     exit 2
 }
 
@@ -51,81 +52,36 @@ FRAIM_LOCALE_DIR=${FRAIM_LOCALE_DIR:-$(cd -- "$_libdir/../locale" 2>/dev/null &&
 . "$_libdir/menu.sh"
 
 usage() {
-    cat <<'USAGE'
-fraim — эксплуатационный слой для проектов на агентах
-
-Это набираешь ты
-  fraim                     меню (в терминале) — то же, что fraim menu
-  fraim menu                экран со сканом, обновлением, доктором, реестром
-  fraim status [ПУТЬ]       что происходит в проекте (--json для машины)
-  fraim fleet [ПУТЬ]        где живёт работа: чекауты проекта и среда флота
-  fraim undo [ХЕШ]          показать точки сохранения / вернуть, как было
-  fraim scaffold [ПУТЬ]     завести проект под систему
-  fraim upgrade [ПУТЬ]      довести все проекты реестра до стандарта этой версии
-                            (ПУТЬ — только этот проект)
-  fraim clean [--yes]       прибрать всё, что чинится без суждения
-  fraim publish [--check]   копия проекта вне этой машины: создать, отправить, сверить
-                            (--brief — задание агенту вычистить найденное)
-  fraim dispatch ПЛАН       флот: проверить план и завести сборку
-  fraim dispatch collect СБОРКА  свести волну в ветку сборки
-  fraim dispatch accept СБОРКА   приёмка дирижёра: сверка, проверка, чистка, ствол
-                            run СБОРКА — поднять флот в среде исполнения
-                            watch СБОРКА — что среда говорит о воркерах
-                            verify СБОРКА ПОДЗАДАЧА — сверить дерево с путями
-                            check ПЛАН · accept СБОРКА · list
-  fraim mode                убрать остатки старого режима флота из проекта
-  fraim roles [set [ИМЯ]]   таблица ролей: во что разворачивается роль на этой машине
-                            (set — выбрать агента, модель и усилие из списка)
-  fraim init                поставить скиллы / подхватить новый харнес
-  fraim update [--check]    привезти новую версию и разложить (--check — только узнать;
-                            --quiet — для автозапуска: молча, и никогда не мешает старту)
-  fraim doctor              что и куда установлено, что разошлось
-  fraim config              что действует и откуда (set / unset КЛЮЧ)
-  fraim projects            реестр проектов (add ПУТЬ / rm ПУТЬ)
-
-Это зовут агенты и процедуры — тебе их помнить не нужно
-USAGE
+    printf '%s\n' "$(t cli_usage_head)"
     vt_help
-    cat <<'USAGE'
-
-Служебное
-  fraim task-block, task-result, task-revise, plan-seal, reconcile-seal —
-                            удалены вместе с планами: задача теперь карточка
-  fraim show ИМЯ            напечатать текст процедуры
-  fraim build               пересобрать артефакты репозитория
-  fraim version             версия
-  fraim help                этот экран
-
-Сторож детерминированный: файлы, git log и mtime. Ни модели, ни сети, ничего
-не пишет. Он замечает — решает человек.
-USAGE
+    printf '%s\n' "$(t cli_usage_tail)"
 }
 
 # --- init -------------------------------------------------------------------
 cmd_init() {
-    _root=$(fraim_root) || die "не найден каталог procedures/ — установка повреждена"
+    _root=$(fraim_root) || die "$(t cli_init_err_broken)"
     _ver=$(fraim_version)
-    say "fraim $_ver · источник: $_root"
+    say "$(t cli_init_source ver="$_ver" root="$_root")"
     say ""
 
     _build=$(skills_build)
     _n=$(find "$_build" -name SKILL.md | wc -l | tr -d ' ')
-    ok "собрано скиллов: $_n (процедуры + мастер-скилл)"
+    ok "$(t cli_init_skills_built n="$_n")"
 
     registry_init
 
     harness_detect | while IFS='	' read -r _key _label _skills _instr; do
         [ -n "$_key" ] || continue
         _count=$(harness_install "$_label" "$_skills" "$_build") || {
-            warn "$_label: установка не удалась"
+            warn "$(t cli_init_harness_failed label="$_label")"
             continue
         }
         ok "$_label → $_skills ($_count)"
         if [ -n "$_instr" ]; then
             if context_install "$_instr"; then
-                dim "    контекстный блок → $_instr"
+                dim "    $(t cli_context_block path="$_instr")"
             else
-                warn "$_label: не удалось обновить $_instr"
+                warn "$(t cli_init_context_failed label="$_label" path="$_instr")"
             fi
         fi
     done
@@ -133,9 +89,9 @@ cmd_init() {
 
     if [ "$_found" -eq 0 ]; then
         say ""
-        warn "ни один харнес не найден"
-        dim "    скиллы собраны в $_build — скопируй их в каталог своего агента вручную,"
-        dim "    или установи харнес и запусти 'fraim init' ещё раз (команда идемпотентна)."
+        warn "$(t cli_init_no_harness)"
+        dim "    $(t cli_init_no_harness_copy path="$_build")"
+        dim "    $(t cli_init_no_harness_rerun)"
     fi
 
     # Register the current project if it is under the system. bootstrap and
@@ -143,13 +99,13 @@ cmd_init() {
     # come under the system rather than by hand.
     _cwd=$(pwd -P)
     if project_is_managed "$_cwd"; then
-        registry_add "$_cwd" && ok "проект зарегистрирован: $_cwd"
+        registry_add "$_cwd" && ok "$(t cli_registered path="$_cwd")"
         # The PROJECT block, not the machine one. They share the marker pair, so writing
         # the machine block here would have overwritten what `fraim scaffold` puts in a
         # project's AGENTS.md — and it would be the wrong text anyway: a routing table for
         # skills installed on this machine says nothing to the agent that clones the repo.
         if context_install "$_cwd/AGENTS.md" context_project_block; then
-            dim "    контекстный блок → $_cwd/AGENTS.md"
+            dim "    $(t cli_context_block path="$_cwd/AGENTS.md")"
         fi
     fi
 
@@ -160,7 +116,7 @@ cmd_init() {
     # effect of an update.
     _n_proj=$(registry_list | wc -l | tr -d ' ')
     if [ "$_n_proj" -gt 0 ]; then
-        dim "  проектов в реестре: $_n_proj — довести их до этой версии: fraim upgrade"
+        dim "  $(t cli_init_registry_count n="$_n_proj")"
     fi
 
     # The only place in init that touches the network, and it is optional: find out whether
@@ -174,7 +130,7 @@ cmd_init() {
     fi
 
     say ""
-    say "Готово. Проверить: ${C_BLD}fraim doctor${C_OFF}"
+    say "$(t cli_init_done cmd="${C_BLD}fraim doctor${C_OFF}")"
 }
 
 # --- update -----------------------------------------------------------------
@@ -187,7 +143,7 @@ cmd_update() {
     case ${1:-} in
         --check)
             if ! update_src_is_clone; then
-                warn "источник — не git-клон, проверять нечего"
+                warn "$(t cli_upd_not_clone)"
                 return 0
             fi
             update_probe || :
@@ -195,9 +151,9 @@ cmd_update() {
                 behind)  warn "$(update_line)"; return 1 ;;
                 ahead)   ok "$(update_line)"; return 0 ;;
                 unknown) warn "$(update_line)"
-                         dim "    сеть или доступ к репозиторию: проверь git ls-remote"
+                         dim "    $(t cli_upd_network_hint)"
                          return 1 ;;
-                *)       ok "установлена последняя версия ($(fraim_version))"; return 0 ;;
+                *)       ok "$(t cli_upd_latest ver="$(fraim_version)")"; return 0 ;;
             esac ;;
         --quiet)
             # For an image or a VM recipe: run at every start, say nothing when there is
@@ -212,16 +168,16 @@ cmd_update() {
             [ "$(update_state)" = behind ] || exit 0
             _u_before=$(fraim_version)
             if update_apply >/dev/null 2>&1; then
-                ok "fraim обновлён: $_u_before → $(fraim_version)"
+                ok "$(t cli_upd_updated from="$_u_before" to="$(fraim_version)")"
                 exec "$(update_src)/installer/bin/fraim" init >/dev/null 2>&1
             fi
             exit 0
             ;;
         "") ;;
-        *)  die "fraim update: неизвестный ключ: $1" ;;
+        *)  die "$(t cli_upd_err_flag flag="$1")" ;;
     esac
 
-    say "Обновление fraim"
+    say "$(t cli_upd_title)"
     say ""
     _u_before=$(fraim_version)
     update_apply || return 1
@@ -229,7 +185,7 @@ cmd_update() {
     # New binary, new lib/, new procedures — and only now the layout.
     # This process cannot continue: it read lib/ before the update.
     _u_bin="$(update_src)/installer/bin/fraim"
-    dim "  было: $_u_before"
+    dim "  $(t cli_upd_was ver="$_u_before")"
     exec "$_u_bin" init
 }
 
@@ -241,7 +197,10 @@ claude_permission_hint() {
     _settings="$HOME/.claude/settings.json"
     [ -d "$HOME/.claude" ] || return 0
     if command -v python3 >/dev/null 2>&1; then
-        python3 - "$_settings" <<'PY' && return 0
+        # Exit 0: the rule was there already; 10: added now (the words are ours, below);
+        # anything else: the file could not be edited, so the human gets the line to add.
+        _cph_rc=0
+        python3 - "$_settings" <<'PY' || _cph_rc=$?
 import json, os, sys
 path = sys.argv[1]
 try:
@@ -265,10 +224,14 @@ with open(tmp, "w") as f:
     json.dump(data, f, indent=2)
     f.write("\n")
 os.replace(tmp, path)
-print("  разрешение Bash(fraim:*) добавлено в ~/.claude/settings.json")
+sys.exit(10)
 PY
+        case $_cph_rc in
+            0)  return 0 ;;
+            10) say "  $(t cli_perm_added)"; return 0 ;;
+        esac
     fi
-    dim "    Claude Code: добавь \"Bash(fraim:*)\" в permissions.allow в ~/.claude/settings.json"
+    dim "    $(t cli_perm_hint)"
     return 0
 }
 
@@ -278,19 +241,19 @@ cmd_status() {
     for _a in "$@"; do
         case $_a in
             --json) _json=1 ;;
-            -*) die "неизвестный флаг: $_a" ;;
+            -*) die "$(t cli_err_unknown_flag flag="$_a")" ;;
             *) _path=$_a ;;
         esac
     done
     [ -n "$_path" ] || _path=$(pwd -P)
-    _root=$(cd -- "$_path" 2>/dev/null && pwd -P) || die "нет такого каталога: $_path"
+    _root=$(cd -- "$_path" 2>/dev/null && pwd -P) || die "$(t cli_err_no_dir path="$_path")"
 
     if ! wm_managed "$_root"; then
         if [ "$_json" = 1 ]; then
             printf '{ "project": "%s", "status": "unmanaged", "findings": [] }\n' "$_root"
         else
-            warn "$_root не под системой: нет ни ai/, ни ARCHITECTURE.md"
-            dim "    завести существующий проект — /onboard; новый — /design-session → /bootstrap"
+            warn "$(t cli_status_unmanaged path="$_root")"
+            dim "    $(t cli_status_unmanaged_hint)"
         fi
         exit 2
     fi
@@ -315,8 +278,8 @@ fleet_counts() {
 }
 
 fleet_state_words() {
-    if [ "$1" -gt 0 ]; then printf '%s %s на доске\n' "$1" "$(wm_plural "$1" задача задачи задач)"
-    else printf 'чисто\n'; fi
+    if [ "$1" -gt 0 ]; then printf '%s\n' "$(tp "$1" cli_fleet_on_board)"
+    else printf '%s\n' "$(t cli_fleet_clean)"; fi
 }
 
 cmd_fleet() {
@@ -324,13 +287,13 @@ cmd_fleet() {
     for _a in "$@"; do
         case $_a in
             --json) _json=1 ;;
-            -*) die "неизвестный флаг: $_a" ;;
+            -*) die "$(t cli_err_unknown_flag flag="$_a")" ;;
             *) _path=$_a ;;
         esac
     done
     [ -n "$_path" ] || _path=$(pwd -P)
-    _root=$(cd -- "$_path" 2>/dev/null && pwd -P) || die "нет такого каталога: $_path"
-    verb_is_git "$_root" || die "$_root не репозиторий — чекаутов нет и быть не может"
+    _root=$(cd -- "$_path" 2>/dev/null && pwd -P) || die "$(t cli_err_no_dir path="$_path")"
+    verb_is_git "$_root" || die "$(t cli_fleet_err_not_repo path="$_root")"
 
     _list=$(git -C "$_root" worktree list --porcelain 2>/dev/null) || _list=
 
@@ -391,13 +354,13 @@ cmd_fleet() {
                 "$_key" "$(wm_json_escape "$_cmd")" "$_alive" "$_auto"
         else
             if [ "$_alive" = true ]; then
-                ok "$_label ($_cmd) — рантайм отвечает"
+                ok "$(t cli_fleet_ade_alive label="$_label" cmd="$_cmd")"
             else
-                dim "  $_label ($_cmd) — установлен, рантайм не отвечает"
+                dim "  $(t cli_fleet_ade_silent label="$_label" cmd="$_cmd")"
             fi
             case $_auto in
-                free) warn "$_label: по этому проекту работает агент по расписанию — проверь, что он не правит код без тебя" ;;
-                watchman) dim "  $_label: по расписанию ходит сторож — это наблюдение, не правка" ;;
+                free) warn "$(t cli_fleet_auto_free label="$_label")" ;;
+                watchman) dim "  $(t cli_fleet_auto_watchman label="$_label")" ;;
             esac
         fi
     done
@@ -406,7 +369,7 @@ cmd_fleet() {
     if [ "$_json" = 1 ]; then
         printf '\n  ]\n}\n'
     elif [ -z "$_det" ]; then
-        dim "  среда исполнения флота на этой машине не найдена"
+        dim "  $(t cli_fleet_no_ade)"
     fi
     exit 0
 }
@@ -419,48 +382,48 @@ cmd_projects() {
             _any=0
             registry_list | while read -r _p; do
                 [ -n "$_p" ] || continue
-                if [ -d "$_p" ]; then say "  $_p"; else printf '  %s%s  (нет каталога)%s\n' "$C_DIM" "$_p" "$C_OFF"; fi
+                if [ -d "$_p" ]; then say "  $_p"; else printf '  %s%s  %s%s\n' "$C_DIM" "$_p" "$(t cli_proj_no_dir)" "$C_OFF"; fi
             done
             _any=$(registry_list | wc -l | tr -d ' ')
             if [ "$_any" -eq 0 ]; then
-                dim "  реестр пуст — 'fraim projects add ПУТЬ' или запусти 'fraim init' в проекте"
+                dim "  $(t cli_proj_empty)"
             fi
             ;;
-        add) [ $# -ge 2 ] || die "укажи путь"; registry_add "$2" && ok "добавлено: $2" ;;
-        rm)  [ $# -ge 2 ] || die "укажи путь"; registry_rm "$2" && ok "убрано: $2" ;;
-        *)   die "неизвестная подкоманда: $1" ;;
+        add) [ $# -ge 2 ] || die "$(t cli_err_need_path)"; registry_add "$2" && ok "$(t cli_proj_added path="$2")" ;;
+        rm)  [ $# -ge 2 ] || die "$(t cli_err_need_path)"; registry_rm "$2" && ok "$(t cli_proj_removed path="$2")" ;;
+        *)   die "$(t cli_err_subcommand sub="$1")" ;;
     esac
 }
 
 # --- doctor -----------------------------------------------------------------
 cmd_doctor() {
     _ver=$(fraim_version)
-    _root=$(fraim_root) || die "не найден каталог procedures/"
+    _root=$(fraim_root) || die "$(t cli_err_no_procedures)"
     say "${C_BLD}fraim $_ver${C_OFF}"
     if git -C "$_root" rev-parse --git-dir >/dev/null 2>&1; then
-        say "  источник:  $_root ($(git -C "$_root" rev-parse --abbrev-ref HEAD 2>/dev/null) $(git -C "$_root" rev-parse --short HEAD 2>/dev/null), $(git -C "$_root" log -1 --format=%cd --date=short 2>/dev/null))"
+        say "  $(t cli_doc_source_git root="$_root" branch="$(git -C "$_root" rev-parse --abbrev-ref HEAD 2>/dev/null)" sha="$(git -C "$_root" rev-parse --short HEAD 2>/dev/null)" date="$(git -C "$_root" log -1 --format=%cd --date=short 2>/dev/null)")"
     else
-        say "  источник:  $_root"
+        say "  $(t cli_doc_source root="$_root")"
     fi
-    say "  состояние: $FRAIM_HOME"
+    say "  $(t cli_doc_state path="$FRAIM_HOME")"
     # The only network in doctor, and it belongs: doctor is called precisely to find out
     # whether everything is in place, and "has something newer shipped" is part of that.
     update_probe_if_due
     case $(update_state) in
         behind|unknown) warn "  $(update_line)" ;;
         ahead)          dim "  $(update_line)" ;;
-        *)              ok "  последняя известная версия" ;;
+        *)              ok "  $(t cli_doc_latest)" ;;
     esac
     say ""
 
-    say "${C_BLD}Процедуры${C_OFF}"
+    say "${C_BLD}$(t cli_doc_procedures)${C_OFF}"
     fraim_procedures | while read -r _n; do
         _f=$(fraim_procedure_file "$_n")
         printf '  %-16s %-8s %s\n' "$_n" "$(fm_get "$_f" tier)" "procedures/$_n.md"
     done
     say ""
 
-    say "${C_BLD}Харнесы${C_OFF}"
+    say "${C_BLD}$(t cli_doc_harnesses)${C_OFF}"
     _n_found=0
     harness_table | while IFS='	' read -r _key _label _probe _skills _instr; do
         [ -n "$_key" ] || continue
@@ -470,16 +433,16 @@ cmd_doctor() {
             _vers=$(grep -rh '^  version: ' "$_skills" 2>/dev/null | sed 's/^  version: //' | sort -u | tr '\n' ' ')
             if [ "$_installed" -gt 0 ]; then
                 if [ "$(printf '%s' "$_vers" | tr -d ' ')" = "$_ver" ]; then
-                    printf '  %s✓%s %-14s %s скиллов, версия %s\n' "$C_GRN" "$C_OFF" "$_label" "$_installed" "$_ver"
+                    printf '  %s✓%s %-14s %s\n' "$C_GRN" "$C_OFF" "$_label" "$(t cli_doc_skills_ok n="$_installed" ver="$_ver")"
                 else
-                    printf '  %s!%s %-14s %s скиллов, версии: %s(установлена %s — нужен fraim init)\n' \
-                        "$C_YEL" "$C_OFF" "$_label" "$_installed" "$_vers" "$_ver"
+                    printf '  %s!%s %-14s %s\n' "$C_YEL" "$C_OFF" "$_label" \
+                        "$(t cli_doc_skills_mismatch n="$_installed" vers="$_vers" ver="$_ver")"
                 fi
             else
-                printf '  %s!%s %-14s найден, скиллы не установлены — запусти fraim init\n' "$C_YEL" "$C_OFF" "$_label"
+                printf '  %s!%s %-14s %s\n' "$C_YEL" "$C_OFF" "$_label" "$(t cli_doc_no_skills)"
             fi
         else
-            printf '  %s·%s %-14s не найден\n' "$C_DIM" "$C_OFF" "$_label"
+            printf '  %s·%s %-14s %s\n' "$C_DIM" "$C_OFF" "$_label" "$(t cli_doc_not_found)"
         fi
     done
     say ""
@@ -487,24 +450,24 @@ cmd_doctor() {
     publish_deps_report
     say ""
 
-    say "${C_BLD}Реестр проектов${C_OFF}"
+    say "${C_BLD}$(t cli_doc_registry)${C_OFF}"
     registry_init
     _total=$(registry_list | wc -l | tr -d ' ')
     if [ "$_total" -eq 0 ]; then
-        dim "  пуст"
+        dim "  $(t cli_doc_registry_empty)"
     else
-        say "  проектов: $_total"
+        say "  $(t cli_doc_registry_count n="$_total")"
         registry_stale | while read -r _p; do
             [ -n "$_p" ] || continue
-            warn "  каталог пропал: $_p  ('fraim projects rm' чтобы убрать)"
+            warn "  $(t cli_doc_registry_gone path="$_p")"
         done
     fi
 }
 
 # --- show -------------------------------------------------------------------
 cmd_show() {
-    [ $# -ge 1 ] || die "укажи имя процедуры: $(fraim_procedures | tr '\n' ' ')"
-    _f=$(fraim_procedure_file "$1") || die "нет такой процедуры: $1"
+    [ $# -ge 1 ] || die "$(t cli_show_err_need_name list="$(fraim_procedures | tr '\n' ' ')")"
+    _f=$(fraim_procedure_file "$1") || die "$(t cli_show_err_unknown name="$1")"
     cat "$_f"
 }
 
@@ -514,7 +477,7 @@ cmd_show() {
 # from procedures/ and committed, because a marketplace install clones the repo
 # and never runs our CLI.
 cmd_build() {
-    _root=$(fraim_root) || die "не найден каталог procedures/"
+    _root=$(fraim_root) || die "$(t cli_err_no_procedures)"
     _build=$(skills_build)
 
     _plugin="$_root/installer/claude-plugin"
@@ -526,25 +489,25 @@ cmd_build() {
         mkdir -p "$_plugin/skills/$_n"
         cp "$_s/SKILL.md" "$_plugin/skills/$_n/SKILL.md"
     done
-    ok "плагин Claude Code: $(find "$_plugin/skills" -name SKILL.md | wc -l | tr -d ' ') скиллов"
+    ok "$(t cli_build_plugin n="$(find "$_plugin/skills" -name SKILL.md | wc -l | tr -d ' ')")"
 
     manifest_render > "$_root/procedures/manifest.json"
-    ok "манифест: procedures/manifest.json"
+    ok "$(t cli_build_manifest)"
 }
 
 
 # --- scaffold ---------------------------------------------------------------
 cmd_scaffold() {
     _path=${1:-$(pwd -P)}
-    _root=$(cd -- "$_path" 2>/dev/null && pwd -P) || die "нет такого каталога: $_path"
-    say "Скелет фундамента в $_root"
+    _root=$(cd -- "$_path" 2>/dev/null && pwd -P) || die "$(t cli_err_no_dir path="$_path")"
+    say "$(t cli_scaf_title path="$_root")"
     say ""
-    scaffold_run "$_root" || die "не удалось развернуть скелет"
+    scaffold_run "$_root" || die "$(t cli_scaf_err)"
     registry_init
-    registry_add "$_root" >/dev/null 2>&1 && dim "  проект зарегистрирован в реестре"
+    registry_add "$_root" >/dev/null 2>&1 && dim "  $(t cli_scaf_registered)"
     say ""
-    say "Дальше: ${C_BLD}/bootstrap${C_OFF} для нового проекта, ${C_BLD}/onboard${C_OFF} для существующего кода."
-    dim "Файлы помечены маркером fraim:stub — сторож считает их незаполненными, пока он на месте."
+    say "$(t cli_scaf_next bootstrap="${C_BLD}/bootstrap${C_OFF}" onboard="${C_BLD}/onboard${C_OFF}")"
+    dim "$(t cli_scaf_stub_note)"
     scaffold_copy_notice "$_root"
 }
 
@@ -565,10 +528,10 @@ cmd_upgrade() {
     registry_init
     _cwd=$(pwd -P)
     if project_is_managed "$_cwd" && ! registry_list | grep -qxF "$_cwd"; then
-        registry_add "$_cwd" && dim "  проект зарегистрирован: $_cwd"
+        registry_add "$_cwd" && dim "  $(t cli_registered path="$_cwd")"
     fi
     _all=$(registry_list)
-    [ -n "$_all" ] || die "реестр проектов пуст — 'fraim upgrade ПУТЬ' для одного проекта или 'fraim init' в проекте"
+    [ -n "$_all" ] || die "$(t cli_upg_err_empty)"
     _ok=0; _skip=0; _fail=0
     # Each project in its own subshell: a refusal (die) in one must not end the sweep,
     # and a path with spaces must survive — hence a line at a time, not a word list.
@@ -580,39 +543,40 @@ cmd_upgrade() {
         say ""
         say "${C_BLD}== $_p${C_OFF}"
         if [ ! -d "$_p" ]; then
-            warn "каталога нет — пропущен; убрать из реестра: fraim projects rm $_p"
+            warn "$(t cli_upg_skip_no_dir path="$_p")"
             _skip=$((_skip + 1)); continue
         fi
         if ! project_is_managed "$_p" && ! wm_managed "$_p"; then
-            warn "не под системой — пропущен"
+            warn "$(t cli_upg_skip_unmanaged)"
             _skip=$((_skip + 1)); continue
         fi
         if ( upgrade_project "$_p" ); then _ok=$((_ok + 1)); else _fail=$((_fail + 1)); fi
     done
     IFS=$_old_ifs
     say ""
-    say "Проектов: доведено $_ok, пропущено $_skip, с ошибкой $_fail"
+    say "$(t cli_upg_summary ok="$_ok" skip="$_skip" fail="$_fail")"
     [ "$_fail" -eq 0 ] || return 1
 }
 
 upgrade_project() {
     _path=$1
-    _root=$(cd -- "$_path" 2>/dev/null && pwd -P) || die "нет такого каталога: $_path"    project_is_managed "$_root" || wm_managed "$_root" ||
-        die "здесь нечего обновлять: это не проект под системой. Завести — fraim scaffold"
-    say "Довожу фундамент до стандарта fraim $(fraim_version) в $_root"
+    _root=$(cd -- "$_path" 2>/dev/null && pwd -P) || die "$(t cli_err_no_dir path="$_path")"
+    project_is_managed "$_root" || wm_managed "$_root" ||
+        die "$(t cli_upg_err_unmanaged)"
+    say "$(t cli_upg_title ver="$(fraim_version)" path="$_root")"
     say ""
-    scaffold_run "$_root" || die "не удалось обновить фундамент"
-    scaffold_sections "$_root" || die "не удалось дописать разделы"
+    scaffold_run "$_root" || die "$(t cli_upg_err_scaffold)"
+    scaffold_sections "$_root" || die "$(t cli_upg_err_sections)"
     if [ "$SCAFFOLD_SECTIONS_ADDED" -gt 0 ]; then
         verb_commit "$_root" upgrade "foundation brought up to the standard" CONVENTIONS.md
     fi
-    tasks_upgrade "$_root" || die "не удалось перевести задачи старого формата"
+    tasks_upgrade "$_root" || die "$(t cli_upg_err_tasks)"
     if [ "$(config_conf_refresh "$_root")" = changed ]; then
-        ok "ai/fraim.conf — список настроек обновлён, удалённые ключи убраны"
+        ok "$(t cli_upg_conf_refreshed)"
         verb_commit "$_root" upgrade "settings list brought up to date" ai/fraim.conf
     fi
     say ""
-    ok "готово — проверить: fraim status"
+    ok "$(t cli_upg_done)"
 }
 
 # --- version ----------------------------------------------------------------
@@ -629,11 +593,11 @@ cmd_version() {
         _sha=$(git -C "$_root" rev-parse --short HEAD 2>/dev/null)
         _when=$(git -C "$_root" log -1 --format=%cd --date=short 2>/dev/null)
         printf '%s\n' "$_ver"
-        dim "  источник: $_root"
-        dim "  ветка $_branch · коммит $_sha · $_when"
+        dim "  $(t cli_ver_source root="$_root")"
+        dim "  $(t cli_ver_git branch="$_branch" sha="$_sha" date="$_when")"
     else
         printf '%s\n' "$_ver"
-        [ -n "$_root" ] && dim "  источник: $_root (не git-клон)"
+        [ -n "$_root" ] && dim "  $(t cli_ver_not_clone root="$_root")"
     fi
 }
 
@@ -646,11 +610,11 @@ cmd_publish() {
     _prov=; _name=; _url=; _vis=; _yes=0; _check=0; _force=0; _brief=0
     while [ $# -gt 0 ]; do
         case $1 in
-            --provider) shift; [ $# -ge 1 ] || die "--provider требует имени"; _prov=$1 ;;
+            --provider) shift; [ $# -ge 1 ] || die "$(t cli_pub_err_provider_arg)"; _prov=$1 ;;
             --provider=*) _prov=${1#--provider=} ;;
-            --url) shift; [ $# -ge 1 ] || die "--url требует ссылки"; _url=$1; _prov=url ;;
+            --url) shift; [ $# -ge 1 ] || die "$(t cli_pub_err_url_arg)"; _url=$1; _prov=url ;;
             --url=*) _url=${1#--url=}; _prov=url ;;
-            --name) shift; [ $# -ge 1 ] || die "--name требует имени"; _name=$1 ;;
+            --name) shift; [ $# -ge 1 ] || die "$(t cli_pub_err_name_arg)"; _name=$1 ;;
             --name=*) _name=${1#--name=} ;;
             --private) _vis=private ;;
             --public)  _vis=public ;;
@@ -658,18 +622,18 @@ cmd_publish() {
             --check|--dry-run) _check=1 ;;
             --brief) _brief=1 ;;
             --force)   _force=1 ;;
-            -*) die "неизвестный флаг: $1 (см. fraim help)" ;;
-            *)  die "лишний аргумент: $1 — имя задаётся через --name" ;;
+            -*) die "$(t cli_pub_err_flag flag="$1")" ;;
+            *)  die "$(t cli_pub_err_extra arg="$1")" ;;
         esac
         shift
     done
     [ -z "$_prov" ] || publish_provider_known "$_prov" ||
-        die "неизвестный провайдер: $_prov (github, gitlab, url)"
+        die "$(t cli_pub_err_provider prov="$_prov")"
 
     _root=$(pwd -P)
-    command -v git >/dev/null 2>&1 || die "git не установлен — отправлять нечем"
+    command -v git >/dev/null 2>&1 || die "$(t cli_pub_err_no_git)"
     verb_is_git "$_root" ||
-        die "здесь нет репозитория — заводится командой fraim scaffold"
+        die "$(t cli_pub_err_no_repo)"
 
     # --brief: the same agent task, but on demand, not only inside a refusal. After a risk
     # has been accepted the cleanup is usually ordered later — and then it needs something
@@ -677,7 +641,7 @@ cmd_publish() {
     if [ "$_brief" = 1 ]; then
         publish_scan "$_root"
         if [ "$(pub_count "$PUB_STOP")" -eq 0 ]; then
-            ok "нечего вычищать: проверка ничего не нашла"
+            ok "$(t cli_pub_nothing_to_clean)"
             exit 0
         fi
         publish_brief_secret "$_root"
@@ -690,28 +654,28 @@ cmd_publish() {
         publish_deps_report
         say ""
         if [ -z "$(publish_head "$_root")" ]; then
-            warn "нет ни одной точки сохранения — отправлять пока нечего"
+            warn "$(t cli_pub_no_commits)"
             exit 1
         fi
         _have=$(publish_remote_url "$_root")
         if [ -n "$_have" ]; then
-            say "Копия: $_have"
+            say "$(t cli_pub_copy url="$_have")"
             # Everything known here is THIS machine's memory of past pushes. The
             # reconnaissance runs without network (the agent runs it too, and it must neither
             # hang on an unreachable host nor go outside unasked), so the limit is said out loud.
             if [ -z "$(git -C "$_root" for-each-ref --count=1 refs/remotes 2>/dev/null)" ]; then
-                warn "туда ни разу ничего не уезжало — настройку начали и не довели"
+                warn "$(t cli_pub_never_pushed)"
             else
                 _n=$(publish_unpushed "$_root")
                 if [ "$_n" -gt 0 ]; then
-                    say "  не уехало точек: $_n"
+                    say "  $(t cli_pub_unpushed n="$_n")"
                 else
-                    say "  по записям этой машины — всё уехало"
+                    say "  $(t cli_pub_all_pushed)"
                 fi
             fi
-            dim "  что лежит на хосте на самом деле, сверяет fraim publish: для этого нужна сеть"
+            dim "  $(t cli_pub_host_needs_net)"
         else
-            say "Копии вне этой машины нет."
+            say "$(t cli_pub_no_copy)"
         fi
         say ""
         publish_scan "$_root"
@@ -719,16 +683,16 @@ cmd_publish() {
         _stops=$(pub_count "$PUB_STOP")
         if [ "$_stops" -gt 0 ]; then
             say ""
-            dim "  в приватную копию это отправляется с принятием риска (fraim publish --private),"
-            dim "  в публичную — нет; вычистить вместо этого — fraim publish --brief"
+            dim "  $(t cli_pub_risk_private)"
+            dim "  $(t cli_pub_risk_public)"
             exit 1
         fi
         exit 0
     fi
 
     [ -n "$(publish_head "$_root")" ] ||
-        die "нет ни одной точки сохранения — отправлять пока нечего
-    сохрани работу и повтори: fraim clean, либо fraim commit ВИД ТЕКСТ ПУТЬ..."
+        die "$(t cli_pub_no_commits)
+    $(t cli_pub_save_and_retry)"
 
     # There is a remote — so the question "did everything leave" is answered by the HOST,
     # not by our refs/remotes. This is exactly where an unfinished setup is caught: the
@@ -737,7 +701,7 @@ cmd_publish() {
     _have=$(publish_remote_url "$_root")
     if [ -n "$_have" ]; then
         _branch=$(publish_branch "$_root")
-        dim "  спрашиваю хост, что там лежит…"
+        dim "  $(t cli_pub_asking_host)"
         publish_host_state "$_root" "$_branch"
         # The host did not accept access over this address — fix the transport BEFORE the
         # plan. The human must ratify the address the copy will actually travel over, not
@@ -748,7 +712,7 @@ cmd_publish() {
         fi
         case $PUB_HOST in
             synced)
-                ok "копия на месте и совпадает с этой машиной: $_have"
+                ok "$(t cli_pub_synced url="$_have")"
                 exit 0 ;;
             diverged)
                 publish_refuse_diverged "$_root" "$_have" "$_branch"
@@ -763,18 +727,18 @@ cmd_publish() {
     if [ -z "$_have" ]; then
         if [ -z "$_prov" ]; then
             if [ -t 0 ] && [ -t 1 ]; then
-                _prov=$(publish_ask_provider) || die "не понял выбор"
+                _prov=$(publish_ask_provider) || die "$(t cli_pub_err_choice)"
             else
                 publish_deps_report
                 say ""
-                die "не сказано, куда публиковать: --provider github|gitlab | --url ССЫЛКА"
+                die "$(t cli_pub_err_no_target)"
             fi
         fi
         if [ "$_prov" = url ] && [ -z "$_url" ]; then
             if [ -t 0 ] && [ -t 1 ]; then
-                _url=$(publish_ask_url) || die "без ссылки отправлять некуда"
+                _url=$(publish_ask_url) || die "$(t cli_pub_err_no_url)"
             else
-                die "для --provider url нужна ссылка: --url ССЫЛКА"
+                die "$(t cli_pub_err_url_needed)"
             fi
         fi
         if [ "$_prov" != url ] && [ -z "$_vis" ]; then
@@ -791,7 +755,7 @@ cmd_publish() {
     if [ -z "$_name" ]; then
         _name=$(publish_repo_name "$(basename -- "$_root")")
         [ "$_name" = "$(basename -- "$_root")" ] ||
-            dim "  имя репозитория «$_name»: хосты принимают только латиницу, цифры, точку, дефис"
+            dim "  $(t cli_pub_repo_name name="$_name")"
     fi
 
     publish_scan "$_root"
@@ -808,7 +772,7 @@ cmd_publish() {
         publish_visibility_effective "$_root" "$_vis" "$_prov"
         if [ "$PUB_VIS" = unknown ] && [ -t 0 ] && [ -t 1 ]; then
             PUB_VIS=$(publish_ask_private)
-            PUB_VIS_SRC="с твоих слов"
+            PUB_VIS_SRC=$(t cli_pub_vis_src_yours)
         fi
         case $PUB_VIS in
             private)
@@ -822,15 +786,15 @@ cmd_publish() {
                 exit 2 ;;
         esac
     elif [ "$_stops" -gt 0 ]; then
-        warn "--force: находки выше уедут на хост вместе с историей, и это необратимо"
+        warn "$(t cli_pub_force_warn)"
     fi
 
     if [ "$_yes" = 0 ]; then
         if [ -t 0 ]; then
             if [ "$_accept" = 1 ]; then
-                printf '  Публикуем ВМЕСТЕ с находками в приватную копию? [y/N] '
+                printf '  %s ' "$(t cli_pub_ask_with_findings)"
             else
-                printf '  Публикуем? [y/N] '
+                printf '  %s ' "$(t cli_pub_ask)"
             fi
             read -r _ans || _ans=
             case $_ans in
@@ -841,12 +805,12 @@ cmd_publish() {
                     if [ "$_stops" -gt 0 ]; then
                         publish_cancel_findings "$_root"
                     else
-                        say "  отменено"
+                        say "  $(t cli_cancelled)"
                     fi
                     exit 0 ;;
             esac
         else
-            dim "  это был только план. Выполнить: fraim publish --yes"
+            dim "  $(t cli_pub_plan_only)"
             exit 0
         fi
     fi
@@ -865,21 +829,21 @@ cmd_clean() {
         case $_a in
             --yes|-y) _yes=1 ;;
             --dry-run) _yes=0 ;;
-            *) die "неизвестный флаг: $_a" ;;
+            *) die "$(t cli_err_unknown_flag flag="$_a")" ;;
         esac
     done
     _root=$(pwd -P)
-    wm_managed "$_root" || die "здесь нечего прибирать: это не проект под системой"
+    wm_managed "$_root" || die "$(t cli_clean_err_unmanaged)"
     clean_scan "$_root"
     clean_show || return 0
     say ""
     if [ "$_yes" = 0 ]; then
         if [ -t 0 ]; then
-            printf '  Начать? [y/N] '
+            printf '  %s ' "$(t cli_clean_ask)"
             read -r _ans || _ans=
-            case $_ans in y|Y|д|Д|yes|да) ;; *) say "  отменено"; return 0 ;; esac
+            case $_ans in y|Y|д|Д|yes|да) ;; *) say "  $(t cli_cancelled)"; return 0 ;; esac
         else
-            dim "  это был только план. Выполнить: fraim clean --yes"
+            dim "  $(t cli_clean_plan_only)"
             return 0
         fi
     fi
@@ -1014,7 +978,7 @@ cmd_config() {
 verb_root() {
     _vr=$(pwd -P)
     while [ ! -d "$_vr/ai" ]; do
-        [ "$_vr" = / ] && die "здесь нет ai/ — это не проект под системой (fraim scaffold)"
+        [ "$_vr" = / ] && die "$(t cli_err_not_project)"
         _vr=$(dirname -- "$_vr")
     done
     printf '%s\n' "$_vr"
@@ -1036,18 +1000,18 @@ cmd_arch()         { verb_arch "$(verb_root)" "$@"; }
 # still call these. They get one sentence saying where the thing went, never a silent
 # "unknown command" that reads like a broken install.
 cmd_retired_task_verb() {
-    die "fraim $1 больше нет: задача теперь карточка без плана — fraim tasks, task-new, task-seal (fraim help)"
+    die "$(t cli_retired_verb verb="$1")"
 }
 
 # The body of a decision arrives on stdin, never through argv: a multi-line entry
 # squeezed into a command-line argument is how a verb starts shortening content it
 # has no business touching. The verb owns placement, heading and date — nothing else.
 cmd_decide() {
-    [ $# -ge 1 ] || die "нужно: fraim decide \"ЗАГОЛОВОК\" [--supersedes \"ЧТО ЗАМЕНЯЕТ\"] <<'EOF' … EOF"
+    [ $# -ge 1 ] || die "$(t cli_decide_usage)"
     _title=$1; shift
     _sup=
     if [ "${1:-}" = --supersedes ]; then
-        [ $# -ge 2 ] || die "--supersedes требует текста"
+        [ $# -ge 2 ] || die "$(t cli_decide_err_sup)"
         _sup=$2
     fi
     verb_decide "$(verb_root)" "$_title" "$_sup"
@@ -1055,24 +1019,24 @@ cmd_decide() {
 
 cmd_pitfall() { verb_pitfall "$(verb_root)" "$@"; }
 
-cmd_investigate_new()  { [ $# -ge 1 ] || die "нужен слаг расследования"; verb_investigate_new  "$(verb_root)" "$1"; }
-cmd_investigate_seal() { [ $# -ge 1 ] || die "нужен слаг расследования"; verb_investigate_seal "$(verb_root)" "$1"; }
+cmd_investigate_new()  { [ $# -ge 1 ] || die "$(t cli_inv_err_slug)"; verb_investigate_new  "$(verb_root)" "$1"; }
+cmd_investigate_seal() { [ $# -ge 1 ] || die "$(t cli_inv_err_slug)"; verb_investigate_seal "$(verb_root)" "$1"; }
 
 # The save point, by explicit path list. There is deliberately no way to say "everything":
 # `git add .` in a folder the system did not lay down is how secrets and data directories
 # get committed, and the person least able to notice that is the one this product is for.
 # A verb commits what it touched, and nothing else.
 cmd_commit() {
-    [ $# -ge 3 ] || die "нужно: fraim commit ВИД ТЕКСТ ПУТЬ... (пути обязательны — «всё» не бывает)"
+    [ $# -ge 3 ] || die "$(t cli_commit_usage)"
     _kind=$1; _text=$2
     shift 2
     printf '%s' "$_kind" | grep -qE '^[a-z][a-z-]*$' ||
-        die "вид должен быть одним словом в нижнем регистре: task, deploy, onboard, archive…"
+        die "$(t cli_commit_err_kind)"
     lang_check "the commit message" "$_text"
     _root=$(pwd -P)
-    verb_is_git "$_root" || die "здесь нет git — точку сохранения поставить не во что"
+    verb_is_git "$_root" || die "$(t cli_commit_err_no_git)"
     lang_check_commit "$_root" "$@"
-    verb_commit "$_root" "$_kind" "$_text" "$@" || die "коммит не удался"
+    verb_commit "$_root" "$_kind" "$_text" "$@" || die "$(t cli_commit_failed)"
 }
 cmd_prune_mark() { verb_prune_mark "$(verb_root)"; }
 cmd_stack_passport() { verb_stack_passport "$(pwd -P)"; }
@@ -1096,10 +1060,10 @@ cmd_dispatch() {
     # work where a plan is written — which is not always inside a project. Without a
     # project the role table simply resolves one level up, from the machine.
     if [ "$_sub" = check ]; then
-        [ $# -ge 2 ] || die "нужно: fraim dispatch check ПЛАН"
+        [ $# -ge 2 ] || die "$(t cli_disp_usage_check)"
         _root=$(pwd -P); [ -d "$_root/ai" ] || _root=
-        dispatch_check "$2" "$_root" || die "план не годится для параллельной раздачи"
-        ok "план проходит dispatch-check"
+        dispatch_check "$2" "$_root" || die "$(t cli_disp_err_plan_bad)"
+        ok "$(t cli_disp_check_ok)"
         say ""
         # What this build costs, before a single worker starts. Warnings first, because a
         # plan that passes the checks can still be a build nobody can accept in one sitting.
@@ -1113,12 +1077,12 @@ cmd_dispatch() {
     _root=$(verb_root)
     case $_sub in
         verify)
-            [ $# -ge 3 ] || die "нужно: fraim dispatch verify СБОРКА ПОДЗАДАЧА [БАЗА]"
+            [ $# -ge 3 ] || die "$(t cli_disp_usage_verify)"
             _b=$2; _s=$3
             _plan="$_root/ai/builds/$_b/plan.md"
-            [ -f "$_plan" ] || die "нет плана сборки $_b"
+            [ -f "$_plan" ] || die "$(t cli_disp_err_no_build_plan build="$_b")"
             _paths=$(dispatch_field "$_plan" "$_s" 4)
-            [ -n "$_paths" ] || die "в сборке $_b нет подзадачи $_s"
+            [ -n "$_paths" ] || die "$(t cli_disp_err_no_subtask build="$_b" sub="$_s")"
             _base=${4:-$(cd "$_root" && git rev-parse HEAD 2>/dev/null)}
 
             # The worker's own checkout, not the project root — see dispatch_worker_tree.
@@ -1126,32 +1090,32 @@ cmd_dispatch() {
             # for work done by hand in place, which is how it is used without an ADE.
             _tree=$(dispatch_worker_tree "$_root" "$_b-$_s")
             if [ -n "$_tree" ]; then
-                dim "  чекаут подзадачи: $_tree"
+                dim "  $(t cli_disp_checkout path="$_tree")"
             else
                 _tree=$_root
-                warn "отдельного чекаута $_b-$_s нет — сверяю корень проекта"
+                warn "$(t cli_disp_no_checkout name="$_b-$_s")"
             fi
             dispatch_verify_tree "$_tree" "$_base" "$_paths"
             ;;
         run)
-            [ $# -ge 2 ] || die "нужно: fraim dispatch run СБОРКА [ВОЛНА]"
-            say "Поднимаю флот для сборки $2..."
+            [ $# -ge 2 ] || die "$(t cli_disp_usage_run)"
+            say "$(t cli_disp_launching build="$2")"
             if dispatch_launch "$_root" "$2" "${3:-}"; then
                 say ""
-                ok "флот поднят"
-                dim "    состояние:       fraim dispatch watch $2"
-                dim "    собрать волну:   fraim dispatch collect $2"
+                ok "$(t cli_disp_launched)"
+                dim "    $(t cli_disp_hint_watch build="$2")"
+                dim "    $(t cli_disp_hint_collect build="$2")"
             else
                 say ""
-                warn "часть воркеров не поднялась — что поднялось, записано в ai/builds/$2/fleet.tsv"
+                warn "$(t cli_disp_launch_partial build="$2")"
                 exit 1
             fi
             ;;
         watch)
-            [ $# -ge 2 ] || die "нужно: fraim dispatch watch СБОРКА"
+            [ $# -ge 2 ] || die "$(t cli_disp_usage_watch)"
             build_fleet_rows "$_root" "$2" | while IFS='	' read -r _s _t _d _at; do
                 if [ -z "$_d" ] || [ "$_d" = "—" ]; then
-                    printf '%-12s не поднялась\n' "$_s"; continue
+                    printf '%-12s %s\n' "$_s" "$(t cli_disp_watch_not_up)"; continue
                 fi
                 _w=$(fleet_worker_show "$_d")
                 # Their two words for how a worker is doing. Pulled out rather than
@@ -1167,29 +1131,29 @@ cmd_dispatch() {
                 if printf '%s' "$_w" | fleet_ok && [ -n "$_st$_sg" ]; then
                     printf '%-12s %-18s %s %s\n' "$_s" "$_d" "${_st:-—}" "${_sg:+· $_sg}"
                 else
-                    printf '%-12s %-18s среда ответила не так, как ожидалось:\n' "$_s" "$_d"
+                    printf '%-12s %-18s %s\n' "$_s" "$_d" "$(t cli_disp_watch_unexpected)"
                     printf '%s\n' "$_w" | head -4 | sed 's/^/    /'
                 fi
             done
             say ""
-            dim "    состояние терминала — не статус задачи: завершённая задача может"
-            dim "    держать живой терминал. Что сделано — покажет dispatch verify."
+            dim "    $(t cli_disp_watch_note_terminal)"
+            dim "    $(t cli_disp_watch_note_verify)"
             ;;
         collect)
-            [ $# -ge 2 ] || die "нужно: fraim dispatch collect СБОРКА [ВОЛНА]"
+            [ $# -ge 2 ] || die "$(t cli_disp_usage_collect)"
             if dispatch_collect "$_root" "$2" "${3:-}"; then
                 say ""
-                ok "волна собрана в ветку $(build_branch "$2")"
+                ok "$(t cli_disp_collected branch="$(build_branch "$2")")"
                 if _next=$(build_next_wave "$_root" "$2"); then
-                    dim "    следующая волна:  fraim dispatch run $2"
-                    dim "    (волна $_next — воркеры пойдут от собранной ветки)"
+                    dim "    $(t cli_disp_next_wave build="$2")"
+                    dim "    $(t cli_disp_next_wave_note wave="$_next")"
                 else
-                    dim "    все волны собраны — принять работу флота:"
-                    dim "    fraim dispatch accept $2  (сверка, мастер-проверка, чистка, отчёт)"
+                    dim "    $(t cli_disp_all_collected)"
+                    dim "    $(t cli_disp_accept_hint build="$2")"
                 fi
             else
                 say ""
-                die "волна собрана не полностью — разберись с отклонёнными и повтори"
+                die "$(t cli_disp_err_collect_partial)"
             fi
             ;;
         accept)
@@ -1197,17 +1161,18 @@ cmd_dispatch() {
             # worker, run the project's check on the assembled branch, clean up after the
             # fleet, write the trunk, print the report. The human types nothing — they read
             # this output and answer in words (MODES.md §4, option B).
-            [ $# -ge 2 ] || die "нужно: fraim dispatch accept СБОРКА"
+            [ $# -ge 2 ] || die "$(t cli_disp_usage_accept)"
             _arc=0
             build_accept "$_root" "$2" || _arc=$?
-            [ "$_arc" -eq 2 ] && die "приёмка не прошла"
+            [ "$_arc" -eq 2 ] && die "$(t cli_disp_err_accept)"
             say ""
             if [ "$_arc" -eq 0 ]; then
-                ok "сборка $2 принята, проверена и в стволе"
-                dim "    покажи человеку, что выше, и скажи своими словами, чего в цифрах"
-                dim "    не видно и в чём ты не уверен — решает он"
+                ok "$(t cli_disp_accepted build="$2")"
+                # Addressed to the conductor agent, not the operator: English, inline.
+                dim "    show the human what is above, and say in your own words what the numbers"
+                dim "    do not show and what you are unsure of — the human decides"
             else
-                warn "сборка $2 проверена, в ствол не уведена — разберись и повтори"
+                warn "$(t cli_disp_not_accepted build="$2")"
                 exit 1
             fi
             ;;
@@ -1215,18 +1180,18 @@ cmd_dispatch() {
             build_list "$_root"
             ;;
         "")
-            die "нужно: fraim dispatch ПЛАН (или check / run / watch / collect / verify / accept / list)"
+            die "$(t cli_disp_usage)"
             ;;
         *)
             _plan=$_sub
-            [ -f "$_plan" ] || die "плана нет: $_plan"
-            dispatch_check "$_plan" "$_root" || die "план не годится для параллельной раздачи"
+            [ -f "$_plan" ] || die "$(t cli_disp_err_no_plan path="$_plan")"
+            dispatch_check "$_plan" "$_root" || die "$(t cli_disp_err_plan_bad)"
             dispatch_size_notes "$_plan"
 
             _bid=build-$(date -u '+%Y%m%d-%H%M%S')
-            build_seal "$_root" "$_bid" "$_plan" >/dev/null || die "не удалось завести журнал сборки"
+            build_seal "$_root" "$_bid" "$_plan" >/dev/null || die "$(t cli_disp_err_journal)"
 
-            say "Сборка $_bid — кто что исполняет:"
+            say "$(t cli_disp_build_title build="$_bid")"
             say ""
             dispatch_report "$_plan" "$_root"
             say ""
@@ -1234,20 +1199,20 @@ cmd_dispatch() {
             dispatch_parse_plan "$_plan" | while IFS='|' read -r _id _role _sum _paths; do
                 [ -n "$_id" ] || continue
                 _d=$(dispatch_write_task "$_root" "$_bid" "$_id" "$_role" "$_sum" "$_paths") ||
-                    die "не удалось записать задачу подзадачи $_id"
-                dim "  задание $_id → ${_d#"$_root"/}"
+                    die "$(t cli_disp_err_write_task id="$_id")"
+                dim "  $(t cli_disp_task_written id="$_id" path="${_d#"$_root"/}")"
             done
 
             say ""
-            ok "задания записаны, журнал заведён: ai/builds/$_bid/journal.md"
+            ok "$(t cli_disp_tasks_done build="$_bid")"
             if fleet_present; then
-                dim "    поднять волну:   fraim dispatch run $_bid"
-                dim "    состояние:       fraim dispatch watch $_bid"
+                dim "    $(t cli_disp_plan_hint_run build="$_bid")"
+                dim "    $(t cli_disp_hint_watch build="$_bid")"
             else
-                dim "    среды исполнения на этой машине нет — задания можно исполнить вручную"
+                dim "    $(t cli_disp_plan_no_ade)"
             fi
-            dim "    собрать волну:     fraim dispatch collect $_bid"
-            dim "    сверить с деревом: fraim dispatch verify $_bid ПОДЗАДАЧА"
+            dim "    $(t cli_disp_plan_hint_collect build="$_bid")"
+            dim "    $(t cli_disp_plan_hint_verify build="$_bid")"
             ;;
     esac
 }
@@ -1275,19 +1240,19 @@ cmd_roles_set() {
             *) _rs_key=role_$_rs_key ;;
         esac
         roles_parse "$_rs_val" >/dev/null ||
-            die "«$_rs_val» не в форме агент:модель:усилие"
+            die "$(t cli_roles_err_form value="$_rs_val")"
         if [ -n "$_rs_force_machine" ] || [ -z "$_rs_root" ]; then
             _rs_file=$(config_machine_file)
         else
             _rs_file=$(config_project_file "$_rs_root")
         fi
-        config_set_file "$_rs_file" "$_rs_key" "$_rs_val" || die "не удалось записать в $_rs_file"
+        config_set_file "$_rs_file" "$_rs_key" "$_rs_val" || die "$(t cli_roles_err_write path="$_rs_file")"
         ok "$_rs_key = $_rs_val"
         dim "    → $_rs_file"
         return 0
     fi
 
-    menu_supported || die "нужен терминал для выбора — или задай сразу: fraim roles set КЛЮЧ агент:модель:усилие"
+    menu_supported || die "$(t cli_roles_err_no_tty)"
 
     # 1. Which procedure. A tier key is offered too, because setting tier_cheap once is
     #    usually the right move and setting thirteen roles one by one is usually not.
@@ -1296,8 +1261,8 @@ cmd_roles_set() {
     else
         _rs_key=$({ printf 'tier_cheap\ntier_capable\ntier_strong\n'
                     fraim_procedures 2>/dev/null || :
-                  } | roles_pick "Что настраиваем — класс моделей или отдельную процедуру?") ||
-            die "отменено"
+                  } | roles_pick "$(t cli_roles_pick_key)") ||
+            die "$(t cli_cancelled)"
     fi
     case $_rs_key in
         tier_*) _rs_ckey=$_rs_key ;;
@@ -1312,31 +1277,31 @@ cmd_roles_set() {
     #      see roles.sh), plus the ones already configured here and the tier
     #      suggestion, so the first run has something to pick even where the agent
     #      cannot be asked.
-    _rs_agent=$(roles_agents_available | roles_pick "Агент:" 1) || die "отменено"
+    _rs_agent=$(roles_agents_available | roles_pick "$(t cli_roles_pick_agent)" 1) || die "$(t cli_cancelled)"
     case $_rs_key in
         tier_*) _rs_tier=${_rs_key#tier_} ;;
         *)      _rs_tier=$(roles_tier_of "${_rs_key#role_}" 2>/dev/null || :) ;;
     esac
     _rs_model=$({ roles_models_of "$_rs_agent"; roles_models_seen "$_rs_root"; roles_models_suggested "$_rs_tier"; } |
                 grep '[^[:space:]]' | awk '!seen[$0]++' |
-                roles_pick "Модель:" 1) || die "отменено"
-    _rs_effort=$(roles_efforts_of "$_rs_agent" "$_rs_model" | roles_pick "Усилие:" 2) || die "отменено"
+                roles_pick "$(t cli_roles_pick_model)" 1) || die "$(t cli_cancelled)"
+    _rs_effort=$(roles_efforts_of "$_rs_agent" "$_rs_model" | roles_pick "$(t cli_roles_pick_effort)" 2) || die "$(t cli_cancelled)"
 
     _rs_val="$_rs_agent:$_rs_model:$_rs_effort"
-    roles_parse "$_rs_val" >/dev/null || die "получилось «$_rs_val» — это не агент:модель:усилие"
+    roles_parse "$_rs_val" >/dev/null || die "$(t cli_roles_err_result value="$_rs_val")"
 
     # 5. Which level. Project beats machine (§11.3, C), so the question is real whenever
     #    we are standing inside a project.
     _rs_file=$(config_machine_file)
     if [ -n "$_rs_root" ]; then
-        _rs_lvl=$(printf 'эта машина (~/.fraim/config)\nтолько этот проект (ai/fraim.conf)\n' |
-                  roles_pick "Где записать?" 1) || die "отменено"
+        _rs_lvl=$(printf '%s\n%s\n' "$(t cli_roles_level_machine)" "$(t cli_roles_level_project)" |
+                  roles_pick "$(t cli_roles_pick_level)" 1) || die "$(t cli_cancelled)"
         case $_rs_lvl in
             *fraim.conf*) _rs_file=$(config_project_file "$_rs_root") ;;
         esac
     fi
 
-    config_set_file "$_rs_file" "$_rs_ckey" "$_rs_val" || die "не удалось записать в $_rs_file"
+    config_set_file "$_rs_file" "$_rs_ckey" "$_rs_val" || die "$(t cli_roles_err_write path="$_rs_file")"
     say ""
     ok "$_rs_ckey = $_rs_val"
     dim "    → $_rs_file"
@@ -1353,8 +1318,8 @@ cmd_mode() {
     [ "${1:-}" = --hook ] && return 0
 
     _md_root=$(verb_root)
-    say "режимов больше нет: агент работает сам, в разговоре"
-    dim "    дирижёр и флот — процедура /conductor, её запускают по просьбе человека"
+    say "$(t cli_mode_gone)"
+    dim "    $(t cli_mode_conductor_note)"
     say ""
 
     _md_did=
@@ -1362,27 +1327,34 @@ cmd_mode() {
     if [ -n "$(config_read_file "$_md_conf" mode)" ]; then
         _md_tmp="$_md_conf.fraim.$$"
         grep -v '^[[:space:]]*mode[[:space:]]*=' "$_md_conf" > "$_md_tmp" && mv "$_md_tmp" "$_md_conf" ||
-            die "не удалось убрать строку mode из ai/fraim.conf"
-        ok "строка mode убрана из ai/fraim.conf"; _md_did=1
+            die "$(t cli_mode_err_conf)"
+        ok "$(t cli_mode_conf_done)"; _md_did=1
     fi
 
     if [ -f "$_md_root/AGENTS.md" ] && grep -q '^## Fleet mode is on' "$_md_root/AGENTS.md"; then
         context_install "$_md_root/AGENTS.md" context_project_block ||
-            die "не удалось обновить AGENTS.md"
-        ok "дирижёрский блок убран из AGENTS.md"; _md_did=1
+            die "$(t cli_mode_err_agents)"
+        ok "$(t cli_mode_agents_done)"; _md_did=1
     fi
 
     if context_hook_remove "$_md_root"; then
-        ok "хук SessionStart убран из .claude/settings.json"; _md_did=1
+        ok "$(t cli_mode_hook_done)"; _md_did=1
     else
         case $? in
-            2) warn "нет python3 — хук «$CTX_HOOK_MARK» в .claude/settings.json убери руками" ;;
-            1) warn ".claude/settings.json не удалось прочитать — хук «$CTX_HOOK_MARK» остался" ;;
+            2) warn "$(t cli_mode_hook_no_python mark="$CTX_HOOK_MARK")" ;;
+            1) warn "$(t cli_mode_hook_unreadable mark="$CTX_HOOK_MARK")" ;;
         esac
     fi
 
-    [ -n "$_md_did" ] || dim "    остатков старого режима здесь нет"
+    [ -n "$_md_did" ] || dim "    $(t cli_mode_nothing)"
     return 0
+}
+
+# cli_pad TEXT WIDTH — TEXT padded with spaces to WIDTH terminal columns.
+cli_pad() {
+    _cp_n=$(str_width "$1")
+    printf '%s' "$1"
+    while [ "$_cp_n" -lt "$2" ]; do printf ' '; _cp_n=$((_cp_n + 1)); done
 }
 
 # The role table (MODES.md §11.3): what a role resolves to here, and from which level.
@@ -1392,16 +1364,18 @@ cmd_roles() {
     project_is_managed "$_root" || _root=
     _rs=$(roles_list "$_root")
     if [ -z "$_rs" ]; then
-        say "ролей не задано — всё пойдёт на встроенный дефолт:"
+        say "$(t cli_roles_none)"
         printf '  %s\n' "$(roles_resolve default "$_root" | tr '\t' ' ')"
         say ""
-        dim "    задать: fraim config set role_refactor claude:haiku:medium"
+        dim "    $(t cli_roles_set_hint)"
         return 0
     fi
-    # Literal, not a printf format: POSIX printf pads to BYTES, and these headings are
-    # Cyrillic — %-15s on the 4-letter Cyrillic word for «role» pads 8 bytes to 15 and lands
-    # 4 characters wide.
-    printf 'роль            агент   модель   усилие  источник\n'
+    # Padded by display width, not with printf: POSIX printf pads to BYTES, and the headings
+    # come from the catalog — %-15s on the 4-letter Cyrillic word for «role» pads 8 bytes to
+    # 15 and lands 4 characters wide. The widths match the row format below.
+    printf '%s %s %s %s %s\n' "$(cli_pad "$(t cli_roles_col_role)" 15)" \
+        "$(cli_pad "$(t cli_roles_col_agent)" 7)" "$(cli_pad "$(t cli_roles_col_model)" 8)" \
+        "$(cli_pad "$(t cli_roles_col_effort)" 7)" "$(t cli_roles_col_source)"
     for _r in $_rs; do
         _ex=$(roles_resolve "$_r" "$_root") || continue
         _ra=$(printf '%s' "$_ex" | cut -f1)
@@ -1463,5 +1437,5 @@ case $_cmd in
     build)         cmd_build "$@" ;;
     version|--version|-v) cmd_version ;;
     help|--help|-h) usage ;;
-    *) printf 'fraim: неизвестная команда: %s\n\n' "$_cmd" >&2; usage >&2; exit 2 ;;
+    *) printf 'fraim: %s\n\n' "$(t cli_err_unknown_command cmd="$_cmd")" >&2; usage >&2; exit 2 ;;
 esac
