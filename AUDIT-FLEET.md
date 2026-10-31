@@ -210,6 +210,7 @@ live run showed»): id диспетча, `devin` без модели при за
 - **не у всех харнесов они есть.** По `HARNESS_TARGETS.md` субагенты заявлены у omp и
   Devin CLI; у Claude Code и OpenCode есть с выбором модели. У Codex, pi, Hermes и
   Antigravity наличие и форму **нужно проверить**, прежде чем писать строку таблицы.
+  Проверено по всем 28 харнесам — [AUDIT-FLEET-HARNESSES.md](AUDIT-FLEET-HARNESSES.md).
 
 ### 6.2 Контракт — часть плана
 
