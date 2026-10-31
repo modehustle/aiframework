@@ -10,7 +10,9 @@
 # probe  — a binary name on PATH, or a directory; the harness counts as present
 #          if either the binary resolves or the directory exists.
 # instructions-file — the harness's GLOBAL context file, where we leave the
-#          pointer block. Empty means the harness has no global one.
+#          pointer block. `-` means the harness has no global one on disk (its
+#          rules live in a settings screen); never leave the cell empty — a tab
+#          separator collapses empty fields.
 #
 # Antigravity is the one row where neither cell is the obvious one, and both
 # choices are load-bearing:
@@ -58,11 +60,27 @@ harness_expand() { printf '%s\n' "$1" | sed "s|\$HOME|$HOME|g"; }
 # A harness is present if its binary is on PATH or its home directory exists.
 # Both matter: a harness may be installed but not yet on PATH in this shell,
 # and it may be on PATH before it has ever been run.
+#
+# The probe cell is a comma-separated list. A bare word is a binary on PATH; an
+# entry starting with `$HOME` or `/` is a path whose existence counts. When the
+# cell names no path, the home is the parent of the skills directory — the usual
+# case. A row names its paths only when that parent is wrong: shared with another
+# product (`~/.gemini` holds both Gemini CLI and Antigravity), or not created by
+# the product at all (a shared `~/.agents/skills`).
 harness_present() {
-    _probe=$1; _skills=$2
-    command -v "$_probe" >/dev/null 2>&1 && return 0
-    _home=$(dirname -- "$_skills")
-    [ -d "$_home" ] && return 0
+    _hp_probe=$1; _hp_skills=$2; _hp_paths=0
+    _hp_ifs=$IFS; IFS=,
+    for _hp_p in $_hp_probe; do
+        case $_hp_p in
+            '$HOME'*|/*)
+                _hp_paths=1
+                [ -e "$(harness_expand "$_hp_p")" ] && { IFS=$_hp_ifs; return 0; } ;;
+            ?*) command -v "$_hp_p" >/dev/null 2>&1 && { IFS=$_hp_ifs; return 0; } ;;
+        esac
+    done
+    IFS=$_hp_ifs
+    [ "$_hp_paths" -eq 1 ] && return 1
+    [ -d "$(dirname -- "$_hp_skills")" ] && return 0
     return 1
 }
 
@@ -71,6 +89,7 @@ harness_detect() {
     harness_table | while IFS='	' read -r _key _label _probe _skills _instr; do
         [ -n "$_key" ] || continue
         _skills=$(harness_expand "$_skills")
+        [ "$_instr" = - ] && _instr=
         _instr=$(harness_expand "$_instr")
         if harness_present "$_probe" "$_skills"; then
             printf '%s\t%s\t%s\t%s\n' "$_key" "$_label" "$_skills" "$_instr"
