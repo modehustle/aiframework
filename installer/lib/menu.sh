@@ -425,13 +425,19 @@ ui_cfg_row() { # key label
         '~/.fraim/config') _ui_w=$(t cfg_where_machine) ;;
         *)                _ui_w="$UI_DIM$_ui_src$UI_OFF" ;;
     esac
+    # Label, value, and where it is written — the last only when there is room: the
+    # description under the list says it for the selected row anyway.
     _ui_mw=$((UI_COLS - 25))
-    ui_add "cfg:$1" "  $(ui_cols "$2" $((_ui_mw * 45 / 100)) "$_ui_v" $((_ui_mw * 32 / 100))) $_ui_w"
+    if [ "$UI_COLS" -ge 100 ]; then
+        ui_add "cfg:$1" "  $(ui_cols "$2" $((_ui_mw - 37)) "$_ui_v" 24) $_ui_w"
+    else
+        ui_add "cfg:$1" "  $(ui_cols "$2" $((_ui_mw - 22)) "$_ui_v" 20)"
+    fi
 }
 # Two columns padded to widths; the awk fit does the measuring.
 ui_cols() {
     printf '%s\n%s\n' "$1" "$3" | _UF_A=$2 _UF_B=$4 LC_ALL=C awk "$UI_AWK_LIB"'
-        NR == 1 { a = fit($0, ENVIRON["_UF_A"] + 0) } NR == 2 { printf "%s%s", a, fit($0, ENVIRON["_UF_B"] + 0) }'
+        NR == 1 { a = fit($0, ENVIRON["_UF_A"] - 1) " " } NR == 2 { printf "%s%s", a, fit($0, ENVIRON["_UF_B"] + 0) }'
 }
 
 ui_build_settings() {
