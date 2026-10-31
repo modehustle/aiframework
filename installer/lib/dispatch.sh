@@ -91,22 +91,22 @@ dispatch_field() {
 # ---------------------------------------------------------------------------
 dispatch_check() {
     _dc_plan=$1; _dc_root=${2:-}
-    [ -f "$_dc_plan" ] || { printf >&2 'плана нет: %s\n' "$_dc_plan"; return 1; }
+    [ -f "$_dc_plan" ] || { printf >&2 '%s\n' "$(t disp_err_no_plan plan="$_dc_plan")"; return 1; }
 
     _dc_recs=$(dispatch_parse_plan "$_dc_plan")
-    [ -n "$_dc_recs" ] || { printf >&2 'в плане нет ни одной «## Subtask: ИМЯ»\n'; return 1; }
+    [ -n "$_dc_recs" ] || { printf >&2 '%s\n' "$(t disp_err_no_subtasks)"; return 1; }
 
     _dc_bad=0
 
     # 1. Structure: every subtask says who, what and where.
     _dc_struct=$(printf '%s\n' "$_dc_recs" | while IFS='|' read -r _id _role _sum _paths; do
         [ -n "$_id" ] || continue
-        [ -n "$_role" ]  || printf 'подзадача %s: нет «**Role**:»\n' "$_id"
-        [ -n "$_sum" ]   || printf 'подзадача %s: нет «**Summary**:»\n' "$_id"
-        [ -n "$_paths" ] || printf 'подзадача %s: нет ни одного «### `путь`»\n' "$_id"
+        [ -n "$_role" ]  || printf '%s\n' "$(t disp_err_no_role id="$_id")"
+        [ -n "$_sum" ]   || printf '%s\n' "$(t disp_err_no_summary id="$_id")"
+        [ -n "$_paths" ] || printf '%s\n' "$(t disp_err_no_paths id="$_id")"
     done)
     if [ -n "$_dc_struct" ]; then
-        printf >&2 'dispatch-check: план неполон:\n%s\n' "$_dc_struct"
+        printf >&2 '%s\n%s\n' "$(t disp_err_incomplete)" "$_dc_struct"
         _dc_bad=1
     fi
 
@@ -114,7 +114,7 @@ dispatch_check() {
     #    before anything else looks at paths — a ghost `After` or a cycle makes every
     #    per-wave answer below meaningless. dispatch_waves names the defect itself.
     if _dc_waves=$(dispatch_waves "$_dc_plan"); then :; else
-        printf >&2 'dispatch-check: порядок подзадач не разбирается\n'
+        printf >&2 '%s\n' "$(t disp_err_order)"
         _dc_bad=1
         _dc_waves=
     fi
@@ -134,15 +134,14 @@ dispatch_check() {
     done)
     _dc_dups=$(printf '%s\n' "$_dc_pairs" | cut -f1,2 | sort | uniq -d)
     if [ -n "$_dc_dups" ]; then
-        printf >&2 'dispatch-check: один файл у двух подзадач одной волны — так их запускать нельзя:\n'
+        printf >&2 '%s\n' "$(t disp_err_collision)"
         printf '%s\n' "$_dc_dups" | while IFS='	' read -r _p _w; do
             [ -n "$_p" ] || continue
             _who=$(printf '%s\n' "$_dc_pairs" |
                    awk -F'\t' -v p="$_p" -v w="$_w" '$1 == p && $2 == w { printf "%s%s", sep, $3; sep=", " }')
-            printf >&2 '  %s — волна %s, в подзадачах: %s\n' "$_p" "$_w" "$_who"
+            printf >&2 '  %s\n' "$(t disp_err_collision_line path="$_p" wave="$_w" who="$_who")"
         done
-        printf >&2 '  выходы по порядку: свести в одну подзадачу · перекроить границы ·\n'
-        printf >&2 '  поставить «**After**: ИМЯ» и развести по волнам\n'
+        printf >&2 '%s\n' "$(t disp_err_collision_ways)"
         _dc_bad=1
     fi
 
@@ -164,10 +163,7 @@ dispatch_check() {
     #    plans non-portable, which is the thing roles exist to avoid.
     for _dc_r in $_dc_roles; do
         if fraim_procedure_file "$_dc_r" >/dev/null 2>&1 && ! roles_is_parallel "$_dc_r"; then
-            printf >&2 'dispatch-check: роль %s нельзя раздавать воркеру\n' "$_dc_r"
-            printf >&2 '  процедура %s не объявляет «parallel: yes» — она пишет фундамент\n' "$_dc_r"
-            printf >&2 '  или действует на весь проект, а под параллелизмом фундамент пишет\n'
-            printf >&2 '  сборка, один раз (MODES.md §2, инвариант 0.4)\n'
+            printf >&2 '%s\n' "$(t disp_err_not_parallel role="$_dc_r")"
             _dc_bad=1
         fi
     done
@@ -181,8 +177,7 @@ dispatch_check() {
         _ag=$(printf '%s' "$_ex" | cut -f1)
         _mo=$(printf '%s' "$_ex" | cut -f2)
         if [ -n "$_mo" ] && fleet_caps_has "$_ag" no-launch-model 2>/dev/null; then
-            printf >&2 'подзадача %s: агент %s не принимает модель через Orca — %s пойдёт в команде запуска\n' \
-                "$_id" "$_ag" "$_mo"
+            printf >&2 '%s\n' "$(t disp_note_no_orca_model id="$_id" agent="$_ag" model="$_mo")"
         fi
     done
 
@@ -210,9 +205,22 @@ dispatch_check() {
 #
 # Prints `id<TAB>wave`, in plan order. Refuses (exit 1) on an After that names nothing and
 # on a dependency cycle, because both cost N launches to discover otherwise.
+#
+# The two refusals are the operator's messages: their templates reach awk through ENVIRON,
+# never `-v`, which would eat backslashes.
 # ---------------------------------------------------------------------------
 dispatch_waves() {
-    dispatch_parse_plan "$1" | awk -F'|' '
+    dispatch_parse_plan "$1" |
+    _dw_ghost=$(t disp_err_after_ghost) _dw_cycle=$(t disp_err_cycle) awk -F'|' '
+        # {name} in s replaced by v, once per occurrence, left to right.
+        function fill(s, name, v,    out, i) {
+            out = ""
+            while ((i = index(s, name)) > 0) {
+                out = out substr(s, 1, i - 1) v
+                s = substr(s, i + length(name))
+            }
+            return out s
+        }
         { n = NR; id[n] = $1; after[n] = $5; known[$1] = 1 }
         END {
             for (i = 1; i <= n; i++) {
@@ -222,8 +230,8 @@ dispatch_waves() {
                     gsub(/^[ \t]+|[ \t]+$/, "", a[j])
                     if (a[j] == "") continue
                     if (!(a[j] in known)) {
-                        printf "подзадача %s: «After: %s» — такой подзадачи в плане нет\n", \
-                            id[i], a[j] > "/dev/stderr"
+                        print fill(fill(ENVIRON["_dw_ghost"], "{id}", id[i]), "{after}", a[j]) \
+                            > "/dev/stderr"
                         bad = 1
                     }
                 }
@@ -249,7 +257,7 @@ dispatch_waves() {
                 if (!changed) break
             }
             if (changed) {
-                print "цикл зависимостей: волны не выводятся, план надо переписать" > "/dev/stderr"
+                print ENVIRON["_dw_cycle"] > "/dev/stderr"
                 exit 1
             }
             for (i = 1; i <= n; i++) printf "%s\t%s\n", id[i], w[i]
@@ -318,8 +326,7 @@ dispatch_size_notes() {
 
     _sn_n=$(printf '%s\n' "$_sn_recs" | grep -c '[^[:space:]]')
     [ "$_sn_n" -le "$DISPATCH_MAX_SUBTASKS" ] ||
-        printf >&2 'подзадач %s: приёмка одним решением на такой сборке сомнительна (потолок %s)\n' \
-            "$_sn_n" "$DISPATCH_MAX_SUBTASKS"
+        printf >&2 '%s\n' "$(t disp_warn_subtasks n="$_sn_n" max="$DISPATCH_MAX_SUBTASKS")"
 
     # Width and depth. Until a plan declares order, the whole build is one wave, and the
     # width IS the count — so this reads correctly both before and after waves exist.
@@ -327,14 +334,13 @@ dispatch_size_notes() {
     if [ -n "$_sn_waves" ]; then
         _sn_depth=$(printf '%s\n' "$_sn_waves" | cut -f2 | sort -n | tail -1)
         [ "${_sn_depth:-1}" -le "$DISPATCH_MAX_WAVES" ] ||
-            printf >&2 'волн %s: это уже последовательный проект, а не сборка (потолок %s)\n' \
-                "$_sn_depth" "$DISPATCH_MAX_WAVES"
+            printf >&2 '%s\n' "$(t disp_warn_waves n="$_sn_depth" max="$DISPATCH_MAX_WAVES")"
         _sn_w=1
         while [ "$_sn_w" -le "${_sn_depth:-1}" ]; do
             _sn_wn=$(printf '%s\n' "$_sn_waves" | awk -F'\t' -v w="$_sn_w" '$2 == w' | grep -c '[^[:space:]]')
             [ "$_sn_wn" -le "$DISPATCH_WAVE_MAX" ] ||
-                printf >&2 'волна %s: %s подзадач одновременно — координация и приёмка растут быстрее выигрыша (потолок %s)\n' \
-                    "$_sn_w" "$_sn_wn" "$DISPATCH_WAVE_MAX"
+                printf >&2 '%s\n' \
+                    "$(t disp_warn_wave_wide wave="$_sn_w" n="$_sn_wn" max="$DISPATCH_WAVE_MAX")"
             _sn_w=$(( _sn_w + 1 ))
         done
     fi
@@ -343,7 +349,7 @@ dispatch_size_notes() {
         [ -n "$_sn_id" ] || continue
         _sn_pn=$(printf '%s\n' "$_sn_paths" | tr ',' '\n' | grep -c '[^[:space:]]')
         [ "$_sn_pn" -le "$DISPATCH_PATHS_MAX" ] ||
-            printf >&2 'подзадача %s: %s путей — вероятно, это два куска, а не один\n' "$_sn_id" "$_sn_pn"
+            printf >&2 '%s\n' "$(t disp_warn_paths id="$_sn_id" n="$_sn_pn")"
     done
     return 0
 }
@@ -362,24 +368,10 @@ dispatch_cost_line() {
     if [ -n "$_cl_waves" ]; then
         _cl_wide=$(printf '%s\n' "$_cl_waves" | cut -f2 | sort | uniq -c | awk '{ if ($1 > m) m = $1 } END { print m + 0 }')
     fi
-    printf 'состав: %s %s, %s %s, %s %s одновременно\n' \
-        "$_cl_n" "$(dispatch_plural "$_cl_n" подзадача подзадачи подзадач)" \
-        "${_cl_depth:-1}" "$(dispatch_plural "${_cl_depth:-1}" волна волны волн)" \
-        "$_cl_wide" "$(dispatch_plural "$_cl_wide" воркер воркера воркеров)"
-}
-
-# Russian plural for the counts above. Borrowed shape from wm_plural, kept local because
-# dispatch.sh must stay usable without the watchman.
-dispatch_plural() {
-    _dp_n=$1
-    case $(( _dp_n % 100 )) in
-        1[1-9]) printf '%s\n' "$4" ;;
-        *) case $(( _dp_n % 10 )) in
-               1) printf '%s\n' "$2" ;;
-               2|3|4) printf '%s\n' "$3" ;;
-               *) printf '%s\n' "$4" ;;
-           esac ;;
-    esac
+    printf '%s\n' "$(t disp_cost_line \
+        subtasks="$(tp "$_cl_n" disp_n_subtasks)" \
+        waves="$(tp "${_cl_depth:-1}" disp_n_waves)" \
+        workers="$(tp "$_cl_wide" disp_n_workers)")"
 }
 
 # What dispatch is about to do, before it does it: who runs what, on which model,
@@ -389,8 +381,9 @@ dispatch_plural() {
 dispatch_report() {
     _dr_plan=$1; _dr_root=${2:-}
     _dr_waves=$(dispatch_waves "$_dr_plan" 2>/dev/null) || _dr_waves=
-    # Literal: POSIX printf pads bytes, and Cyrillic headings would land short.
-    printf 'волна  подзадача  роль            агент   модель   усилие  источник\n'
+    # Padded inside the catalog, not by printf: POSIX printf pads bytes, and Cyrillic
+    # headings would land short.
+    printf '%s\n' "$(t disp_report_head)"
     dispatch_parse_plan "$_dr_plan" | while IFS='|' read -r _id _role _sum _paths _after; do
         [ -n "$_id" ] || continue
         _ex=$(roles_resolve "$_role" "$_dr_root") || continue
@@ -503,7 +496,7 @@ dispatch_verify_tree() {
     _vt_changed=$(cd "$_vt_root" 2>/dev/null && {
             git diff --name-only "$_vt_ref" 2>/dev/null
             git ls-files --others --exclude-standard 2>/dev/null
-        }) || { printf >&2 'не могу прочитать дерево от %s\n' "$_vt_ref"; return 1; }
+        }) || { printf >&2 '%s\n' "$(t disp_err_tree_unreadable ref="$_vt_ref")"; return 1; }
     _vt_decl=$(printf '%s\n' "$_vt_paths" | tr ',' '\n' | grep '[^[:space:]]' | sort -u)
 
     printf '%s\n' "$_vt_changed" | grep '[^[:space:]]' | sort -u | while read -r _p; do
@@ -584,7 +577,7 @@ dispatch_launch() {
 
     _dl_dir=$(build_dir "$_dl_root" "$_dl_build")
     _dl_plan="$_dl_dir/plan.md"
-    [ -f "$_dl_plan" ] || { printf >&2 'нет плана сборки %s\n' "$_dl_build"; return 1; }
+    [ -f "$_dl_plan" ] || { printf >&2 '%s\n' "$(t disp_err_no_build_plan build="$_dl_build")"; return 1; }
 
     # The journal is what makes this a BUILD rather than a directory that happens to hold
     # a plan. In the first live build the conductor ran `dispatch run v2-core` — the folder
@@ -592,28 +585,27 @@ dispatch_launch() {
     # build-20260907-140427. The fleet started against a build that had no journal, and the
     # mismatch only surfaced at acceptance, after all four workers had finished.
     if [ ! -f "$_dl_dir/journal.md" ]; then
-        printf >&2 'сборка %s не заводилась: нет журнала ai/builds/%s/journal.md\n' \
-            "$_dl_build" "$_dl_build"
-        printf >&2 '  сборку заводит «fraim dispatch ПЛАН» — он и назовёт её имя\n'
+        printf >&2 '%s\n' "$(t disp_err_not_sealed build="$_dl_build")"
+        printf >&2 '  %s\n' "$(t disp_hint_seal)"
         _dl_have=$(build_list "$_dl_root" 2>/dev/null | head -3)
-        [ -n "$_dl_have" ] && { printf >&2 '  заведённые сборки:\n'; printf '%s\n' "$_dl_have" | sed 's/^/    /' >&2; }
+        [ -n "$_dl_have" ] && { printf >&2 '  %s\n' "$(t disp_hint_have)"; printf '%s\n' "$_dl_have" | sed 's/^/    /' >&2; }
         return 1
     fi
 
-    fleet_present || { printf >&2 'среда исполнения не найдена на этой машине\n'; return 1; }
-    fleet_ready   || { printf >&2 'среда исполнения не отвечает — запусти её (orca open)\n'; return 1; }
+    fleet_present || { printf >&2 '%s\n' "$(t disp_err_no_env)"; return 1; }
+    fleet_ready   || { printf >&2 '%s\n' "$(t disp_err_env_down)"; return 1; }
 
     if [ -z "$_dl_wave" ]; then
         _dl_wave=$(build_next_wave "$_dl_root" "$_dl_build") || {
-            printf >&2 'все волны сборки %s собраны — поднимать нечего\n' "$_dl_build"
+            printf >&2 '%s\n' "$(t disp_err_all_launched build="$_dl_build")"
             return 1
         }
     fi
     _dl_ids=$(dispatch_wave_ids "$_dl_plan" "$_dl_wave") || return 1
     [ -n "$_dl_ids" ] || {
-        printf >&2 'в сборке %s нет волны %s\n' "$_dl_build" "$_dl_wave"; return 1
+        printf >&2 '%s\n' "$(t disp_err_no_wave build="$_dl_build" wave="$_dl_wave")"; return 1
     }
-    printf 'Волна %s\n' "$_dl_wave"
+    printf '%s\n' "$(t disp_wave wave="$_dl_wave")"
 
     # Workers branch from the BUILD branch, not from whatever the conductor has checked
     # out: that is what lets a later wave start on top of what an earlier one left, and it
@@ -623,7 +615,8 @@ dispatch_launch() {
     git -C "$_dl_root" rev-parse --verify --quiet "refs/heads/$_dl_base" >/dev/null 2>&1 ||
         _dl_base=$(cd "$_dl_root" && git rev-parse --abbrev-ref HEAD 2>/dev/null) || _dl_base=main
 
-    _dl_run=$(fleet_run_create "fraim: сборка $_dl_build") || return 1
+    # The run's objective lives in the environment, where workers may read it: English.
+    _dl_run=$(fleet_run_create "fraim: build $_dl_build") || return 1
     printf 'Run: %s\n' "$_dl_run"
 
     # The launch-truth channel: fleet_worker_start appends one line per worker
@@ -685,19 +678,19 @@ dispatch_launch() {
         _dl_lmodel=$(printf '%s' "$_dl_lp" | cut -f3)
         : > "$_dl_finfo"
         if [ "$_dl_lpath" = custom ] && [ -n "$_dl_lmodel" ]; then
-            printf '  %s → %s (%s %s, модель применена командой запуска «%s»)\n' \
-                "$_dl_id" "$_dl_disp" "$_dl_ag" "$_dl_mo" "$_dl_lmodel"
+            printf '  %s\n' "$(t disp_launch_cmd_model id="$_dl_id" disp="$_dl_disp" \
+                agent="$_dl_ag" model="$_dl_mo" cmd="$_dl_lmodel")"
         elif [ "$_dl_lpath" = custom ]; then
-            printf '  %s → %s (%s, модель не применяется)\n' "$_dl_id" "$_dl_disp" "$_dl_ag"
-            printf '     как %s меняет модель изнутри — неизвестно; научить:\n' "$_dl_ag"
+            printf '  %s\n' "$(t disp_launch_no_model id="$_dl_id" disp="$_dl_disp" agent="$_dl_ag")"
+            printf '     %s\n' "$(t disp_launch_teach agent="$_dl_ag")"
             printf '     fraim config set --machine modelcmd_%s "/model %%s"\n' "$_dl_ag"
         elif fleet_caps_has "$_dl_ag" no-launch-model 2>/dev/null; then
             if _dl_sent=$(fleet_worker_set_model "$_dl_disp" "$_dl_ag" "$_dl_mo" "$_dl_root"); then
-                printf '  %s → %s (%s %s, задана командой «%s»)\n' \
-                    "$_dl_id" "$_dl_disp" "$_dl_ag" "$_dl_mo" "$_dl_sent"
+                printf '  %s\n' "$(t disp_launch_set_model id="$_dl_id" disp="$_dl_disp" \
+                    agent="$_dl_ag" model="$_dl_mo" cmd="$_dl_sent")"
             else
-                printf '  %s → %s (%s, модель не применяется)\n' "$_dl_id" "$_dl_disp" "$_dl_ag"
-                printf '     как %s меняет модель изнутри — неизвестно; научить:\n' "$_dl_ag"
+                printf '  %s\n' "$(t disp_launch_no_model id="$_dl_id" disp="$_dl_disp" agent="$_dl_ag")"
+                printf '     %s\n' "$(t disp_launch_teach agent="$_dl_ag")"
                 printf '     fraim config set --machine modelcmd_%s "/model %%s"\n' "$_dl_ag"
             fi
         else
@@ -734,7 +727,7 @@ build_seal() {
     _bs_br=$(build_branch "$_bs_id")
     if ! git -C "$_bs_root" rev-parse --verify --quiet "refs/heads/$_bs_br" >/dev/null 2>&1; then
         git -C "$_bs_root" branch "$_bs_br" >/dev/null 2>&1 ||
-            printf >&2 'не удалось завести ветку сборки %s — сбор работать не будет\n' "$_bs_br"
+            printf >&2 '%s\n' "$(t disp_err_branch_create branch="$_bs_br")"
     fi
 
     {
@@ -788,13 +781,13 @@ dispatch_merge_one() {
     _mo_tmp=$(mktemp -d) || return 1
     rmdir "$_mo_tmp" 2>/dev/null || :
     if ! git -C "$_mo_root" worktree add --quiet "$_mo_tmp" "$_mo_branch" >/dev/null 2>&1; then
-        printf >&2 'не удалось открыть чекаут ветки сборки %s\n' "$_mo_branch"
+        printf >&2 '%s\n' "$(t disp_err_merge_checkout branch="$_mo_branch")"
         return 1
     fi
 
     _mo_rc=0
     if ! git -C "$_mo_tmp" merge --no-ff -m "$_mo_msg" "$_mo_sha" >/dev/null 2>&1; then
-        printf >&2 'конфликт слияния:\n'
+        printf >&2 '%s\n' "$(t disp_err_merge_conflict)"
         git -C "$_mo_tmp" diff --name-only --diff-filter=U 2>/dev/null | sed 's/^/    /' >&2
         git -C "$_mo_tmp" merge --abort >/dev/null 2>&1 || :
         _mo_rc=1
@@ -812,24 +805,26 @@ dispatch_collect() {
 
     _co_dir=$(build_dir "$_co_root" "$_co_build")
     _co_plan="$_co_dir/plan.md"
-    [ -f "$_co_plan" ] || { printf >&2 'нет плана сборки %s\n' "$_co_build"; return 1; }
+    [ -f "$_co_plan" ] || { printf >&2 '%s\n' "$(t disp_err_no_build_plan build="$_co_build")"; return 1; }
     [ -f "$_co_dir/journal.md" ] ||
-        { printf >&2 'сборка %s не заводилась: нет журнала\n' "$_co_build"; return 1; }
+        { printf >&2 '%s\n' "$(t disp_err_not_sealed_short build="$_co_build")"; return 1; }
 
     _co_branch=$(build_branch "$_co_build")
     git -C "$_co_root" rev-parse --verify --quiet "refs/heads/$_co_branch" >/dev/null 2>&1 || {
-        printf >&2 'нет ветки сборки %s — эта сборка заведена до появления сбора\n' "$_co_branch"
+        printf >&2 '%s\n' "$(t disp_err_no_branch branch="$_co_branch")"
         return 1
     }
 
     if [ -z "$_co_wave" ]; then
         _co_wave=$(build_next_wave "$_co_root" "$_co_build") || {
-            printf >&2 'все волны сборки %s уже собраны\n' "$_co_build"; return 1
+            printf >&2 '%s\n' "$(t disp_err_all_collected build="$_co_build")"; return 1
         }
     fi
 
     _co_ids=$(dispatch_wave_ids "$_co_plan" "$_co_wave") || return 1
-    [ -n "$_co_ids" ] || { printf >&2 'в сборке %s нет волны %s\n' "$_co_build" "$_co_wave"; return 1; }
+    [ -n "$_co_ids" ] || {
+        printf >&2 '%s\n' "$(t disp_err_no_wave build="$_co_build" wave="$_co_wave")"; return 1
+    }
 
     # Where the build branch stood before this wave: the base for the combined diff the
     # conductor reads at the end, and the point every worker of this wave branched from.
@@ -837,16 +832,16 @@ dispatch_collect() {
     _co_file=$(build_collected_file "$_co_root" "$_co_build")
     _co_bad=0
 
-    printf 'Волна %s сборки %s\n' "$_co_wave" "$_co_build"
+    printf '%s\n' "$(t disp_co_head wave="$_co_wave" build="$_co_build")"
     for _co_id in $_co_ids; do
         if build_is_collected "$_co_root" "$_co_build" "$_co_id"; then
-            printf '  %-12s уже собрана\n' "$_co_id"
+            printf '  %-12s %s\n' "$_co_id" "$(t disp_co_already)"
             continue
         fi
 
         _co_tree=$(dispatch_worker_tree "$_co_root" "$_co_build-$_co_id")
         if [ -z "$_co_tree" ]; then
-            printf '  %-12s чекаута нет — собирать нечего\n' "$_co_id"
+            printf '  %-12s %s\n' "$_co_id" "$(t disp_co_no_checkout)"
             _co_bad=1; continue
         fi
 
@@ -854,7 +849,7 @@ dispatch_collect() {
                 git status --porcelain 2>/dev/null | head -20
             })
         if [ -n "$_co_dirty" ]; then
-            printf '  %-12s есть незакоммиченное — слить можно только коммит:\n' "$_co_id"
+            printf '  %-12s %s\n' "$_co_id" "$(t disp_co_dirty)"
             printf '%s\n' "$_co_dirty" | sed 's/^/      /'
             _co_bad=1; continue
         fi
@@ -868,14 +863,14 @@ dispatch_collect() {
         _co_out=$(dispatch_verify_tree "$_co_tree" "$_co_base" "$_co_paths" 2>/dev/null |
                   sed -n 's/^outside://p')
         if [ -n "$_co_out" ]; then
-            printf '  %-12s вышла за свои пути — не сливаю:\n' "$_co_id"
+            printf '  %-12s %s\n' "$_co_id" "$(t disp_co_outside)"
             printf '%s\n' "$_co_out" | sed 's/^/      /'
             _co_bad=1; continue
         fi
 
         _co_sha=$(git -C "$_co_tree" rev-parse HEAD 2>/dev/null)
         if [ "$_co_sha" = "$_co_base" ]; then
-            printf '  %-12s ничего не изменила\n' "$_co_id"
+            printf '  %-12s %s\n' "$_co_id" "$(t disp_co_nothing)"
             printf '%s\t%s\t—\t%s\n' "$_co_wave" "$_co_id" \
                 "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" >> "$_co_file"
             continue
@@ -883,11 +878,11 @@ dispatch_collect() {
 
         if _co_merged=$(dispatch_merge_one "$_co_root" "$_co_branch" "$_co_sha" \
                             "build $_co_build: subtask $_co_id"); then
-            printf '  %-12s слита → %s\n' "$_co_id" "$_co_merged"
+            printf '  %-12s %s\n' "$_co_id" "$(t disp_co_merged sha="$_co_merged")"
             printf '%s\t%s\t%s\t%s\n' "$_co_wave" "$_co_id" "$_co_merged" \
                 "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" >> "$_co_file"
         else
-            printf '  %-12s слияние не прошло\n' "$_co_id"
+            printf '  %-12s %s\n' "$_co_id" "$(t disp_co_merge_failed)"
             _co_bad=1
         fi
     done
@@ -899,7 +894,7 @@ dispatch_collect() {
     # differently, two different error formats — becomes visible at all. It is a look, not
     # a verdict: nothing here decides anything, the conductor reads it.
     if [ -n "$_co_before" ] && [ "$_co_before" != "$_co_after" ]; then
-        printf '\nЧто волна изменила целиком:\n'
+        printf '\n%s\n' "$(t disp_co_wave_diff)"
         git -C "$_co_root" diff --stat "$_co_before" "$_co_after" 2>/dev/null | sed 's/^/  /'
     fi
 
@@ -981,21 +976,21 @@ build_open_subtasks() {
 # on its own and wrong together. The command is project configuration (C1), so it lives in
 # `build_check` and not in this file; unset, the report says so instead of implying a pass.
 #
-# Writes the command's output to $3. Prints its verdict: the Russian token for "none"
-# (nothing configured), the Russian token for "cannot" (the checkout could not be opened)
-# or the command's exit code.
+# Writes the command's output to $3. Prints its verdict, a token rather than a message:
+# `none` (nothing configured), `cannot` (the checkout could not be opened) or the
+# command's exit code. The token also goes into the journal, so it is English.
 build_master_check() {
     _mc_root=$1; _mc_build=$2; _mc_out=$3
     : > "$_mc_out" 2>/dev/null || :
 
     _mc_cmd=$(config_get build_check "$_mc_root")
-    [ -n "$_mc_cmd" ] || { printf 'нет\n'; return 0; }
+    [ -n "$_mc_cmd" ] || { printf 'none\n'; return 0; }
 
-    _mc_tmp=$(mktemp -d) || { printf 'нельзя\n'; return 0; }
+    _mc_tmp=$(mktemp -d) || { printf 'cannot\n'; return 0; }
     rmdir "$_mc_tmp" 2>/dev/null || :
     if ! git -C "$_mc_root" worktree add --quiet "$_mc_tmp" \
              "$(build_branch "$_mc_build")" >/dev/null 2>&1; then
-        printf 'нельзя\n'; return 0
+        printf 'cannot\n'; return 0
     fi
 
     ( cd "$_mc_tmp" 2>/dev/null && sh -c "$_mc_cmd" ) > "$_mc_out" 2>&1
@@ -1018,7 +1013,10 @@ build_master_check() {
 # runs only after that check has passed and covers ignored artefacts (a node_modules is what
 # stops a plain `worktree remove`, and it is not work).
 #
-# One TSV line per resource: kind, name, verdict.
+# One TSV line per resource: kind, name, verdict — tokens, not words; build_accept says
+# them to the human:
+#   checkout  <subtask>  removed | kept-dirty | kept-unmerged | kept-git
+#   worker    <dispatch> released | no-answer
 build_cleanup() {
     _cl_root=$1; _cl_build=$2
     _cl_plan="$(build_dir "$_cl_root" "$_cl_build")/plan.md"
@@ -1031,19 +1029,19 @@ build_cleanup() {
 
         _cl_dirty=$(cd "$_cl_tree" 2>/dev/null && git status --porcelain 2>/dev/null | head -5)
         if [ -n "$_cl_dirty" ]; then
-            printf 'чекаут\t%s\tоставлен: есть незакоммиченное\n' "$_cl_id"
+            printf 'checkout\t%s\tkept-dirty\n' "$_cl_id"
             continue
         fi
         _cl_sha=$(git -C "$_cl_tree" rev-parse HEAD 2>/dev/null)
         if [ -z "$_cl_sha" ] ||
            ! git -C "$_cl_root" merge-base --is-ancestor "$_cl_sha" "$_cl_branch" >/dev/null 2>&1; then
-            printf 'чекаут\t%s\tоставлен: работы нет в ветке сборки\n' "$_cl_id"
+            printf 'checkout\t%s\tkept-unmerged\n' "$_cl_id"
             continue
         fi
         if git -C "$_cl_root" worktree remove --force "$_cl_tree" >/dev/null 2>&1; then
-            printf 'чекаут\t%s\tснят\n' "$_cl_id"
+            printf 'checkout\t%s\tremoved\n' "$_cl_id"
         else
-            printf 'чекаут\t%s\tоставлен: git не снял\n' "$_cl_id"
+            printf 'checkout\t%s\tkept-git\n' "$_cl_id"
         fi
     done
 
@@ -1056,9 +1054,9 @@ build_cleanup() {
         while IFS='	' read -r _cl_s _cl_t _cl_d _cl_at; do
             [ -n "$_cl_d" ] && [ "$_cl_d" != "—" ] || continue
             if fleet_worker_release "$_cl_d" >/dev/null 2>&1; then
-                printf 'воркер\t%s\tосвобождён\n' "$_cl_d"
+                printf 'worker\t%s\treleased\n' "$_cl_d"
             else
-                printf 'воркер\t%s\tсреда не ответила\n' "$_cl_d"
+                printf 'worker\t%s\tno-answer\n' "$_cl_d"
             fi
         done
     fi
@@ -1075,15 +1073,15 @@ build_land() {
 
     _bl_trunk=$(git -C "$_bl_root" rev-parse --abbrev-ref HEAD 2>/dev/null)
     [ -n "$_bl_trunk" ] && [ "$_bl_trunk" != HEAD ] ||
-        { printf >&2 'рабочее дерево не на ветке (detached HEAD)\n'; return 1; }
+        { printf >&2 '%s\n' "$(t disp_err_detached)"; return 1; }
     [ "$_bl_trunk" != "$_bl_branch" ] ||
-        { printf >&2 'ты стоишь на самой ветке сборки — перейди на ствол\n'; return 1; }
+        { printf >&2 '%s\n' "$(t disp_err_on_build_branch)"; return 1; }
 
     # A merge takes the working tree with it. Someone else's unsaved work is not ours to
     # carry into a merge commit (B6), so this is a refusal and not a stash.
     _bl_dirty=$(git -C "$_bl_root" status --porcelain --untracked-files=no 2>/dev/null | head -5)
     [ -z "$_bl_dirty" ] || {
-        printf >&2 'в рабочем дереве есть несохранённое — сначала сохрани его:\n'
+        printf >&2 '%s\n' "$(t disp_err_dirty_tree)"
         printf '%s\n' "$_bl_dirty" | sed 's/^/    /' >&2
         return 1
     }
@@ -1095,7 +1093,7 @@ build_land() {
              -m "build: $_bl_build" -m "fraim: $(fraim_version)" \
              "$_bl_branch" >/dev/null 2>&1; then
         git -C "$_bl_root" merge --abort >/dev/null 2>&1 || :
-        printf >&2 'слияние в ствол не прошло — ствол ушёл вперёд, разрешай руками\n'
+        printf >&2 '%s\n' "$(t disp_err_land_failed)"
         return 1
     fi
     git -C "$_bl_root" rev-parse --short HEAD 2>/dev/null
@@ -1112,55 +1110,60 @@ build_accept() {
     _ba_root=$1; _ba_id=$2
 
     _ba_dir=$(build_dir "$_ba_root" "$_ba_id")
-    [ -d "$_ba_dir" ] || { printf >&2 'нет такой сборки: %s\n' "$_ba_id"; return 2; }
+    [ -d "$_ba_dir" ] || { printf >&2 '%s\n' "$(t disp_err_no_build build="$_ba_id")"; return 2; }
     [ -f "$_ba_dir/journal.md" ] ||
-        { printf >&2 'сборка %s: нет журнала — она не заводилась через dispatch\n' "$_ba_id"; return 2; }
+        { printf >&2 '%s\n' "$(t disp_err_acc_no_journal build="$_ba_id")"; return 2; }
     [ -f "$_ba_dir/plan.md" ] ||
-        { printf >&2 'сборка %s: нет плана — принимать нечего\n' "$_ba_id"; return 2; }
+        { printf >&2 '%s\n' "$(t disp_err_acc_no_plan build="$_ba_id")"; return 2; }
     [ -f "$(build_accepted_file "$_ba_root" "$_ba_id")" ] &&
-        { printf >&2 'сборка %s уже принята и уведена в ствол\n' "$_ba_id"; return 2; }
+        { printf >&2 '%s\n' "$(t disp_err_acc_already build="$_ba_id")"; return 2; }
 
     _ba_branch=$(build_branch "$_ba_id")
     git -C "$_ba_root" rev-parse --verify --quiet "refs/heads/$_ba_branch" >/dev/null 2>&1 || {
-        printf >&2 'нет ветки сборки %s — эта сборка заведена до появления сбора\n' "$_ba_branch"
+        printf >&2 '%s\n' "$(t disp_err_no_branch branch="$_ba_branch")"
         return 2
     }
 
     _ba_ids=$(dispatch_subtask_ids "$_ba_dir/plan.md")
-    [ -n "$_ba_ids" ] || { printf >&2 'в плане сборки %s нет подзадач\n' "$_ba_id"; return 2; }
+    [ -n "$_ba_ids" ] || { printf >&2 '%s\n' "$(t disp_err_acc_no_subtasks build="$_ba_id")"; return 2; }
 
     # Nothing is accepted while a subtask is still out: a report over a half-collected build
     # describes work that is not there and calls it the build.
     _ba_open=$(build_open_subtasks "$_ba_root" "$_ba_id")
     if [ -n "$_ba_open" ]; then
-        printf >&2 'сборка %s собрана не вся — не принимаю:\n' "$_ba_id"
+        printf >&2 '%s\n' "$(t disp_err_acc_open build="$_ba_id")"
         printf '%s\n' "$_ba_open" | sed 's/^/    /' >&2
-        printf >&2 '  собрать:  fraim dispatch collect %s\n' "$_ba_id"
+        printf >&2 '  %s\n' "$(t disp_hint_collect build="$_ba_id")"
         return 2
     fi
 
     _ba_base=$(git -C "$_ba_root" rev-parse --short "$(build_base_sha "$_ba_root" "$_ba_id")" 2>/dev/null)
     _ba_coll=$(build_collected_file "$_ba_root" "$_ba_id")
-    _ba_tmp=$(mktemp -d) || { printf >&2 'нет временного каталога\n'; return 2; }
+    _ba_tmp=$(mktemp -d) || { printf >&2 '%s\n' "$(t disp_err_no_tmp)"; return 2; }
     _ba_stop=      # what keeps this out of the trunk
-    _ba_say=       # what the human should know anyway
+    _ba_say=       # what the human should know anyway, in the operator's language
+    _ba_jsay=      # the same notes for the journal, which lives in the project: English
 
-    printf 'Приёмка сборки %s\n\n' "$_ba_id"
+    printf '%s\n\n' "$(t disp_acc_head build="$_ba_id")"
 
     # --- what came back: the tree, not the workers' reports (MODES.md §3) ----
-    printf '  что вернулось\n'
+    printf '  %s\n' "$(t disp_acc_came_back)"
     for _ba_s in $_ba_ids; do
         _ba_w=$(awk -F'\t' -v s="$_ba_s" '$2 == s { print $1; exit }' "$_ba_coll" 2>/dev/null)
         _ba_sha=$(awk -F'\t' -v s="$_ba_s" '$2 == s { print $3; exit }' "$_ba_coll" 2>/dev/null)
+        _ba_wp=$(printf '%-3s' "${_ba_w:-—}")
         if [ -z "$_ba_sha" ] || [ "$_ba_sha" = "—" ]; then
-            printf '    %-14s волна %-3s ничего не изменила\n' "$_ba_s" "${_ba_w:-—}"
-            _ba_say="$_ba_say    подзадача $_ba_s не изменила ничего — это тоже исход, и обычно плохой
+            printf '    %-14s %s\n' "$_ba_s" "$(t disp_acc_sub_nothing wave="$_ba_wp")"
+            _ba_say="$_ba_say    $(t disp_acc_say_sub_nothing id="$_ba_s")
+"
+            _ba_jsay="$_ba_jsay- subtask $_ba_s changed nothing — that is an outcome too, and usually a bad one
 "
             continue
         fi
         _ba_f=$(git -C "$_ba_root" diff --name-only "$_ba_sha^1" "$_ba_sha" 2>/dev/null |
                 grep -c '[^[:space:]]')
-        printf '    %-14s волна %-3s %s  файлов: %s\n' "$_ba_s" "${_ba_w:-—}" "$_ba_sha" "$_ba_f"
+        printf '    %-14s %s\n' "$_ba_s" \
+            "$(t disp_acc_sub_line wave="$_ba_wp" sha="$_ba_sha" files="$_ba_f")"
     done
 
     _ba_changed=$(git -C "$_ba_root" diff --name-only "$_ba_base" "$_ba_branch" 2>/dev/null |
@@ -1168,77 +1171,92 @@ build_accept() {
     _ba_nfiles=$(printf '%s' "$_ba_changed" | grep -c '[^[:space:]]')
     _ba_stat=$(git -C "$_ba_root" diff --shortstat "$_ba_base" "$_ba_branch" 2>/dev/null |
                sed 's/^[[:space:]]*//')
-    printf '\n  изменено целиком: %s\n' "${_ba_stat:-ничего}"
+    [ -n "$_ba_stat" ] || _ba_stat=$(t disp_acc_nothing)
+    printf '\n  %s\n' "$(t disp_acc_changed stat="$_ba_stat")"
     [ "$_ba_nfiles" -eq 0 ] &&
-        _ba_stop="$_ba_stop    сборка не изменила ни одного файла — уводить в ствол нечего
+        _ba_stop="$_ba_stop    $(t disp_acc_stop_empty)
 "
 
     build_declared_paths "$_ba_dir/plan.md" > "$_ba_tmp/declared"
     _ba_undecl=$(printf '%s\n' "$_ba_changed" | grep '[^[:space:]]' |
                  grep -vxF -f "$_ba_tmp/declared" 2>/dev/null || :)
     if [ -n "$_ba_undecl" ]; then
-        printf '  не объявлял никто: %s\n' "$(printf '%s' "$_ba_undecl" | tr '\n' ' ')"
-        printf '    (фундамент, который под флотом пишет сама сборка, — или утечка)\n'
+        printf '  %s\n' "$(t disp_acc_undeclared paths="$(printf '%s' "$_ba_undecl" | tr '\n' ' ')")"
+        printf '    %s\n' "$(t disp_acc_undeclared_why)"
     fi
 
     # Under the fleet the foundation is written by the build, once (invariant 0.4).
     _ba_found=$(printf '%s\n' "$_ba_changed" |
                 grep -xE 'ARCHITECTURE\.md|CONVENTIONS\.md|DECISIONS\.md' |
                 tr '\n' ' ' | sed 's/[[:space:]]*$//')
-    [ "$_ba_nfiles" -gt 0 ] && [ -z "$_ba_found" ] &&
-        _ba_say="$_ba_say    фундамент не тронут — под флотом его пишет сборка, один раз (инвариант 0.4)
+    if [ "$_ba_nfiles" -gt 0 ] && [ -z "$_ba_found" ]; then
+        _ba_say="$_ba_say    $(t disp_acc_say_foundation)
 "
+        _ba_jsay="$_ba_jsay- the foundation is untouched — under the fleet the build writes it, once (invariant 0.4)
+"
+    fi
 
     # --- master check --------------------------------------------------------
     _ba_cmd=$(config_get build_check "$_ba_root")
     _ba_mc=$(build_master_check "$_ba_root" "$_ba_id" "$_ba_tmp/check.out")
     case $_ba_mc in
-        нет)
-            printf '  мастер-проверка: не настроена (fraim config set build_check "…")\n'
-            _ba_say="$_ba_say    проектной проверки нет — собранное никто не прогонял
+        none)
+            printf '  %s\n' "$(t disp_acc_mc_none)"
+            _ba_say="$_ba_say    $(t disp_acc_say_no_check)
+"
+            _ba_jsay="$_ba_jsay- no project check — nobody ran what was assembled
 " ;;
-        нельзя)
-            printf '  мастер-проверка: не запустилась\n'
-            _ba_stop="$_ba_stop    чекаут ветки сборки не открылся — проверить собранное не удалось
+        cannot)
+            printf '  %s\n' "$(t disp_acc_mc_cannot)"
+            _ba_stop="$_ba_stop    $(t disp_acc_stop_no_checkout)
 " ;;
         0)
-            printf '  мастер-проверка: %s → зелёная\n' "$_ba_cmd" ;;
+            printf '  %s\n' "$(t disp_acc_mc_green cmd="$_ba_cmd")" ;;
         *)
-            printf '  мастер-проверка: %s → код %s\n' "$_ba_cmd" "$_ba_mc"
+            printf '  %s\n' "$(t disp_acc_mc_code cmd="$_ba_cmd" code="$_ba_mc")"
             [ -s "$_ba_tmp/check.out" ] && tail -8 "$_ba_tmp/check.out" | sed 's/^/      /'
-            _ba_stop="$_ba_stop    проектная проверка вернула код $_ba_mc — в ствол не пущу
+            _ba_stop="$_ba_stop    $(t disp_acc_stop_red code="$_ba_mc")
 " ;;
     esac
 
     # --- cleanup -------------------------------------------------------------
     _ba_clean=$(build_cleanup "$_ba_root" "$_ba_id")
-    printf '  чистка: чекаутов снято %s, оставлено %s, воркеров освобождено %s\n' \
-        "$(printf '%s\n' "$_ba_clean" | grep -c '	снят$')" \
-        "$(printf '%s\n' "$_ba_clean" | grep -c '	оставлен')" \
-        "$(printf '%s\n' "$_ba_clean" | grep -c '	освобождён$')"
-    printf '%s\n' "$_ba_clean" | awk -F'\t' '$3 ~ /^оставлен/ { printf "      %s %s — %s\n", $1, $2, $3 }'
-    printf '%s\n' "$_ba_clean" | grep -q '	оставлен: есть незакоммиченное' &&
-        _ba_say="$_ba_say    воркер продолжил работу после сбора — в его чекауте есть незакоммиченное
+    printf '  %s\n' "$(t disp_acc_cleanup \
+        removed="$(printf '%s\n' "$_ba_clean" | grep -c '	removed$')" \
+        kept="$(printf '%s\n' "$_ba_clean" | grep -c '	kept-')" \
+        released="$(printf '%s\n' "$_ba_clean" | grep -c '	released$')")"
+    printf '%s\n' "$_ba_clean" | while IFS='	' read -r _ba_ck _ba_cn _ba_cv; do
+        case $_ba_cv in
+            kept-dirty)    printf '      %s\n' "$(t disp_acc_kept_dirty id="$_ba_cn")" ;;
+            kept-unmerged) printf '      %s\n' "$(t disp_acc_kept_unmerged id="$_ba_cn")" ;;
+            kept-git)      printf '      %s\n' "$(t disp_acc_kept_git id="$_ba_cn")" ;;
+        esac
+    done
+    if printf '%s\n' "$_ba_clean" | grep -q '	kept-dirty$'; then
+        _ba_say="$_ba_say    $(t disp_acc_say_worker_on)
 "
+        _ba_jsay="$_ba_jsay- a worker kept working after collect — its checkout has uncommitted work
+"
+    fi
 
     # --- trunk ---------------------------------------------------------------
     _ba_merge=
     if [ -n "$_ba_stop" ]; then
-        printf '\n  в ствол НЕ уводил:\n%s' "$_ba_stop"
-        [ -n "$_ba_say" ] && printf '  ещё:\n%s' "$_ba_say"
-        printf '  ветка сборки цела: %s\n' "$_ba_branch"
+        printf '\n  %s\n%s' "$(t disp_acc_not_landed)" "$_ba_stop"
+        [ -n "$_ba_say" ] && printf '  %s\n%s' "$(t disp_acc_also)" "$_ba_say"
+        printf '  %s\n' "$(t disp_acc_branch_intact branch="$_ba_branch")"
         rm -rf "$_ba_tmp"
         return 1
     fi
 
     if ! _ba_merge=$(build_land "$_ba_root" "$_ba_id"); then
-        printf '  в ствол НЕ уведено — причина выше\n'
-        [ -n "$_ba_say" ] && printf '  ещё:\n%s' "$_ba_say"
+        printf '  %s\n' "$(t disp_acc_land_failed)"
+        [ -n "$_ba_say" ] && printf '  %s\n%s' "$(t disp_acc_also)" "$_ba_say"
         rm -rf "$_ba_tmp"
         return 1
     fi
     _ba_trunk=$(git -C "$_ba_root" rev-parse --abbrev-ref HEAD 2>/dev/null)
-    printf '  в ствол: %s ← %s (слияние %s)\n' "$_ba_trunk" "$_ba_branch" "$_ba_merge"
+    printf '  %s\n' "$(t disp_acc_landed trunk="$_ba_trunk" branch="$_ba_branch" merge="$_ba_merge")"
 
     {
         printf 'Accepted by: conductor\n'
@@ -1253,12 +1271,12 @@ build_accept() {
         printf -- '- Checked and merged into the trunk by the conductor: %s ← %s, merge %s\n' \
             "$_ba_trunk" "$_ba_branch" "$_ba_merge"
         printf -- '- Project check: %s\n' "$_ba_mc"
-        [ -n "$_ba_say" ] && printf '%s' "$_ba_say" | sed 's/^  */- /'
+        [ -n "$_ba_jsay" ] && printf '%s' "$_ba_jsay"
         printf -- '- Undo with one command: fraim undo %s\n' "$_ba_merge"
     } >> "$_ba_dir/journal.md"
 
-    [ -n "$_ba_say" ] && printf '\n  на что посмотреть:\n%s' "$_ba_say"
-    printf '  отменить одной командой: fraim undo %s\n' "$_ba_merge"
+    [ -n "$_ba_say" ] && printf '\n  %s\n%s' "$(t disp_acc_look)" "$_ba_say"
+    printf '  %s\n' "$(t disp_acc_undo merge="$_ba_merge")"
 
     rm -rf "$_ba_tmp"
     return 0
@@ -1276,11 +1294,11 @@ build_list() {
     for _b in "$_bl_root/ai/builds"/*; do
         [ -d "$_b" ] || continue
         if [ ! -f "$_b/journal.md" ]; then
-            printf '%s\tне сборка (нет журнала)\n' "$(basename -- "$_b")"
+            printf '%s\t%s\n' "$(basename -- "$_b")" "$(t disp_list_not_build)"
         elif [ -f "$_b/accepted" ]; then
-            printf '%s\tпринята, в стволе\n' "$(basename -- "$_b")"
+            printf '%s\t%s\n' "$(basename -- "$_b")" "$(t disp_list_accepted)"
         else
-            printf '%s\tне принята\n' "$(basename -- "$_b")"
+            printf '%s\t%s\n' "$(basename -- "$_b")" "$(t disp_list_pending)"
         fi
     done | sort -r
 }

@@ -117,7 +117,7 @@ roles_resolve() {
     [ -n "$_rr_v" ] || _rr_v=$ROLES_BUILTIN
 
     roles_parse "$_rr_v" || {
-        printf >&2 'роль %s: значение «%s» не в форме агент:модель:усилие\n' "$_rr_role" "$_rr_v"
+        printf >&2 '%s\n' "$(t roles_err_bad_value role="$_rr_role" value="$_rr_v")"
         return 1
     }
 }
@@ -137,7 +137,7 @@ roles_source() {
     if [ -n "$(config_get role_default "$_rs_root")" ]; then
         printf '%s (role_default)\n' "$(config_source role_default "$_rs_root")"; return
     fi
-    printf 'встроенный дефолт\n'
+    t roles_src_builtin; printf '\n'
 }
 
 # Every role named in the two config files, for `fraim roles`. Sorted, one per line,
@@ -365,11 +365,11 @@ roles_pick() {
     printf >&2 '\n%s\n' "$_rk_title"
     [ "$_rk_n" -gt 0 ] && printf '%s\n' "$_rk_items" |
         awk '{ printf "  %d) %s\n", NR, $0 }' >&2
-    printf >&2 '  %d) ввести своё\n' $((_rk_n + 1))
+    printf >&2 '  %d) %s\n' $((_rk_n + 1)) "$(t roles_pick_own)"
     if [ -n "$_rk_dflt" ]; then
-        printf >&2 'Выбор [%s]: ' "$_rk_dflt"
+        printf >&2 '%s' "$(t roles_pick_choice_default default="$_rk_dflt")"
     else
-        printf >&2 'Выбор: '
+        printf >&2 '%s' "$(t roles_pick_choice)"
     fi
 
     read -r _rk_c </dev/tty 2>/dev/null || return 1
@@ -386,7 +386,7 @@ roles_pick() {
         return 0
     fi
     if [ "$_rk_c" -eq $((_rk_n + 1)) ] 2>/dev/null; then
-        printf >&2 'Значение: '
+        printf >&2 '%s' "$(t roles_pick_value)"
         read -r _rk_v </dev/tty 2>/dev/null || return 1
         [ -n "$_rk_v" ] || return 1
         printf '%s\n' "$_rk_v"
