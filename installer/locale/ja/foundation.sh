@@ -1,0 +1,27 @@
+# The foundation verbs: find, arch, and the brief's own failure.
+M_fnd_err_tmp='一時ファイルを作成できませんでした'
+M_fnd_err_find_keys='キーが必要です: fraim find KEY [KEY…]。2〜4 個を、両方の言語で、語幹の形で指定します (task タスク)'
+M_fnd_find_nothing='{keys} に一致するものはありません。別の語形か、もう一方の言語を試してください'
+M_fnd_find_footer='— 見つかったエントリ: {count} · キー: {keys} —'
+
+M_fnd_err_in_file='--in にはファイルが必要です'
+M_fnd_err_unknown_flag='不明なフラグ: {flag}'
+M_fnd_err_extra_arg='想定外の引数: {arg}'
+M_fnd_err_decisions_top='DECISIONS.md には先頭にしか書き込めません: fraim decide'
+M_fnd_err_arch_files='fraim arch が編集するのは ARCHITECTURE.md、CONVENTIONS.md、STACK.md です'
+M_fnd_err_need_section='セクション名が必要です: fraim arch "Components & responsibilities" <<'\''EOF'\'' … EOF'
+M_fnd_err_pitfall_line='教訓は 1 行として追加します: fraim pitfall "…"'
+M_fnd_err_no_file='{file} がありません'
+M_fnd_err_body_stdin='セクションの本文は標準入力で渡します: fraim arch "{section}" <<'\''EOF'\'' … EOF'
+M_fnd_err_body_empty='セクションの本文が空です'
+M_fnd_err_body_headings='セクションの本文に見出しは含められません。1 回の呼び出しで 1 セクションです'
+M_fnd_err_section_exists='セクション「{section}」は {file} にすでにあります。--new を付けなければ置き換えられます'
+M_fnd_err_no_section='{file} にセクション「{section}」はありません。あるのは:
+{list}
+新しいセクションには --new フラグを付けてください'
+M_fnd_err_section_dup='セクション「{section}」が {file} に {count} 回出てきます。一度だけ手作業でファイルを直してください'
+M_fnd_err_write='{file} を書き込めませんでした'
+M_fnd_err_headings_touched='編集が {file} の他の見出しに及んだため、何も書き込んでいません'
+M_fnd_arch_added='{file} ← セクション「{section}」を追加しました'
+M_fnd_arch_replaced='{file} ← セクション「{section}」を置き換えました'
+M_fnd_arch_unsaved='まだ保存されていません: {file} を fraim commit に含めてください'
