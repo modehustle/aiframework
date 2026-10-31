@@ -5,36 +5,48 @@
 # and the two had already drifted apart. An agent learns the verbs from `fraim brief`,
 # which prints this table, so the list it reads is always the list of the CLI it runs.
 #
-# group ;; situation ;; command ;; short (Russian, for `fraim help`) ;; detail (for the agent)
+# group ;; situation ;; command ;; short (for `fraim help`) ;; detail (for the agent)
 #
 # Ordered by the moment of a session, not by command: an agent mid-work asks «I just
 # changed behaviour — what now?», and the answer has to be one glance down the left column.
 # The agent-facing columns are English, like every other instruction to the agent; the
-# short column is Russian because `fraim help` is read by the human.
+# short column is in the operator's language because `fraim help` is read by the human:
+# the rows below carry its catalog key (vt_short_<key>, locale/*/verbtable.sh), and
+# vt_table puts the message in its place, so every reader sees the same five columns.
 #   group: start · work · end · human · rare
 
 vt_table() {
+    vt_rows | while IFS= read -r _vtt_l; do
+        _vtt_tail=${_vtt_l#* ;; * ;; * ;; }
+        _vtt_head=${_vtt_l%" ;; $_vtt_tail"}
+        printf '%s ;; ' "$_vtt_head"
+        t "vt_short_${_vtt_tail%% ;; *}"
+        printf ' ;; %s\n' "${_vtt_tail#* ;; }"
+    done
+}
+
+vt_rows() {
     cat <<'VT'
-start ;; reading the foundation whole ;; fraim brief ;; весь фундамент, доска и список глаголов одним выводом ;; the map, house rules, living decisions, STACK.md and the board, uncut; once per session
-start ;; looking something up ;; fraim find KEY… ;; найти запись целиком в фундаменте, задачах, бэклоге ;; 2–4 keys, both languages, word stems (cache кэш); returns whole entries with their heading
-work ;; finished a coherent piece ;; fraim commit KIND "WHAT" PATH… ;; точка сохранения по перечисленным путям ;; a save point over exactly the paths you changed — never "everything"
-work ;; changed what the program does ;; fraim decide "TITLE" [--supersedes "OLD"] ;; запись в DECISIONS.md (тело потоком) ;; body on stdin; goes on top; --supersedes moves the replaced entry to the archive
-work ;; changed structure, components or data flow ;; fraim arch "SECTION" [--new] [--in FILE] ;; переписать раздел карты (тело потоком) ;; rewrites one section of ARCHITECTURE.md (or CONVENTIONS.md / STACK.md); body on stdin
-work ;; something bit you that would trap the next change ;; fraim pitfall "LINE"… ;; грабли в CONVENTIONS.md ;; propose the line first; write it only on the human's yes
-work ;; need to undo your own uncommitted edit ;; fraim restore PATH… ;; вернуть пути к последней точке ;; back to the last save point; a created file is removed
-end ;; open questions remain, important but not for now ;; fraim backlog-new SLUG [--from WHERE] ;; записать вопрос в бэклог (потоком) ;; list them, ask; only approved ones; body on stdin: # title, ## Question, ## Why it matters
-end ;; finished a task taken from the board ;; fraim task-seal SLUG "RESULT" [--dropped] ;; закрыть задачу строкой итога ;; closes the card into the archive with one line of outcome; a master task only on the human's word
-human ;; wants to know where things stand ;; fraim status ;; вердикт сторожа по проекту ;; the watchman's verdict; report it, do not act on it
-human ;; wants to know what is planned ;; fraim tasks ;; доска задач и проектов ;; open tasks, projects with progress, age of each card
-human ;; wants work set aside, or a project opened ;; fraim task-new SLUG --task | --master | --parent M [--after S] [--from Q] ;; поставить задачу или проект с подзадачами (потоком) ;; via /make-task; the kind is required; body on stdin: # title, ## What and why, ## Done when, ## Links; a project brings its subtasks in ## Subtasks
-human ;; says a task is really a project ;; fraim task-master SLUG ;; сделать задачу проектом ;; turns an open task into a master task
-human ;; wants to review open questions ;; fraim backlog ;; открытые вопросы ;; the backlog; a question that stops mattering → fraim backlog-drop
-human ;; drops an open question ;; fraim backlog-drop SLUG "WHY" ;; снять вопрос из бэклога ;; closes it into the archive with the reason
-rare ;; a save point must be taken back ;; fraim undo [HASH] ;; показать точки / отменить одну ;; lists the save points; undoes one with a counter-commit, never rewrites history
-rare ;; starting / closing an investigation ;; fraim investigate-new SLUG ;; папка расследования + findings.md ;; inside /investigate
-rare ;; closing an investigation with an outcome ;; fraim investigate-seal SLUG ;; проверить исход и уборку, заархивировать ;; inside /investigate; refuses without an outcome and a cleanup report
-rare ;; a stack was boxed ;; fraim stack-passport ;; создать STACK.md из шаблона ;; inside /docker-deploy
-rare ;; a prune is finished ;; fraim prune-mark ;; сбросить счётчик дрейфа маркером ;; inside /prune
+start ;; reading the foundation whole ;; fraim brief ;; brief ;; the map, house rules, living decisions, STACK.md and the board, uncut; once per session
+start ;; looking something up ;; fraim find KEY… ;; find ;; 2–4 keys, both languages, word stems (cache кэш); returns whole entries with their heading
+work ;; finished a coherent piece ;; fraim commit KIND "WHAT" PATH… ;; commit ;; a save point over exactly the paths you changed — never "everything"
+work ;; changed what the program does ;; fraim decide "TITLE" [--supersedes "OLD"] ;; decide ;; body on stdin; goes on top; --supersedes moves the replaced entry to the archive
+work ;; changed structure, components or data flow ;; fraim arch "SECTION" [--new] [--in FILE] ;; arch ;; rewrites one section of ARCHITECTURE.md (or CONVENTIONS.md / STACK.md); body on stdin
+work ;; something bit you that would trap the next change ;; fraim pitfall "LINE"… ;; pitfall ;; propose the line first; write it only on the human's yes
+work ;; need to undo your own uncommitted edit ;; fraim restore PATH… ;; restore ;; back to the last save point; a created file is removed
+end ;; open questions remain, important but not for now ;; fraim backlog-new SLUG [--from WHERE] ;; backlog_new ;; list them, ask; only approved ones; body on stdin: # title, ## Question, ## Why it matters
+end ;; finished a task taken from the board ;; fraim task-seal SLUG "RESULT" [--dropped] ;; task_seal ;; closes the card into the archive with one line of outcome; a master task only on the human's word
+human ;; wants to know where things stand ;; fraim status ;; status ;; the watchman's verdict; report it, do not act on it
+human ;; wants to know what is planned ;; fraim tasks ;; tasks ;; open tasks, projects with progress, age of each card
+human ;; wants work set aside, or a project opened ;; fraim task-new SLUG --task | --master | --parent M [--after S] [--from Q] ;; task_new ;; via /make-task; the kind is required; body on stdin: # title, ## What and why, ## Done when, ## Links; a project brings its subtasks in ## Subtasks
+human ;; says a task is really a project ;; fraim task-master SLUG ;; task_master ;; turns an open task into a master task
+human ;; wants to review open questions ;; fraim backlog ;; backlog ;; the backlog; a question that stops mattering → fraim backlog-drop
+human ;; drops an open question ;; fraim backlog-drop SLUG "WHY" ;; backlog_drop ;; closes it into the archive with the reason
+rare ;; a save point must be taken back ;; fraim undo [HASH] ;; undo ;; lists the save points; undoes one with a counter-commit, never rewrites history
+rare ;; starting / closing an investigation ;; fraim investigate-new SLUG ;; investigate_new ;; inside /investigate
+rare ;; closing an investigation with an outcome ;; fraim investigate-seal SLUG ;; investigate_seal ;; inside /investigate; refuses without an outcome and a cleanup report
+rare ;; a stack was boxed ;; fraim stack-passport ;; stack_passport ;; inside /docker-deploy
+rare ;; a prune is finished ;; fraim prune-mark ;; prune_mark ;; inside /prune
 VT
 }
 

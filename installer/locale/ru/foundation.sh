@@ -1,0 +1,27 @@
+# The foundation verbs: find, arch, and the brief's own failure.
+M_fnd_err_tmp='не удалось создать временный файл'
+M_fnd_err_find_keys='нужны ключи: fraim find КЛЮЧ [КЛЮЧ…] — 2–4 штуки, на обоих языках, основой слова (задач task)'
+M_fnd_find_nothing='ничего не найдено по: {keys} — попробуй другие формы слова или другой язык'
+M_fnd_find_footer='— найдено записей: {count} · ключи: {keys} —'
+
+M_fnd_err_in_file='--in требует файл'
+M_fnd_err_unknown_flag='неизвестный флаг: {flag}'
+M_fnd_err_extra_arg='лишний аргумент: {arg}'
+M_fnd_err_decisions_top='DECISIONS.md пишется только наверх: fraim decide'
+M_fnd_err_arch_files='fraim arch правит ARCHITECTURE.md, CONVENTIONS.md или STACK.md'
+M_fnd_err_need_section='нужно имя раздела: fraim arch "Components & responsibilities" <<'\''EOF'\'' … EOF'
+M_fnd_err_pitfall_line='уроки дописываются строкой: fraim pitfall "…"'
+M_fnd_err_no_file='нет {file}'
+M_fnd_err_body_stdin='тело раздела приходит потоком: fraim arch "{section}" <<'\''EOF'\'' … EOF'
+M_fnd_err_body_empty='тело раздела пустое'
+M_fnd_err_body_headings='в теле раздела не должно быть заголовков — один раздел за вызов'
+M_fnd_err_section_exists='раздел «{section}» в {file} уже есть — без --new он заменяется'
+M_fnd_err_no_section='в {file} нет раздела «{section}». Есть:
+{list}
+Новый раздел — с флагом --new'
+M_fnd_err_section_dup='в {file} раздел «{section}» встречается {count} раза — поправь файл руками один раз'
+M_fnd_err_write='не удалось записать {file}'
+M_fnd_err_headings_touched='правка задела другие заголовки {file} — ничего не записано'
+M_fnd_arch_added='{file} ← раздел «{section}» добавлен'
+M_fnd_arch_replaced='{file} ← раздел «{section}» заменён'
+M_fnd_arch_unsaved='запись не сохранена: добавь {file} в свой fraim commit'

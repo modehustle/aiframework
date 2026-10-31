@@ -101,7 +101,7 @@ fnd_decisions_condensed() {
 verb_brief() {
     _root=$1
     _n_out=0
-    _tmp=$(mktemp) || die "не удалось создать временный файл"
+    _tmp=$(mktemp) || die "$(t fnd_err_tmp)"
     {
         printf '# fraim brief — %s · fraim %s\n\n' "$(basename -- "$_root")" "$(fraim_version)"
         printf 'The whole foundation of this project in one stream. Nothing is cut: there is a mark at the end.\n\n'
@@ -190,7 +190,7 @@ fnd_units_file() {
 
 verb_find() {
     _root=$1; shift
-    [ $# -gt 0 ] || die "нужны ключи: fraim find КЛЮЧ [КЛЮЧ…] — 2–4 штуки, на обоих языках, основой слова (задач task)"
+    [ $# -gt 0 ] || die "$(t fnd_err_find_keys)"
     _args=
     for _k in "$@"; do
         [ -n "$_k" ] || continue
@@ -203,7 +203,7 @@ verb_find() {
     case $_loc in *[Uu][Tt][Ff]-8*|*[Uu][Tt][Ff]8*) ;; *) _loc=C.UTF-8 ;; esac
     _hits=$(fnd_units "$_root" | eval "LC_ALL=\$_loc grep -i -F $_args" || true)
     if [ -z "$_hits" ]; then
-        warn "ничего не найдено по: $* — попробуй другие формы слова или другой язык"
+        warn "$(t fnd_find_nothing keys="$*")"
         return 1
     fi
     _n=$(printf '%s\n' "$_hits" | grep -c . || true)
@@ -213,7 +213,7 @@ verb_find() {
         printf '%s\n' "$_text" | tr "$FND_GS" '\n' | fnd_wrap read | sed 's/^/  /'
         printf '\n'
     done
-    printf -- '— найдено записей: %s · ключи: %s —\n' "$_n" "$*"
+    printf '%s\n' "$(t fnd_find_footer count="$_n" keys="$*")"
 }
 
 # --- arch: replace one section of the map -------------------------------------
@@ -227,40 +227,38 @@ verb_arch() {
     while [ $# -gt 0 ]; do
         case $1 in
             --new) _new=1 ;;
-            --in) [ $# -ge 2 ] || die "--in требует файл"; _file=$2; shift ;;
-            -*) die "неизвестный флаг: $1" ;;
-            *) [ -z "$_sec" ] || die "лишний аргумент: $1"; _sec=$1 ;;
+            --in) [ $# -ge 2 ] || die "$(t fnd_err_in_file)"; _file=$2; shift ;;
+            -*) die "$(t fnd_err_unknown_flag flag="$1")" ;;
+            *) [ -z "$_sec" ] || die "$(t fnd_err_extra_arg arg="$1")"; _sec=$1 ;;
         esac
         shift
     done
     case $_file in
         ARCHITECTURE.md|CONVENTIONS.md|STACK.md) ;;
-        DECISIONS.md) die "DECISIONS.md пишется только наверх: fraim decide" ;;
-        *) die "fraim arch правит ARCHITECTURE.md, CONVENTIONS.md или STACK.md" ;;
+        DECISIONS.md) die "$(t fnd_err_decisions_top)" ;;
+        *) die "$(t fnd_err_arch_files)" ;;
     esac
-    [ -n "$_sec" ] || die "нужно имя раздела: fraim arch \"Components & responsibilities\" <<'EOF' … EOF"
+    [ -n "$_sec" ] || die "$(t fnd_err_need_section)"
     case $_sec in
-        "Known Pitfalls / Lessons") die "уроки дописываются строкой: fraim pitfall \"…\"" ;;
+        "Known Pitfalls / Lessons") die "$(t fnd_err_pitfall_line)" ;;
     esac
     _p="$_root/$_file"
-    [ -f "$_p" ] || die "нет $_file"
-    _body=$(verb_read_body) || die "тело раздела приходит потоком: fraim arch \"$_sec\" <<'EOF' … EOF"
-    [ -n "$(printf '%s' "$_body" | tr -d '[:space:]')" ] || die "тело раздела пустое"
+    [ -f "$_p" ] || die "$(t fnd_err_no_file file="$_file")"
+    _body=$(verb_read_body) || die "$(t fnd_err_body_stdin section="$_sec")"
+    [ -n "$(printf '%s' "$_body" | tr -d '[:space:]')" ] || die "$(t fnd_err_body_empty)"
     printf '%s\n' "$_body" | grep -q '^#' &&
-        die "в теле раздела не должно быть заголовков — один раздел за вызов"
+        die "$(t fnd_err_body_headings)"
     if [ "$_new" = 1 ]; then lang_check "the section name" "$_sec"; fi
     lang_check "the section body" "$_body"
 
     _have=$(grep -c "^## $(printf '%s' "$_sec" | sed 's/[][\.*^$/]/\\&/g')\$" "$_p" || true)
     if [ "$_new" = 1 ]; then
-        [ "$_have" -eq 0 ] || die "раздел «$_sec» в $_file уже есть — без --new он заменяется"
+        [ "$_have" -eq 0 ] || die "$(t fnd_err_section_exists file="$_file" section="$_sec")"
     elif [ "$_have" -eq 0 ]; then
         _list=$(sed -n 's/^## //p' "$_p" | sed 's/^/  · /')
-        die "в $_file нет раздела «$_sec». Есть:
-$_list
-Новый раздел — с флагом --new"
+        die "$(t fnd_err_no_section list="$_list" file="$_file" section="$_sec")"
     elif [ "$_have" -gt 1 ]; then
-        die "в $_file раздел «$_sec» встречается $_have раза — поправь файл руками один раз"
+        die "$(t fnd_err_section_dup count="$_have" file="$_file" section="$_sec")"
     fi
 
     _wrapped=$(printf '%s\n' "$_body" | fnd_wrap)
@@ -277,16 +275,17 @@ $_list
             skip { next }
             { print }
         ' "$_p" > "$_tmp"
-    fi || { rm -f "$_tmp"; die "не удалось записать $_file"; }
+    fi || { rm -f "$_tmp"; die "$(t fnd_err_write file="$_file")"; }
     # Every other heading must survive. A rewrite that loses one is a bug in this verb,
     # and the file is left as it was rather than saved half-right.
     _before=$(grep '^#' "$_p" | sort); _after=$(grep '^#' "$_tmp" | sort)
     if [ "$_new" = 0 ] && [ "$_before" != "$_after" ]; then
-        rm -f "$_tmp"; die "правка задела другие заголовки $_file — ничего не записано"
+        rm -f "$_tmp"; die "$(t fnd_err_headings_touched file="$_file")"
     fi
-    mv "$_tmp" "$_p" || die "не удалось записать $_file"
-    ok "$_file ← раздел «$_sec» $( [ "$_new" = 1 ] && echo добавлен || echo заменён)"
-    dim "  запись не сохранена: добавь $_file в свой fraim commit"
+    mv "$_tmp" "$_p" || die "$(t fnd_err_write file="$_file")"
+    _fa_msg=fnd_arch_replaced; [ "$_new" = 1 ] && _fa_msg=fnd_arch_added
+    ok "$(t "$_fa_msg" file="$_file" section="$_sec")"
+    dim "  $(t fnd_arch_unsaved file="$_file")"
 }
 
 # --- decisions: superseding moves the old entry out ------------------------------

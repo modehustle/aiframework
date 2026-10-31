@@ -161,7 +161,7 @@ tasks_legacy() {
 
 tasks_slug_ok() {
     printf '%s' "$1" | grep -qE '^[a-z0-9]+(-[a-z0-9]+)*$' ||
-        die "слаг должен быть kebab-case: буквы, цифры и дефисы"
+        die "$(t tasks_err_slug)"
 }
 
 # --- task-new ---------------------------------------------------------------
@@ -186,80 +186,80 @@ verb_task_new() {
     _slug=; _kind=; _parent=; _from=; _after=
     while [ $# -gt 0 ]; do
         case $1 in
-            --task) [ "$_kind" != master ] || die "либо --task, либо --master"; _kind=task ;;
-            --master) [ "$_kind" != task ] || die "либо --task, либо --master"; _kind=master ;;
-            --parent) [ $# -ge 2 ] || die "--parent требует слаг мастер-задачи"; _parent=$2; shift ;;
-            --after) [ $# -ge 2 ] || die "--after требует слаги подзадач того же проекта"; _after=$2; shift ;;
-            --from) [ $# -ge 2 ] || die "--from требует слаг вопроса из бэклога"; _from=$2; shift ;;
-            -*) die "неизвестный флаг: $1" ;;
-            *) [ -z "$_slug" ] || die "лишний аргумент: $1"; _slug=$1 ;;
+            --task) [ "$_kind" != master ] || die "$(t tasks_err_task_or_master)"; _kind=task ;;
+            --master) [ "$_kind" != task ] || die "$(t tasks_err_task_or_master)"; _kind=master ;;
+            --parent) [ $# -ge 2 ] || die "$(t tasks_err_parent_arg)"; _parent=$2; shift ;;
+            --after) [ $# -ge 2 ] || die "$(t tasks_err_after_arg)"; _after=$2; shift ;;
+            --from) [ $# -ge 2 ] || die "$(t tasks_err_from_arg)"; _from=$2; shift ;;
+            -*) die "$(t tasks_err_unknown_flag flag="$1")" ;;
+            *) [ -z "$_slug" ] || die "$(t tasks_err_extra_arg arg="$1")"; _slug=$1 ;;
         esac
         shift
     done
-    [ -n "$_slug" ] || die "нужен слаг задачи"
+    [ -n "$_slug" ] || die "$(t tasks_err_need_slug)"
     tasks_slug_ok "$_slug"
     if [ -z "$_kind" ]; then
         [ -n "$_parent" ] ||
-            die "укажи тип: --task — одна задача; --master — проект из нескольких задач (подзадачи — разделом «$TASK_SUBTASKS» в той же карточке). Человек говорил о проекте или о нескольких задачах — это --master; не ясно — спроси его одним вопросом"
+            die "$(t tasks_err_need_kind section="$TASK_SUBTASKS")"
         _kind=task
     fi
     _dir=$(tasks_dir "$_root")
-    [ -d "$_dir" ] || die "нет ai/tasks/ — проект не под системой; сначала fraim scaffold"
-    [ -e "$_dir/$_slug.md" ] && die "задача уже существует: ai/tasks/$_slug.md"
-    [ -e "$_dir/$_slug" ] && die "ai/tasks/$_slug/ — задача старого формата с тем же слагом; сначала fraim upgrade"
+    [ -d "$_dir" ] || die "$(t tasks_err_no_dir)"
+    [ -e "$_dir/$_slug.md" ] && die "$(t tasks_err_exists slug="$_slug")"
+    [ -e "$_dir/$_slug" ] && die "$(t tasks_err_legacy_same slug="$_slug")"
 
     if [ -n "$_from" ] && [ ! -f "$(backlog_dir "$_root")/$_from.md" ]; then
-        die "в бэклоге нет вопроса «$_from»"
+        die "$(t tasks_err_no_question slug="$_from")"
     fi
     if [ -n "$_parent" ]; then
-        [ "$_kind" = master ] && die "у мастер-задачи нет родителя: вложенность — один уровень"
+        [ "$_kind" = master ] && die "$(t tasks_err_master_parent)"
         _pf="$_dir/$_parent.md"
-        tasks_is_card "$_pf" || die "нет открытой задачи «$_parent» — родителем может быть только открытая мастер-задача"
+        tasks_is_card "$_pf" || die "$(t tasks_err_no_parent parent="$_parent")"
         [ "$(fm_get "$_pf" kind)" = master ] ||
-            die "«$_parent» — обычная задача, не мастер-задача. Сделать её проектом может только человек: fraim task-master $_parent"
+            die "$(t tasks_err_parent_not_master parent="$_parent")"
     fi
     if [ -n "$_after" ]; then
-        [ -n "$_parent" ] || die "--after — порядок внутри проекта: только вместе с --parent"
+        [ -n "$_parent" ] || die "$(t tasks_err_after_needs_parent)"
         _after=$(printf '%s' "$_after" | tr ',' ' ' | tr -s ' ' | sed 's/^ //; s/ $//')
         for _a in $_after; do
             tasks_is_child "$_root" "$_parent" "$_a" ||
-                die "--after: «$_a» — не подзадача проекта «$_parent»"
+                die "$(t tasks_err_after_not_child parent="$_parent" slug="$_a")"
         done
     fi
 
     _body=$(verb_read_body) ||
-        die "карточка приходит потоком:  fraim task-new $_slug --task <<'EOF'  # Заголовок … EOF"
+        die "$(t tasks_err_card_stdin slug="$_slug")"
     printf '%s\n' "$_body" | head -1 | grep -qx -- '---' &&
-        die "frontmatter пишет глагол, не ты — пришли карточку начиная с «# Заголовок»"
+        die "$(t tasks_err_card_frontmatter)"
     printf '%s\n' "$_body" | grep -q '^# [^[:space:]]' ||
-        die "у карточки нет заголовка — первая строка «# Что сделать»"
+        die "$(t tasks_err_card_no_title)"
     lang_check "the task card" "$_body"
 
     # Split the card from its subtasks: the master's own text, and per child a head line
     # and its fields, each in a file of the scratch folder.
     _sd="$_dir/.$_slug.$$"
-    mkdir "$_sd" || die "не удалось записать карточку"
+    mkdir "$_sd" || die "$(t tasks_err_write_card)"
     printf '%s\n' "$_body" | tasks_split_subtasks "$_sd"
     _n=$(cat "$_sd/count")
     if [ -f "$_sd/found" ] && [ "$_kind" != master ]; then
         rm -rf "$_sd"
-        die "раздел «$TASK_SUBTASKS» бывает только у проекта (--master); подзадачу в открытый проект ставят по одной: --parent"
+        die "$(t tasks_err_subtasks_not_master section="$TASK_SUBTASKS")"
     fi
     if [ -f "$_sd/found" ] && [ "$_n" -eq 0 ]; then
-        rm -rf "$_sd"; die "раздел «$TASK_SUBTASKS» пуст — каждая подзадача: «### слаг — Заголовок», затем «What and why:» и «Done when:»"
+        rm -rf "$_sd"; die "$(t tasks_err_subtasks_empty section="$TASK_SUBTASKS")"
     fi
     if [ -f "$_sd/stray" ]; then
         rm -rf "$_sd"
-        die "в разделе «$TASK_SUBTASKS» текст вне подзадачи — каждая: «### слаг — Заголовок», затем «What and why:», «Done when:», необязательно «After:»"
+        die "$(t tasks_err_subtasks_stray section="$TASK_SUBTASKS")"
     fi
 
-    fnd_wrap < "$_sd/master" > "$_sd/card" || { rm -rf "$_sd"; die "не удалось записать карточку"; }
+    fnd_wrap < "$_sd/master" > "$_sd/card" || { rm -rf "$_sd"; die "$(t tasks_err_write_card)"; }
     for _sec in "$TASK_WHAT" "$TASK_DONE"; do
         _rc=0; verb_section_filled "$_sd/card" "$_sec" || _rc=$?
         case $_rc in
-            1) rm -rf "$_sd"; die "в карточке нет раздела «$_sec»" ;;
-            2) rm -rf "$_sd"; die "раздел «$_sec» пуст" ;;
-            3) rm -rf "$_sd"; die "в разделе «$_sec» остался плейсхолдер <…>" ;;
+            1) rm -rf "$_sd"; die "$(t tasks_err_card_no_section section="$_sec")" ;;
+            2) rm -rf "$_sd"; die "$(t tasks_err_section_empty section="$_sec")" ;;
+            3) rm -rf "$_sd"; die "$(t tasks_err_section_placeholder section="$_sec")" ;;
         esac
     done
 
@@ -280,7 +280,7 @@ verb_task_new() {
         if [ -n "$_after" ]; then printf 'after: %s\n' "$(printf '%s' "$_after" | sed 's/ /, /g')"; fi
         printf -- '---\n'
         cat "$_sd/card"
-    } > "$_dir/$_slug.md" || { rm -rf "$_sd"; die "не удалось записать карточку"; }
+    } > "$_dir/$_slug.md" || { rm -rf "$_sd"; die "$(t tasks_err_write_card)"; }
     _paths="ai/tasks/$_slug.md"
     _i=0
     while [ "$_i" -lt "$_n" ]; do
@@ -291,24 +291,25 @@ verb_task_new() {
             if [ -s "$_sd/$_i.deps" ]; then printf 'after: %s\n' "$(sed 's/ /, /g' "$_sd/$_i.deps")"; fi
             printf -- '---\n'
             cat "$_sd/$_i.card"
-        } > "$_dir/$_cs.md" || { rm -rf "$_sd"; die "не удалось записать подзадачу $_cs"; }
+        } > "$_dir/$_cs.md" || { rm -rf "$_sd"; die "$(t tasks_err_write_subtask slug="$_cs")"; }
         _paths="$_paths ai/tasks/$_cs.md"
     done
     rm -rf "$_sd"
 
-    _what=задача; [ "$_kind" = master ] && _what=мастер-задача
-    ok "ai/tasks/$_slug.md — $_what поставлена${_parent:+ (в проекте «$_parent»)}"
+    _what=$(t tasks_added_task); [ "$_kind" = master ] && _what=$(t tasks_added_master)
+    _tn_where=; [ -n "$_parent" ] && _tn_where=$(t tasks_added_in_project parent="$_parent")
+    ok "ai/tasks/$_slug.md — $_what$_tn_where"
     _msg="$_slug — added"
     if [ "$_n" -gt 0 ]; then
-        ok "  подзадач: $_n — можно брать: $(tasks_ready "$_root" "$_slug")"
+        ok "  $(t tasks_added_subtasks count="$_n" ready="$(tasks_ready "$_root" "$_slug")")"
         _msg="$_slug — added with $_n subtasks"
     fi
     if [ -n "$_from" ]; then
         backlog_to_task "$_root" "$_from" "$_slug"
-        ok "вопрос «$_from» стал задачей — ушёл из бэклога в архив"
+        ok "$(t tasks_question_became_task slug="$_from")"
     fi
     # shellcheck disable=SC2086 # the paths are slugs: no spaces by construction
-    verb_commit "$_root" task "$_msg" $_paths ai/backlog ai/archive/backlog || warn "коммит не удался"
+    verb_commit "$_root" task "$_msg" $_paths ai/backlog ai/archive/backlog || warn "$(t tasks_warn_commit_failed)"
 }
 
 # Read a card on stdin; write into DIR: `master` (the card without its subtasks section),
@@ -356,30 +357,30 @@ tasks_check_subtask() {
     _cs_slug=$(printf '%s' "$_cs_head" | sed -E 's/^`?([^` :]+)`?.*/\1/')
     _cs_title=$(printf '%s' "$_cs_head" | sed -E 's/^`?[^` :]+`?([[:space:]]*:|[[:space:]]+(—|–|-))[[:space:]]+//')
     if [ "$_cs_title" = "$_cs_head" ] || [ -z "$(printf '%s' "$_cs_title" | tr -d '[:space:]')" ]; then
-        printf 'подзадача «%s»: заголовок пишется «### слаг — Заголовок»\n' "$_cs_head"; return 1
+        printf '%s\n' "$(t tasks_sub_err_head head="$_cs_head")"; return 1
     fi
     printf '%s' "$_cs_slug" | grep -qE '^[a-z0-9]+(-[a-z0-9]+)*$' ||
-        { printf 'подзадача «%s»: слаг — kebab-case, буквы, цифры и дефисы\n' "$_cs_slug"; return 1; }
+        { printf '%s\n' "$(t tasks_sub_err_slug slug="$_cs_slug")"; return 1; }
     [ "$_cs_slug" != "$_cs_master" ] ||
-        { printf 'подзадача «%s»: слаг совпадает с проектом\n' "$_cs_slug"; return 1; }
+        { printf '%s\n' "$(t tasks_sub_err_same slug="$_cs_slug")"; return 1; }
     case " $_cs_kids " in *" $_cs_slug "*)
-        printf 'подзадача «%s» указана дважды\n' "$_cs_slug"; return 1 ;;
+        printf '%s\n' "$(t tasks_sub_err_twice slug="$_cs_slug")"; return 1 ;;
     esac
     if [ -e "$(tasks_dir "$_cs_root")/$_cs_slug.md" ] || [ -e "$(tasks_dir "$_cs_root")/$_cs_slug" ]; then
-        printf 'подзадача «%s»: такая задача уже есть на доске\n' "$_cs_slug"; return 1
+        printf '%s\n' "$(t tasks_sub_err_exists slug="$_cs_slug")"; return 1
     fi
     for _cs_f in what done; do
         _cs_v=$(cat "$_cs_d/$_cs_i.$_cs_f" 2>/dev/null) || _cs_v=
         _cs_name="What and why:"; [ "$_cs_f" = done ] && _cs_name="Done when:"
         [ -n "$(printf '%s' "$_cs_v" | tr -d '[:space:]')" ] ||
-            { printf 'подзадача «%s»: нет «%s»\n' "$_cs_slug" "$_cs_name"; return 1; }
+            { printf '%s\n' "$(t tasks_sub_err_missing field="$_cs_name" slug="$_cs_slug")"; return 1; }
         printf '%s' "$_cs_v" | grep -q '<[^>]*>' &&
-            { printf 'подзадача «%s»: в «%s» остался плейсхолдер <…>\n' "$_cs_slug" "$_cs_name"; return 1; }
+            { printf '%s\n' "$(t tasks_sub_err_placeholder field="$_cs_name" slug="$_cs_slug")"; return 1; }
     done
     _cs_deps=$(cat "$_cs_d/$_cs_i.after" 2>/dev/null | tr ',\n' '  ' | tr -s ' ' | sed 's/^ //; s/ $//')
     for _cs_a in $_cs_deps; do
         case " $_cs_kids " in *" $_cs_a "*) ;; *)
-            printf 'подзадача «%s»: After «%s» — можно ссылаться только на подзадачи выше по списку\n' "$_cs_slug" "$_cs_a"
+            printf '%s\n' "$(t tasks_sub_err_after after="$_cs_a" slug="$_cs_slug")"
             return 1 ;;
         esac
     done
@@ -398,19 +399,19 @@ tasks_check_subtask() {
 # agent has nothing to edit by hand, not so it can decide this on its own.
 verb_task_master() {
     _root=$1; _slug=$2
-    [ -n "$_slug" ] || die "нужен слаг задачи"
+    [ -n "$_slug" ] || die "$(t tasks_err_need_slug)"
     _f="$(tasks_dir "$_root")/$_slug.md"
-    tasks_is_card "$_f" || die "нет открытой задачи: ai/tasks/$_slug.md"
-    [ "$(fm_get "$_f" kind)" = master ] && { dim "  «$_slug» уже мастер-задача"; return 0; }
+    tasks_is_card "$_f" || die "$(t tasks_err_not_open slug="$_slug")"
+    [ "$(fm_get "$_f" kind)" = master ] && { dim "  $(t tasks_already_master slug="$_slug")"; return 0; }
     [ -n "$(fm_get "$_f" parent)" ] &&
-        die "«$_slug» — подзадача проекта «$(fm_get "$_f" parent)»; вложенность — один уровень"
+        die "$(t tasks_err_master_child parent="$(fm_get "$_f" parent)" slug="$_slug")"
     _tmp="$_f.fraim.tmp"
     awk 'NR == 1 { print; fm = 1; next }
          fm && /^kind:/ { print "kind: master"; next }
          fm && $0 == "---" { fm = 0 }
-         { print }' "$_f" > "$_tmp" && mv "$_tmp" "$_f" || die "не удалось записать карточку"
-    ok "«$_slug» теперь мастер-задача — подзадачи: fraim task-new СЛАГ --parent $_slug"
-    verb_commit "$_root" task "$_slug — became a master task" "ai/tasks/$_slug.md" || warn "коммит не удался"
+         { print }' "$_f" > "$_tmp" && mv "$_tmp" "$_f" || die "$(t tasks_err_write_card)"
+    ok "$(t tasks_became_master slug="$_slug")"
+    verb_commit "$_root" task "$_slug — became a master task" "ai/tasks/$_slug.md" || warn "$(t tasks_warn_commit_failed)"
 }
 
 # --- task-seal --------------------------------------------------------------
@@ -423,48 +424,48 @@ verb_task_seal() {
     while [ $# -gt 0 ]; do
         case $1 in
             --dropped) _outcome=dropped ;;
-            -*) die "неизвестный флаг: $1" ;;
+            -*) die "$(t tasks_err_unknown_flag flag="$1")" ;;
             *) if [ -z "$_slug" ]; then _slug=$1
                elif [ -z "$_result" ]; then _result=$1
-               else die "лишний аргумент: $1"; fi ;;
+               else die "$(t tasks_err_extra_arg arg="$1")"; fi ;;
         esac
         shift
     done
-    [ -n "$_slug" ] || die "нужен слаг задачи"
+    [ -n "$_slug" ] || die "$(t tasks_err_need_slug)"
     _f="$(tasks_dir "$_root")/$_slug.md"
     if ! tasks_is_card "$_f"; then
         [ -d "$(tasks_dir "$_root")/$_slug" ] &&
-            die "ai/tasks/$_slug/ — задача старого формата; сначала fraim upgrade"
-        die "нет открытой задачи: ai/tasks/$_slug.md"
+            die "$(t tasks_err_legacy slug="$_slug")"
+        die "$(t tasks_err_not_open slug="$_slug")"
     fi
     [ -n "$(printf '%s' "$_result" | tr -d '[:space:]')" ] ||
-        die "нужна строка итога: fraim task-seal $_slug \"что сделано\"  (или --dropped \"почему отменена\")"
+        die "$(t tasks_err_need_result slug="$_slug")"
     lang_check "the result line" "$_result"
 
     _kind=$(fm_get "$_f" kind)
     if [ "$_kind" = master ]; then
         _open=$(tasks_open_children "$_root" "$_slug" | tr '\n' ' ')
         [ -z "$_open" ] ||
-            die "у мастер-задачи «$_slug» открыты подзадачи: $_open— сначала закрой или отмени их"
+            die "$(t tasks_err_open_children open="$_open" slug="$_slug")"
     fi
 
     _dest=$(tasks_archive_card "$_root" "$_f" "$(tasks_closed "$_root")" "$_slug" "$_outcome" "$_result") || exit 2
 
-    _word=выполнена; [ "$_outcome" = dropped ] && _word=отменена
     _cword=done; [ "$_outcome" = dropped ] && _cword=dropped
-    ok "«$_slug» $_word → ai/archive/tasks/$(basename -- "$_dest")"
-    verb_commit "$_root" archive "$_slug — $_cword" "ai/tasks" "ai/archive/tasks" || warn "коммит не удался"
+    if [ "$_outcome" = dropped ]; then _word=tasks_sealed_dropped; else _word=tasks_sealed_done; fi
+    ok "$(t "$_word" dest="ai/archive/tasks/$(basename -- "$_dest")" slug="$_slug")"
+    verb_commit "$_root" archive "$_slug — $_cword" "ai/tasks" "ai/archive/tasks" || warn "$(t tasks_warn_commit_failed)"
 
     _parent=$(fm_get "$_dest" parent)
     if [ -n "$_parent" ]; then
         _o=$(tasks_open_children "$_root" "$_parent" | grep -c . || true)
         _c=$(tasks_closed_children_n "$_root" "$_parent")
-        say "  проект «$_parent»: закрыто $_c из $((_o + _c))"
+        say "  $(t tasks_project_progress closed="$_c" total="$((_o + _c))" parent="$_parent")"
         if [ "$_o" -eq 0 ]; then
-            dim "  открытых подзадач нет — закрыть сам проект решает человек"
+            dim "  $(t tasks_project_no_open)"
         else
             _r=$(tasks_ready "$_root" "$_parent")
-            [ -z "$_r" ] || say "  можно брать: $_r"
+            [ -z "$_r" ] || say "  $(t tasks_ready_to_take ready="$_r")"
         fi
     fi
     # A dropped card frees whoever waited on it — the queue cannot tell «no longer needed»
@@ -472,7 +473,7 @@ verb_task_seal() {
     if [ "$_outcome" = dropped ]; then
         _waited=$(tasks_scan "$_root" | awk -F"$TASK_SEP" -v s="$_slug" \
             '{ n = split($6, d, / +/); for (i = 1; i <= n; i++) if (d[i] == s) { print $1; break } }' | tr '\n' ' ')
-        [ -z "$_waited" ] || warn "эту задачу ждали: $_waited— нужны ли они без неё, решает человек"
+        [ -z "$_waited" ] || warn "$(t tasks_dropped_waited waited="$_waited")"
     fi
     return 0
 }
@@ -482,9 +483,9 @@ verb_task_seal() {
 # tasks and backlog questions. Prints the destination path.
 tasks_archive_card() {
     _ac_root=$1; _ac_src=$2; _ac_dir=$3; _ac_slug=$4; _ac_outcome=$5; _ac_result=$6
-    mkdir -p "$_ac_dir" || die "не удалось создать ${_ac_dir#"$_ac_root"/}/"
+    mkdir -p "$_ac_dir" || die "$(t tasks_err_mkdir dir="${_ac_dir#"$_ac_root"/}/")"
     _ac_dest="$_ac_dir/$(date +%Y-%m-%d)_$_ac_slug.md"
-    [ -e "$_ac_dest" ] && die "в архиве уже есть ${_ac_dest#"$_ac_root"/}"
+    [ -e "$_ac_dest" ] && die "$(t tasks_err_archive_exists path="${_ac_dest#"$_ac_root"/}")"
     _ac_head=
     verb_is_git "$_ac_root" && _ac_head=$(git -C "$_ac_root" rev-parse --short HEAD 2>/dev/null)
     _ac_q=$(printf '%s' "$_ac_result" | tr '\n' ' ' | sed 's/\\/\\\\/g; s/"/\\"/g')
@@ -498,15 +499,16 @@ tasks_archive_card() {
             fm = 0
         }
         { print }
-    ' "$_ac_src" > "$_ac_dest" || { rm -f "$_ac_dest"; die "не удалось записать архив"; }
-    rm -f "$_ac_src" || die "не удалось убрать карточку"
+    ' "$_ac_src" > "$_ac_dest" || { rm -f "$_ac_dest"; die "$(t tasks_err_write_archive)"; }
+    rm -f "$_ac_src" || die "$(t tasks_err_remove_card)"
     printf '%s\n' "$_ac_dest"
 }
 
 # --- tasks (the board) ------------------------------------------------------
 tasks_age_words() {
     _d=$(tasks_days_since "$1")
-    if [ "$_d" -eq 0 ]; then printf 'сегодня\n'; else printf '%s дн.\n' "$_d"; fi
+    if [ "$_d" -eq 0 ]; then t tasks_age_today; else tp "$_d" tasks_age_days; fi
+    printf '\n'
 }
 
 # A list (spaces or commas) as a JSON array of strings. Slugs only: nothing to escape.
@@ -519,9 +521,10 @@ tasks_master_words() {
     _o=$(tasks_open_children "$1" "$2" | grep -c . || true)
     _c=$(tasks_closed_children_n "$1" "$2")
     _all=$((_o + _c))
-    if [ "$_all" -eq 0 ]; then printf 'подзадач нет\n'
-    elif [ "$_c" -eq 0 ]; then printf 'не начата, 0 из %s\n' "$_all"
-    else printf 'в работе, %s из %s\n' "$_c" "$_all"; fi
+    if [ "$_all" -eq 0 ]; then t tasks_master_none
+    elif [ "$_c" -eq 0 ]; then t tasks_master_not_started total="$_all"
+    else t tasks_master_in_progress closed="$_c" total="$_all"; fi
+    printf '\n'
 }
 
 verb_tasks() {
@@ -566,35 +569,37 @@ verb_tasks() {
 
     _n=$(printf '%s' "$_scan" | grep -c . || true)
     if [ "$_n" -eq 0 ]; then
-        ok "открытых задач нет"
+        ok "$(t tasks_board_empty)"
     else
-        say "${C_BLD}Задачи · открыто $_n${C_OFF}"
+        say "${C_BLD}$(t tasks_board_title count="$_n")${C_OFF}"
         # Masters first, each with its children under it; then ordinary tasks; then
         # children whose parent is not an open master — shown, never hidden.
         _masters=$(printf '%s\n' "$_scan" | awk -F"$TASK_SEP" '$2 == "master" { print $1 }' | tr '\n' ' ')
         printf '%s\n' "$_scan" | awk -F"$TASK_SEP" '$2 == "master"' |
             while IFS="$TASK_SEP" read -r _s _k _p _cr _t _a; do
                 _r=$(tasks_ready "$_root" "$_s")
+                [ -z "$_r" ] || _r=" · $(t tasks_ready_to_take ready="$_r")"
                 printf '  ◆ %s — %s %s· %s · %s%s%s\n' "$_s" "$_t" "$C_DIM" \
                     "$(tasks_master_words "$_root" "$_s")" "$(tasks_age_words "$_cr")" \
-                    "${_r:+ · можно брать: $_r}" "$C_OFF"
+                    "$_r" "$C_OFF"
                 # The queue: nobody-waits-on first, each waiting child naming what it waits for.
                 tasks_queue "$_root" "$_s" |
                     while IFS="$TASK_SEP" read -r _cs _cst _cw _ccr _ct; do
+                        [ -z "$_cw" ] || _cw=" · $(t tasks_waits_on waits="$_cw")"
                         printf '      · %s — %s %s· %s%s%s\n' "$_cs" "$_ct" "$C_DIM" "$(tasks_age_words "$_ccr")" \
-                            "${_cw:+ · ждёт: $_cw}" "$C_OFF"
+                            "$_cw" "$C_OFF"
                     done
             done
         printf '%s\n' "$_scan" | awk -F"$TASK_SEP" -v m=" $_masters" '$2 != "master" && index(m, " " $3 " ") == 0' |
             while IFS="$TASK_SEP" read -r _s _k _p _cr _t _a; do
                 _note=
-                [ -n "$_p" ] && _note=" (родитель «$_p» не открыт)"
+                [ -n "$_p" ] && _note=" $(t tasks_parent_not_open parent="$_p")"
                 printf '  · %s — %s %s· %s%s%s\n' "$_s" "$_t" "$C_DIM" "$(tasks_age_words "$_cr")" "$_note" "$C_OFF"
             done
     fi
     _bn=$(backlog_scan "$_root" | grep -c . || true)
-    if [ "$_bn" -gt 0 ]; then dim "  в бэклоге $_bn $(wm_plural "$_bn" вопрос вопроса вопросов) — fraim backlog"; fi
-    [ -n "$_legacy" ] && warn "задачи старого формата (папки): $_legacy— перевести в карточки: fraim upgrade"
+    if [ "$_bn" -gt 0 ]; then dim "  $(tp "$_bn" tasks_board_backlog)"; fi
+    [ -n "$_legacy" ] && warn "$(t tasks_board_legacy legacy="$_legacy")"
     return 0
 }
 
@@ -624,13 +629,14 @@ verb_backlog() {
     _root=$1
     _scan=$(backlog_scan "$_root")
     _n=$(printf '%s' "$_scan" | grep -c . || true)
-    if [ "$_n" -eq 0 ]; then ok "бэклог пуст"; return 0; fi
-    say "${C_BLD}Бэклог · открытых вопросов $_n${C_OFF}"
+    if [ "$_n" -eq 0 ]; then ok "$(t tasks_backlog_empty)"; return 0; fi
+    say "${C_BLD}$(t tasks_backlog_title count="$_n")${C_OFF}"
     printf '%s\n' "$_scan" | while IFS="$TASK_SEP" read -r _s _cr _from _t; do
+        [ -z "$_from" ] || _from=" · $(t tasks_backlog_from from="$_from")"
         printf '  ? %s — %s %s· %s%s%s\n' "$_s" "$_t" "$C_DIM" "$(tasks_age_words "$_cr")" \
-            "${_from:+ · из $_from}" "$C_OFF"
+            "$_from" "$C_OFF"
     done
-    dim "  стал задачей — fraim task-new СЛАГ --from ВОПРОС; снят — fraim backlog-drop ВОПРОС \"почему\""
+    dim "  $(t tasks_backlog_hint)"
 }
 
 verb_backlog_new() {
@@ -638,31 +644,31 @@ verb_backlog_new() {
     _slug=; _from=
     while [ $# -gt 0 ]; do
         case $1 in
-            --from) [ $# -ge 2 ] || die "--from требует, откуда вопрос (слаг задачи или «сессия»)"; _from=$2; shift ;;
-            -*) die "неизвестный флаг: $1" ;;
-            *) [ -z "$_slug" ] || die "лишний аргумент: $1"; _slug=$1 ;;
+            --from) [ $# -ge 2 ] || die "$(t tasks_err_backlog_from_arg)"; _from=$2; shift ;;
+            -*) die "$(t tasks_err_unknown_flag flag="$1")" ;;
+            *) [ -z "$_slug" ] || die "$(t tasks_err_extra_arg arg="$1")"; _slug=$1 ;;
         esac
         shift
     done
-    [ -n "$_slug" ] || die "нужен слаг вопроса"
+    [ -n "$_slug" ] || die "$(t tasks_err_need_question_slug)"
     tasks_slug_ok "$_slug"
     _dir=$(backlog_dir "$_root")
-    mkdir -p "$_dir" || die "не удалось создать ai/backlog/"
-    [ -e "$_dir/$_slug.md" ] && die "вопрос уже в бэклоге: ai/backlog/$_slug.md"
+    mkdir -p "$_dir" || die "$(t tasks_err_mkdir dir=ai/backlog/)"
+    [ -e "$_dir/$_slug.md" ] && die "$(t tasks_err_question_exists slug="$_slug")"
     _body=$(verb_read_body) ||
-        die "вопрос приходит потоком:  fraim backlog-new $_slug <<'EOF'  # Вопрос … EOF"
+        die "$(t tasks_err_question_stdin slug="$_slug")"
     printf '%s\n' "$_body" | head -1 | grep -qx -- '---' &&
-        die "frontmatter пишет глагол — пришли вопрос начиная с «# Заголовок»"
-    printf '%s\n' "$_body" | grep -q '^# [^[:space:]]' || die "у вопроса нет заголовка — первая строка «# …»"
+        die "$(t tasks_err_question_frontmatter)"
+    printf '%s\n' "$_body" | grep -q '^# [^[:space:]]' || die "$(t tasks_err_question_no_title)"
     lang_check "the backlog question" "$_body"
     _tmp="$_dir/.$_slug.md.$$"
-    printf '%s\n' "$_body" | fnd_wrap > "$_tmp" || die "не удалось записать вопрос"
+    printf '%s\n' "$_body" | fnd_wrap > "$_tmp" || die "$(t tasks_err_write_question)"
     for _sec in "$BACKLOG_WHAT" "$BACKLOG_WHY"; do
         _rc=0; verb_section_filled "$_tmp" "$_sec" || _rc=$?
         case $_rc in
-            1) rm -f "$_tmp"; die "в вопросе нет раздела «$_sec»" ;;
-            2) rm -f "$_tmp"; die "раздел «$_sec» пуст" ;;
-            3) rm -f "$_tmp"; die "в разделе «$_sec» остался плейсхолдер <…>" ;;
+            1) rm -f "$_tmp"; die "$(t tasks_err_question_no_section section="$_sec")" ;;
+            2) rm -f "$_tmp"; die "$(t tasks_err_section_empty section="$_sec")" ;;
+            3) rm -f "$_tmp"; die "$(t tasks_err_section_placeholder section="$_sec")" ;;
         esac
     done
     {
@@ -670,23 +676,23 @@ verb_backlog_new() {
         if [ -n "$_from" ]; then printf 'from: %s\n' "$_from"; fi
         printf -- '---\n'
         cat "$_tmp"
-    } > "$_dir/$_slug.md" || { rm -f "$_tmp"; die "не удалось записать вопрос"; }
+    } > "$_dir/$_slug.md" || { rm -f "$_tmp"; die "$(t tasks_err_write_question)"; }
     rm -f "$_tmp"
-    ok "ai/backlog/$_slug.md — вопрос записан в бэклог"
-    verb_commit "$_root" backlog "$_slug — added" "ai/backlog/$_slug.md" || warn "коммит не удался"
+    ok "ai/backlog/$_slug.md — $(t tasks_question_added)"
+    verb_commit "$_root" backlog "$_slug — added" "ai/backlog/$_slug.md" || warn "$(t tasks_warn_commit_failed)"
 }
 
 verb_backlog_drop() {
     _root=$1; _slug=${2:-}; _why=${3:-}
-    [ -n "$_slug" ] || die "нужен слаг вопроса"
+    [ -n "$_slug" ] || die "$(t tasks_err_need_question_slug)"
     _f="$(backlog_dir "$_root")/$_slug.md"
-    [ -f "$_f" ] || die "нет такого вопроса: ai/backlog/$_slug.md"
+    [ -f "$_f" ] || die "$(t tasks_err_no_such_question slug="$_slug")"
     [ -n "$(printf '%s' "$_why" | tr -d '[:space:]')" ] ||
-        die "нужна строка: fraim backlog-drop $_slug \"почему снят\""
+        die "$(t tasks_err_need_reason slug="$_slug")"
     lang_check "the reason" "$_why"
     _dest=$(tasks_archive_card "$_root" "$_f" "$(backlog_closed "$_root")" "$_slug" dropped "$_why") || exit 2
-    ok "«$_slug» снят → ai/archive/backlog/$(basename -- "$_dest")"
-    verb_commit "$_root" backlog "$_slug — dropped" ai/backlog ai/archive/backlog || warn "коммит не удался"
+    ok "$(t tasks_question_dropped dest="ai/archive/backlog/$(basename -- "$_dest")" slug="$_slug")"
+    verb_commit "$_root" backlog "$_slug — dropped" ai/backlog ai/archive/backlog || warn "$(t tasks_warn_commit_failed)"
 }
 
 # A question that became a task leaves the backlog the same way, with the task named.
@@ -737,7 +743,7 @@ tasks_migrate_legacy() {
             _dest="$_root/ai/archive/$(date +%Y-%m-%d_%H%M)_$_s"
             [ -e "$_dest" ] && _dest="$_dest-legacy"
             mv "$_d" "$_dest" || return 1
-            ok "ai/tasks/$_s/ исполнена и не запечатана → ai/archive/$(basename -- "$_dest")"
+            ok "$(t tasks_migrated_executed dest="ai/archive/$(basename -- "$_dest")" slug="$_s")"
             TASKS_MIGRATED=$((TASKS_MIGRATED + 1))
             continue
         fi
@@ -770,7 +776,7 @@ tasks_migrate_legacy() {
             fi
         } > "$_card" || return 1
         mv "$_d" "$_lp/$_s" || return 1
-        ok "ai/tasks/$_s/ → карточка ai/tasks/$_s.md (план в ai/archive/legacy-plans/$_s/)"
+        ok "$(t tasks_migrated_card slug="$_s")"
         TASKS_MIGRATED=$((TASKS_MIGRATED + 1))
         if [ -n "$_gap" ]; then TASKS_UNPARSED="$TASKS_UNPARSED $_s"; fi
     done
@@ -801,7 +807,7 @@ tasks_migration_card() {
         } > "$_mc_card"
     fi
     TASKS_CARD=1
-    warn "не всё разобралось механически — на доске задача fraim-migration: $2"
+    warn "$(t tasks_migration_left what="$2")"
 }
 
 # The whole task half of `fraim upgrade` (and of the cleanup's upgrade step): migrate,
@@ -841,5 +847,5 @@ tasks_upgrade() {
     fi
     [ "$TASKS_MIGRATED" -gt 0 ] || [ "$TASKS_CARD" = 1 ] || [ "$TASKS_RENAMED" -gt 0 ] || return 0
     verb_commit "$_root" upgrade "tasks and map moved to the new format" ai/tasks ai/archive ai/backlog ||
-        warn "коммит не удался"
+        warn "$(t tasks_warn_commit_failed)"
 }
