@@ -1,0 +1,27 @@
+# The foundation verbs: find, arch, and the brief's own failure.
+M_fnd_err_tmp='eine temporäre Datei konnte nicht angelegt werden'
+M_fnd_err_find_keys='Suchbegriffe werden benötigt: fraim find KEY [KEY…] — 2–4 davon, in beiden Sprachen, als Wortstämme (task aufgab)'
+M_fnd_find_nothing='nichts gefunden für: {keys} — versuche andere Wortformen oder die andere Sprache'
+M_fnd_find_footer='— gefundene Einträge: {count} · Begriffe: {keys} —'
+
+M_fnd_err_in_file='--in braucht eine Datei'
+M_fnd_err_unknown_flag='unbekannte Option: {flag}'
+M_fnd_err_extra_arg='unerwartetes Argument: {arg}'
+M_fnd_err_decisions_top='DECISIONS.md wird nur oben beschrieben: fraim decide'
+M_fnd_err_arch_files='fraim arch bearbeitet ARCHITECTURE.md, CONVENTIONS.md oder STACK.md'
+M_fnd_err_need_section='ein Abschnittsname wird benötigt: fraim arch "Components & responsibilities" <<'\''EOF'\'' … EOF'
+M_fnd_err_pitfall_line='Lektionen werden als Zeile ergänzt: fraim pitfall "…"'
+M_fnd_err_no_file='kein {file}'
+M_fnd_err_body_stdin='der Abschnittstext kommt über stdin: fraim arch "{section}" <<'\''EOF'\'' … EOF'
+M_fnd_err_body_empty='der Abschnittstext ist leer'
+M_fnd_err_body_headings='der Abschnittstext darf keine Überschriften enthalten — ein Abschnitt pro Aufruf'
+M_fnd_err_section_exists='der Abschnitt «{section}» existiert bereits in {file} — ohne --new wird er ersetzt'
+M_fnd_err_no_section='{file} hat keinen Abschnitt «{section}». Vorhanden sind:
+{list}
+Ein neuer Abschnitt — mit der Option --new'
+M_fnd_err_section_dup='der Abschnitt «{section}» kommt {count}-mal in {file} vor — bring die Datei einmal von Hand in Ordnung'
+M_fnd_err_write='{file} konnte nicht geschrieben werden'
+M_fnd_err_headings_touched='die Änderung hat andere Überschriften von {file} berührt — nichts wurde geschrieben'
+M_fnd_arch_added='{file} ← Abschnitt «{section}» hinzugefügt'
+M_fnd_arch_replaced='{file} ← Abschnitt «{section}» ersetzt'
+M_fnd_arch_unsaved='noch nicht gesichert: nimm {file} in dein fraim commit auf'
