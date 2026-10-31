@@ -13,8 +13,11 @@
   through the verbs — `fraim arch` for a map section, `fraim decide` for a decision,
   `fraim pitfall` for a lesson. Hand-editing the foundation is for this repo's own
   development of those verbs, not for agents working in a project.
-- Verb text travels through `ENVIRON`, never `awk -v` (which expands backslash escapes), and
-  helpers called from a verb prefix their variables (`_md_`, `_ac_`) — POSIX sh has no locals.
+- Verb text never goes through `awk -v` (it expands backslash escapes). A short value (a
+  heading, a name) travels through `ENVIRON`; text that can be long (a body, an entry, lines
+  from stdin) travels through a file — `fnd_text_file` plus `slurp()` from `FND_SLURP` —
+  because Linux caps one environment string at 128 KiB. Helpers called from a verb prefix
+  their variables (`_md_`, `_ac_`, `_tf_`) — POSIX sh has no locals.
 - Language: the product is English inside — code, comments, procedures, data formats (card
   headings), everything the CLI writes into a project (cards, journals, briefs, commit
   messages) and everything addressed to the agent (brief, skills, AGENTS.md block). Russian is
