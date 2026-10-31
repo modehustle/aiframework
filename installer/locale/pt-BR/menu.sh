@@ -25,10 +25,6 @@ M_ui_projects_empty='o registro está vazio — fraim init dentro de um projeto 
 M_ui_project_gone='o diretório sumiu'
 M_ui_act_register='Adicionar este projeto ao registro'
 M_ui_registered='projeto adicionado ao registro'
-M_ui_tier_cheap='Modelos baratos'
-M_ui_tier_capable='Modelos capazes'
-M_ui_tier_strong='Modelos fortes'
-M_ui_expert_hint='Iniciar agentes na frota: fraim config set --machine launchcmd_<agente> "…"'
 
 M_ui_act_status='Examinar o projeto'
 M_ui_act_status_hint='o veredito completo do vigia'

@@ -5,7 +5,7 @@ M_cli_usage_head='fraim — эксплуатационный слой для п�
   fraim                     экран fraim (в терминале) — то же, что fraim menu
   fraim menu                проект, доска, бэклог, решения, настройки и язык на одном экране
   fraim status [ПУТЬ]       что происходит в проекте (--json для машины)
-  fraim fleet [ПУТЬ]        где живёт работа: чекауты проекта и среда флота
+  fraim fleet [ПУТЬ]        где живёт работа: чекауты проекта
   fraim undo [ХЕШ]          показать точки сохранения / вернуть, как было
   fraim scaffold [ПУТЬ]     завести проект под систему
   fraim upgrade [ПУТЬ]      довести все проекты реестра до стандарта этой версии
@@ -14,15 +14,12 @@ M_cli_usage_head='fraim — эксплуатационный слой для п�
   fraim publish [--check]   копия проекта вне этой машины: создать, отправить, сверить
                             (--brief — задание агенту вычистить найденное)
   fraim dispatch ПЛАН       флот: проверить план и завести сборку
-  fraim dispatch collect СБОРКА  свести волну в ветку сборки
+  fraim dispatch collect СБОРКА  свести результаты круга в ветку сборки
   fraim dispatch accept СБОРКА   приёмка дирижёра: сверка, проверка, чистка, ствол
-                            run СБОРКА — поднять флот в среде исполнения
-                            watch СБОРКА — что среда говорит о воркерах
-                            verify СБОРКА ПОДЗАДАЧА — сверить дерево с путями
-                            check ПЛАН · accept СБОРКА · list
+                            prepare СБОРКА — чекауты для харнеса без изоляции
+                            verify СБОРКА ПОДЗАДАЧА [ВЕТКА] — один результат против его путей
+                            check ПЛАН · list
   fraim mode                убрать остатки старого режима флота из проекта
-  fraim roles [set [ИМЯ]]   таблица ролей: во что разворачивается роль на этой машине
-                            (set — выбрать агента, модель и усилие из списка)
   fraim init                поставить скиллы / подхватить новый харнес
   fraim update [--check]    привезти новую версию и разложить (--check — только узнать;
                             --quiet — для автозапуска: молча, и никогда не мешает старту)
@@ -35,6 +32,7 @@ M_cli_usage_tail='
 Служебное
   fraim task-block, task-result, task-revise, plan-seal, reconcile-seal —
                             удалены вместе с планами: задача теперь карточка
+  fraim roles               убрана вместе с таблицей ролей: воркер работает на модели самого агента
   fraim show ИМЯ            напечатать текст процедуры
   fraim build               пересобрать артефакты репозитория
   fraim version             версия
@@ -89,11 +87,6 @@ M_cli_fleet_on_board_few='{n} задачи на доске'
 M_cli_fleet_on_board_many='{n} задач на доске'
 M_cli_fleet_clean='чисто'
 M_cli_fleet_err_not_repo='{path} не репозиторий — чекаутов нет и быть не может'
-M_cli_fleet_ade_alive='{label} ({cmd}) — рантайм отвечает'
-M_cli_fleet_ade_silent='{label} ({cmd}) — установлен, рантайм не отвечает'
-M_cli_fleet_auto_free='{label}: по этому проекту работает агент по расписанию — проверь, что он не правит код без тебя'
-M_cli_fleet_auto_watchman='{label}: по расписанию ходит сторож — это наблюдение, не правка'
-M_cli_fleet_no_ade='среда исполнения флота на этой машине не найдена'
 
 # projects
 M_cli_proj_no_dir='(нет каталога)'
@@ -197,67 +190,28 @@ M_cli_commit_err_no_git='здесь нет git — точку сохранени
 M_cli_commit_failed='коммит не удался'
 
 # dispatch
-M_cli_disp_usage='нужно: fraim dispatch ПЛАН (или check / run / watch / collect / verify / accept / list)'
+M_cli_disp_usage='нужно: fraim dispatch ПЛАН (или check / prepare / collect / verify / accept / list)'
 M_cli_disp_usage_check='нужно: fraim dispatch check ПЛАН'
-M_cli_disp_usage_verify='нужно: fraim dispatch verify СБОРКА ПОДЗАДАЧА [БАЗА]'
-M_cli_disp_usage_run='нужно: fraim dispatch run СБОРКА [ВОЛНА]'
-M_cli_disp_usage_watch='нужно: fraim dispatch watch СБОРКА'
-M_cli_disp_usage_collect='нужно: fraim dispatch collect СБОРКА [ВОЛНА]'
+M_cli_disp_usage_verify='нужно: fraim dispatch verify СБОРКА ПОДЗАДАЧА [ВЕТКА]'
+M_cli_disp_usage_collect='нужно: fraim dispatch collect СБОРКА [ПОДЗАДАЧА=ВЕТКА …]'
 M_cli_disp_usage_accept='нужно: fraim dispatch accept СБОРКА'
 M_cli_disp_err_plan_bad='план не годится для параллельной раздачи'
 M_cli_disp_check_ok='план проходит dispatch-check'
 M_cli_disp_err_no_build_plan='нет плана сборки {build}'
 M_cli_disp_err_no_subtask='в сборке {build} нет подзадачи {sub}'
-M_cli_disp_checkout='чекаут подзадачи: {path}'
-M_cli_disp_no_checkout='отдельного чекаута {name} нет — сверяю корень проекта'
-M_cli_disp_launching='Поднимаю флот для сборки {build}...'
-M_cli_disp_launched='флот поднят'
-M_cli_disp_hint_watch='состояние:       fraim dispatch watch {build}'
-M_cli_disp_hint_collect='собрать волну:   fraim dispatch collect {build}'
-M_cli_disp_launch_partial='часть воркеров не поднялась — что поднялось, записано в ai/builds/{build}/fleet.tsv'
-M_cli_disp_watch_not_up='не поднялась'
-M_cli_disp_watch_unexpected='среда ответила не так, как ожидалось:'
-M_cli_disp_watch_note_terminal='состояние терминала — не статус задачи: завершённая задача может'
-M_cli_disp_watch_note_verify='держать живой терминал. Что сделано — покажет dispatch verify.'
-M_cli_disp_collected='волна собрана в ветку {branch}'
-M_cli_disp_next_wave='следующая волна:  fraim dispatch run {build}'
-M_cli_disp_next_wave_note='(волна {wave} — воркеры пойдут от собранной ветки)'
-M_cli_disp_all_collected='все волны собраны — принять работу флота:'
+M_cli_disp_hint_collect='собрать круг:  fraim dispatch collect {build} [ПОДЗАДАЧА=ВЕТКА …]'
+M_cli_disp_collected='круг собран в ветку {branch}'
 M_cli_disp_accept_hint='fraim dispatch accept {build}  (сверка, мастер-проверка, чистка, отчёт)'
-M_cli_disp_err_collect_partial='волна собрана не полностью — разберись с отклонёнными и повтори'
+M_cli_disp_err_collect_partial='круг собран не полностью — разберись с отклонёнными и повтори'
 M_cli_disp_err_accept='приёмка не прошла'
 M_cli_disp_accepted='сборка {build} принята, проверена и в стволе'
 M_cli_disp_not_accepted='сборка {build} проверена, в ствол не уведена — разберись и повтори'
 M_cli_disp_err_no_plan='плана нет: {path}'
 M_cli_disp_err_journal='не удалось завести журнал сборки'
 M_cli_disp_build_title='Сборка {build} — кто что исполняет:'
-M_cli_disp_err_write_task='не удалось записать задачу подзадачи {id}'
-M_cli_disp_task_written='задание {id} → {path}'
-M_cli_disp_tasks_done='задания записаны, журнал заведён: ai/builds/{build}/journal.md'
-M_cli_disp_plan_hint_run='поднять волну:   fraim dispatch run {build}'
-M_cli_disp_plan_no_ade='среды исполнения на этой машине нет — задания можно исполнить вручную'
-M_cli_disp_plan_hint_collect='собрать волну:     fraim dispatch collect {build}'
-M_cli_disp_plan_hint_verify='сверить с деревом: fraim dispatch verify {build} ПОДЗАДАЧА'
+M_cli_disp_plan_hint_verify='проверить один результат:  fraim dispatch verify {build} ПОДЗАДАЧА [ВЕТКА]'
 
 # roles
-M_cli_roles_err_form='«{value}» не в форме агент:модель:усилие'
-M_cli_roles_err_write='не удалось записать в {path}'
-M_cli_roles_err_no_tty='нужен терминал для выбора — или задай сразу: fraim roles set КЛЮЧ агент:модель:усилие'
-M_cli_roles_pick_key='Что настраиваем — класс моделей или отдельную процедуру?'
-M_cli_roles_pick_agent='Агент:'
-M_cli_roles_pick_model='Модель:'
-M_cli_roles_pick_effort='Усилие:'
-M_cli_roles_err_result='получилось «{value}» — это не агент:модель:усилие'
-M_cli_roles_pick_level='Где записать?'
-M_cli_roles_level_machine='эта машина (~/.fraim/config)'
-M_cli_roles_level_project='только этот проект (ai/fraim.conf)'
-M_cli_roles_none='ролей не задано — всё пойдёт на встроенный дефолт:'
-M_cli_roles_set_hint='задать: fraim config set role_refactor claude:haiku:medium'
-M_cli_roles_col_role='роль'
-M_cli_roles_col_agent='агент'
-M_cli_roles_col_model='модель'
-M_cli_roles_col_effort='усилие'
-M_cli_roles_col_source='источник'
 
 # mode
 M_cli_mode_gone='режимов больше нет: агент работает сам, в разговоре'
@@ -270,3 +224,15 @@ M_cli_mode_hook_done='хук SessionStart убран из .claude/settings.json'
 M_cli_mode_hook_no_python='нет python3 — хук «{mark}» в .claude/settings.json убери руками'
 M_cli_mode_hook_unreadable='.claude/settings.json не удалось прочитать — хук «{mark}» остался'
 M_cli_mode_nothing='остатков старого режима здесь нет'
+M_cli_disp_usage_prepare='нужно: fraim dispatch prepare СБОРКА'
+M_cli_disp_retired='fraim dispatch {verb} больше нет: воркеров поднимают собственные субагенты харнеса (/conductor, шаг 4); чекауты для харнеса без изоляции — fraim dispatch prepare СБОРКА'
+M_cli_retired_roles='fraim roles больше нет: воркеры работают на модели самого агента, если человек словами не назвал другую'
+M_cli_disp_preparing='Чекауты сборки {build}:'
+M_cli_disp_err_prepare='не все чекауты созданы — см. выше'
+M_cli_disp_hint_spawn_prepared='по субагенту на чекаут: он работает там и читает свой бриф'
+M_cli_disp_err_no_result='нет результата подзадачи {sub}: назовите её ветку или подготовьте чекаут'
+M_cli_disp_err_write_brief='не удалось записать бриф подзадачи {id}'
+M_cli_disp_brief_written='бриф {id} → {path}'
+M_cli_disp_briefs_done='брифы записаны, журнал открыт: ai/builds/{build}/journal.md'
+M_cli_disp_hint_spawn='поднимите по субагенту на бриф, каждого в своём worktree (изоляция вашего харнеса)'
+M_cli_disp_hint_prepare='у харнеса нет изоляции:  fraim dispatch prepare {build}'

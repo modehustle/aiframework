@@ -21,7 +21,6 @@ M_wm_dirty_other='{n} Dateien des Fundaments und von ai/ seit dem letzten Sicher
 
 M_wm_worktrees_one='{n} paralleler Checkout: {names}'
 M_wm_worktrees_other='{n} parallele Checkouts: {names}'
-M_wm_ade='{label}: ein zeitgesteuerter Agent arbeitet an diesem Projekt'
 
 M_wm_queue_one='{n} offene Aufgabe auf dem Board'
 M_wm_queue_other='{n} offene Aufgaben auf dem Board'

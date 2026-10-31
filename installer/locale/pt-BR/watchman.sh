@@ -21,7 +21,6 @@ M_wm_dirty_other='{n} arquivos da fundação e de ai/ mudaram desde o último po
 
 M_wm_worktrees_one='{n} checkout paralelo: {names}'
 M_wm_worktrees_other='{n} checkouts paralelos: {names}'
-M_wm_ade='{label}: um agente agendado está trabalhando neste projeto'
 
 M_wm_queue_one='{n} tarefa aberta no quadro'
 M_wm_queue_other='{n} tarefas abertas no quadro'

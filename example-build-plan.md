@@ -1,59 +1,40 @@
-# Build Plan: пример
+# Build plan: a sample
 
-> Формат плана сборки для режима флота. Проверяется командой
-> `fraim dispatch check example-build-plan.md` — она откажет, если две подзадачи **одной
-> волны** претендуют на один файл, если у подзадачи нет роли, сводки или путей, если
-> `**After**` называет несуществующую подзадачу или образует цикл, или если роль не
-> разворачивается в исполнителя на этой машине.
+> The format of a round for `/conductor`. Checked by `fraim dispatch check example-build-plan.md`,
+> which refuses a subtask with no files, one that is neither a board card nor has a summary, a
+> project card as a subtask, the same subtask twice, `**After**`, and two subtasks over one path.
 >
-> Роль — это имя процедуры, которой исполняется подзадача (`run-task`, `investigate`,
-> `prune`…), а не новое слово: свой словарь ролей заводить нельзя (MODES.md §10).
-> Во что роль развернётся на этой машине — `fraim roles`.
+> On a real board a subtask is usually a card: `## Subtask: <card-slug>` plus `**Files**:`, and the
+> card's «What and why» and «Done when» go into the worker's brief by themselves. The subtasks
+> below are not on this repository's board, so each carries its own `**Summary**:` and
+> `**Done when**:`.
+
+## Contract
+
+Every message the CLI prints to the human comes from the catalog: `t KEY name=value` in the code,
+`M_KEY='text'` in `installer/locale/en/<module>.sh` and in each translation, with the same
+`{placeholders}`. A worker adds keys to its own modules' catalogs only.
 
 ## Subtask: errors
-**Role**: run-task
-**Summary**: привести сообщения об ошибках к виду «функция: что не так»
-
-### `installer/lib/core.sh`
-- здесь живёт `die`, и здесь же половина разнобоя
-
-### `installer/lib/clean.sh`
-- сообщения уборки написаны в другом стиле, чем остальные
+**Summary**: bring the error messages of core and clean to the form «function: what is wrong»
+**Done when**: every `die` in the two files reads that way, and the tests still pass
+**Files**: installer/lib/core.sh, installer/lib/clean.sh, installer/locale/en/core.sh, installer/locale/en/clean.sh
 
 ## Subtask: logs
-**Role**: run-task
-**Summary**: единый формат отладочного вывода
-
-### `installer/lib/publish.sh`
-- сейчас пишет в stdout напрямую, мимо say/dim
+**Summary**: one format for the debug output of publish
+**Done when**: publish prints through say/dim only, never straight to stdout
+**Files**: installer/lib/publish.sh, installer/locale/en/publish.sh
 
 ## Subtask: docs
-**Role**: run-task
-**Summary**: раздел про роли в README
-
-### `README.md`
-- таблицы ролей в документации ещё нет
-
-## Subtask: errors-doc
-**Role**: run-task
-**After**: errors
-**Summary**: описать новый вид сообщений об ошибках
-
-### `installer/lib/core.sh`
-- тот же файл, что у `errors` — но во второй волне, когда та уже собрана
-
-### `README.md`
-- тот же файл, что у `docs` — по той же причине
+**Summary**: a section on the message catalog in the installer's README
+**Files**: installer/README.md
 
 ---
 
-Внутри волны ни один файл не встречается дважды — это и есть условие, при котором обещание
-«одна ратификация на сборку» не может стать ложью (MODES.md §11.2, вариант B). Если бы `docs`
-тоже правил `core.sh`, `dispatch check` отказал бы, и план пришлось бы переписать до раздачи,
-а не выяснять это на третьем воркере.
+No path appears in two subtasks — that is what lets the three run at the same time and be accepted
+in one decision (MODES.md §11.2, option B). Had `docs` also edited `installer/lib/core.sh`, the
+check would refuse, and the ways out, in order, are: merge the two into one subtask, redraw the
+boundaries, or leave one for the next round — it starts from what this round left in the trunk.
 
-**Вторая волна делит файлы с первой, и это законно.** `errors-doc` объявляет
-`**After**: errors` и потому идёт следующей волной — от ветки сборки, куда результат `errors`
-уже слит. Волны не идут одновременно, поэтому пересечение путей между ними ничего не рушит.
-Это третий выход из пересечения; первые два — свести куски в одну подзадачу и перекроить
-границы — дешевле, и пробовать их надо раньше.
+The translations (`installer/locale/<lang>/…`) are deliberately in nobody's list: a file every
+piece would touch a little is the conductor's own edit after the round, not a subtask.

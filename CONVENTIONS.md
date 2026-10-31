@@ -5,8 +5,10 @@
 
 - Workflow: reactive work in the session by default — almost always the answer. The board
   (`ai/tasks/<slug>.md`, `fraim tasks`) holds work the human put aside or a project; only the
-  human puts a task there (`/make-task`) or says to take one (`/run-task`). The agent never
-  routes itself into `/make-task` or `/conductor`, and never proposes them.
+  human puts a task there (`/make-task`) or says to take one (`/run-task`); the agent never
+  routes itself into `/make-task` and never proposes it. Parallel writing — two or more
+  subagents changing code at once, on the human's word or the harness's own decision — goes
+  through `/conductor`; subagents that only read do not need it.
 - A task card carries an intent (what, why, done-when), never the code's context: no paths,
   patterns, steps or snapshots. Whoever takes it reads the foundation and the code fresh.
 - Before a task: `fraim brief` (the whole foundation, uncut). After: write what changed

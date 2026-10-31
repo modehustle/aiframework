@@ -487,7 +487,7 @@ N исполнителей одновременно. Это другая зад�
 
 ## 7. Изоляция воркеров флота через рецепты окружения (Docker / per-workspace environment recipes)
 
-**Статус:** открыто, отложено (вопрос необходимости и исследовательской разведки Orca) · **Задел:** `installer/lib/fleet.sh`, `installer/lib/dispatch.sh`, `MODES.md` §9, `orca.yaml` (`environmentRecipes`)
+**Статус:** снято 2026-10-31 — Orca из fraim удалена, воркеры флота теперь собственные субагенты харнеса (DECISIONS.md, 2026-10-31). Изоляция по файлам по-прежнему единственная (§6); вопрос про окружения, если вернётся, — уже к харнесам · **Задел (исторический):** `installer/lib/fleet.sh`, `installer/lib/dispatch.sh`, `MODES.md` §9, `orca.yaml` (`environmentRecipes`)
 
 ### Что не так
 

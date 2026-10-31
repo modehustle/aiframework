@@ -32,7 +32,6 @@ FRAIM_LOCALE_DIR=${FRAIM_LOCALE_DIR:-$(cd -- "$_libdir/../locale" 2>/dev/null &&
 . "$_libdir/core.sh"
 . "$_libdir/skills.sh"
 . "$_libdir/harness.sh"
-. "$_libdir/ade.sh"
 . "$_libdir/registry.sh"
 . "$_libdir/context.sh"
 . "$_libdir/config.sh"
@@ -46,8 +45,6 @@ FRAIM_LOCALE_DIR=${FRAIM_LOCALE_DIR:-$(cd -- "$_libdir/../locale" 2>/dev/null &&
 . "$_libdir/clean.sh"
 . "$_libdir/publish.sh"
 . "$_libdir/update.sh"
-. "$_libdir/roles.sh"
-. "$_libdir/fleet.sh"
 . "$_libdir/dispatch.sh"
 . "$_libdir/menu.sh"
 
@@ -280,12 +277,9 @@ cmd_status() {
 }
 
 # --- fleet ------------------------------------------------------------------
-# Read-only, like `status`: where the work of this project actually lives.
-#
-# The register of checkouts is git, not the ADE, so this answers even with no fleet
-# runtime installed — and that is the common case today. The environment section only
-# adds what git cannot know: whether a runtime is answering, and whether something is
-# scheduled against this project.
+# Read-only, like `status`: where the work of this project actually lives. The register
+# of checkouts is git — whoever made them: the harness for its subagents, `dispatch
+# prepare`, or a human.
 
 # Open tasks in one checkout: cards on its board (tasks.sh).
 fleet_counts() {
@@ -341,51 +335,7 @@ cmd_fleet() {
     IFS=$_old_ifs
     set +f
 
-    [ "$_json" = 1 ] && printf '\n  ],\n  "ade": ['
-
-    # The environment, when there is one. Absence is silence: an ADE is the operator's
-    # choice, and a project without one is not a project with a problem (C1).
-    _det=$(ade_detect)
-    _old_ifs=$IFS
-    IFS='
-'
-    _first=1
-    for _row in $_det; do
-        _label=$(printf '%s' "$_row" | cut -f2)
-        _key=$(printf '%s' "$_row" | cut -f1)
-        _cmd=$(printf '%s' "$_row" | cut -f3)
-        if ade_alive "$_cmd"; then _alive=true; else _alive=false; fi
-        _auto=none
-        if [ "$_alive" = true ]; then
-            _a=$(ade_automations "$_cmd" "$_root")
-            if [ "$(printf '%s' "$_a" | cut -f1)" = 1 ]; then
-                if [ "$(printf '%s' "$_a" | cut -f2)" = 1 ]; then _auto=watchman; else _auto=free; fi
-            fi
-        fi
-        if [ "$_json" = 1 ]; then
-            [ "$_first" = 1 ] || printf ','
-            _first=0
-            printf '\n    { "key": "%s", "command": "%s", "alive": %s, "automations": "%s" }' \
-                "$_key" "$(wm_json_escape "$_cmd")" "$_alive" "$_auto"
-        else
-            if [ "$_alive" = true ]; then
-                ok "$(t cli_fleet_ade_alive label="$_label" cmd="$_cmd")"
-            else
-                dim "  $(t cli_fleet_ade_silent label="$_label" cmd="$_cmd")"
-            fi
-            case $_auto in
-                free) warn "$(t cli_fleet_auto_free label="$_label")" ;;
-                watchman) dim "  $(t cli_fleet_auto_watchman label="$_label")" ;;
-            esac
-        fi
-    done
-    IFS=$_old_ifs
-
-    if [ "$_json" = 1 ]; then
-        printf '\n  ]\n}\n'
-    elif [ -z "$_det" ]; then
-        dim "  $(t cli_fleet_no_ade)"
-    fi
+    [ "$_json" = 1 ] && printf '\n  ]\n}\n'
     exit 0
 }
 
@@ -880,25 +830,13 @@ config_show() {
     project_is_managed "$_cs_root" || _cs_root=
     say "${C_BLD}$(t cfg_show_title)${C_OFF}"
     [ -n "$_cs_root" ] && dim "  $(t cfg_show_project path="$_cs_root")" || dim "  $(t cfg_show_outside)"
-    for _cs_sec in general watchman saving models fleet expert; do
+    for _cs_sec in general watchman saving fleet expert; do
         say ""
         say "${C_BLD}$(config_section_title "$_cs_sec")${C_OFF}"
         config_table | while IFS='|' read -r _cs_k _cs_def _cs_s _cs_t; do
             [ "$_cs_s" = "$_cs_sec" ] || continue
             config_show_key "$_cs_k" "$_cs_root" "$(config_describe "$_cs_k")"
         done
-        config_families | while IFS='|' read -r _cs_p _cs_s; do
-            _cs_desc=$(t "cfg_fam_${_cs_p%_}")
-            [ "$_cs_s" = "$_cs_sec" ] || continue
-            _cs_keys=$(config_family_keys "$_cs_p" "$_cs_root")
-            if [ -z "$_cs_keys" ]; then
-                printf '  %s %s—%s\n' "$(wm_pad "${_cs_p}…" 22)" "$C_DIM" "$C_OFF"
-            else
-                for _cs_fk in $_cs_keys; do config_show_key "$_cs_fk" "$_cs_root"; done
-            fi
-            printf '    %s%s%s\n' "$C_DIM" "$_cs_desc" "$C_OFF"
-        done
-        [ "$_cs_sec" = models ] && dim "    $(t cfg_show_roles_hint)"
     done
     say ""
     dim "  $(t cfg_show_hint_set)"
@@ -925,12 +863,6 @@ config_check_set() {
             die "$(t cfg_err_value value="$_ccs_v" key="$_ccs_k" need="$(config_type_words "$_ccs_k")")"
         return 0
     fi
-    case $(config_family "$_ccs_k") in
-        tier_|role_)
-            roles_parse "$_ccs_v" >/dev/null || die "$(t cfg_err_role value="$_ccs_v")"
-            return 0 ;;
-        ?*) return 0 ;;
-    esac
     if _ccs_new=$(config_replacement "$_ccs_k"); then
         [ -n "$_ccs_new" ] || die "$(t cfg_err_always_on key="$_ccs_k")"
         die "$(t cfg_err_replaced key="$_ccs_k" new="$_ccs_new")"
@@ -1062,19 +994,25 @@ cmd_restore() { verb_restore "$(pwd -P)" "$@"; }
 cmd_dispatch() {
     _sub=${1:-}
 
-    # `check` is the one subcommand that reads a file and writes nothing, so it must
-    # work where a plan is written — which is not always inside a project. Without a
-    # project the role table simply resolves one level up, from the machine.
+    case $_sub in
+        ""|-h|--help|help)
+            say "$(t cli_disp_usage)"
+            [ -n "$_sub" ] && exit 0
+            exit 2 ;;
+        run|watch)
+            # The launch was Orca's, and Orca is gone: the harness raises its own subagents.
+            die "$(t cli_disp_retired verb="$_sub")" ;;
+    esac
+
+    # `check` reads a file and writes nothing, so it must work where a plan is written —
+    # which is not always inside a project. Without one there is no board to read cards
+    # from, and every subtask has to say what it is for itself.
     if [ "$_sub" = check ]; then
         [ $# -ge 2 ] || die "$(t cli_disp_usage_check)"
-        _root=$(pwd -P); [ -d "$_root/ai" ] || _root=
+        _root=$(verb_root 2>/dev/null) || _root=
         dispatch_check "$2" "$_root" || die "$(t cli_disp_err_plan_bad)"
         ok "$(t cli_disp_check_ok)"
-        say ""
-        # What this build costs, before a single worker starts. Warnings first, because a
-        # plan that passes the checks can still be a build nobody can accept in one sitting.
         dispatch_size_notes "$2"
-        say "$(dispatch_cost_line "$2")"
         say ""
         dispatch_report "$2" "$_root"
         return 0
@@ -1084,79 +1022,28 @@ cmd_dispatch() {
     case $_sub in
         verify)
             [ $# -ge 3 ] || die "$(t cli_disp_usage_verify)"
-            _b=$2; _s=$3
-            _plan="$_root/ai/builds/$_b/plan.md"
-            [ -f "$_plan" ] || die "$(t cli_disp_err_no_build_plan build="$_b")"
-            _paths=$(dispatch_field "$_plan" "$_s" 4)
-            [ -n "$_paths" ] || die "$(t cli_disp_err_no_subtask build="$_b" sub="$_s")"
-            _base=${4:-$(cd "$_root" && git rev-parse HEAD 2>/dev/null)}
-
-            # The worker's own checkout, not the project root — see dispatch_worker_tree.
-            # Falling back to the root when there is no checkout keeps the command useful
-            # for work done by hand in place, which is how it is used without an ADE.
-            _tree=$(dispatch_worker_tree "$_root" "$_b-$_s")
-            if [ -n "$_tree" ]; then
-                dim "  $(t cli_disp_checkout path="$_tree")"
-            else
-                _tree=$_root
-                warn "$(t cli_disp_no_checkout name="$_b-$_s")"
-            fi
-            dispatch_verify_tree "$_tree" "$_base" "$_paths"
+            _plan="$_root/ai/builds/$2/plan.md"
+            [ -f "$_plan" ] || die "$(t cli_disp_err_no_build_plan build="$2")"
+            dispatch_subtask_ids "$_plan" | grep -qxF -- "$3" ||
+                die "$(t cli_disp_err_no_subtask build="$2" sub="$3")"
+            dispatch_verify "$_root" "$2" "$3" "${4:-}" ||
+                die "$(t cli_disp_err_no_result sub="$3")"
             ;;
-        run)
-            [ $# -ge 2 ] || die "$(t cli_disp_usage_run)"
-            say "$(t cli_disp_launching build="$2")"
-            if dispatch_launch "$_root" "$2" "${3:-}"; then
-                say ""
-                ok "$(t cli_disp_launched)"
-                dim "    $(t cli_disp_hint_watch build="$2")"
-                dim "    $(t cli_disp_hint_collect build="$2")"
-            else
-                say ""
-                warn "$(t cli_disp_launch_partial build="$2")"
-                exit 1
-            fi
-            ;;
-        watch)
-            [ $# -ge 2 ] || die "$(t cli_disp_usage_watch)"
-            build_fleet_rows "$_root" "$2" | while IFS='	' read -r _s _t _d _at; do
-                if [ -z "$_d" ] || [ "$_d" = "—" ]; then
-                    printf '%-12s %s\n' "$_s" "$(t cli_disp_watch_not_up)"; continue
-                fi
-                _w=$(fleet_worker_show "$_d")
-                # Their two words for how a worker is doing. Pulled out rather than
-                # printing raw JSON — the first live build showed the operator a wall of
-                # it — but the raw answer still shows when neither word is found, because
-                # inventing a verdict we did not read would be worse than a wall (§9.5).
-                _st=$(printf '%s' "$_w" | tr -d '\n' |
-                      grep -oE '"state"[[:space:]]*:[[:space:]]*"[a-z_]*"' | head -1 |
-                      sed 's/.*"\([a-z_]*\)"$/\1/')
-                _sg=$(printf '%s' "$_w" | tr -d '\n' |
-                      grep -oE '"stage"[[:space:]]*:[[:space:]]*"[a-z_]*"' | head -1 |
-                      sed 's/.*"\([a-z_]*\)"$/\1/')
-                if printf '%s' "$_w" | fleet_ok && [ -n "$_st$_sg" ]; then
-                    printf '%-12s %-18s %s %s\n' "$_s" "$_d" "${_st:-—}" "${_sg:+· $_sg}"
-                else
-                    printf '%-12s %-18s %s\n' "$_s" "$_d" "$(t cli_disp_watch_unexpected)"
-                    printf '%s\n' "$_w" | head -4 | sed 's/^/    /'
-                fi
-            done
+        prepare)
+            [ $# -ge 2 ] || die "$(t cli_disp_usage_prepare)"
+            say "$(t cli_disp_preparing build="$2")"
+            dispatch_prepare "$_root" "$2" || { say ""; die "$(t cli_disp_err_prepare)"; }
             say ""
-            dim "    $(t cli_disp_watch_note_terminal)"
-            dim "    $(t cli_disp_watch_note_verify)"
+            dim "    $(t cli_disp_hint_spawn_prepared)"
+            dim "    $(t cli_disp_hint_collect build="$2")"
             ;;
         collect)
             [ $# -ge 2 ] || die "$(t cli_disp_usage_collect)"
-            if dispatch_collect "$_root" "$2" "${3:-}"; then
+            _b=$2; shift 2
+            if dispatch_collect "$_root" "$_b" "$@"; then
                 say ""
-                ok "$(t cli_disp_collected branch="$(build_branch "$2")")"
-                if _next=$(build_next_wave "$_root" "$2"); then
-                    dim "    $(t cli_disp_next_wave build="$2")"
-                    dim "    $(t cli_disp_next_wave_note wave="$_next")"
-                else
-                    dim "    $(t cli_disp_all_collected)"
-                    dim "    $(t cli_disp_accept_hint build="$2")"
-                fi
+                ok "$(t cli_disp_collected branch="$(build_branch "$_b")")"
+                dim "    $(t cli_disp_accept_hint build="$_b")"
             else
                 say ""
                 die "$(t cli_disp_err_collect_partial)"
@@ -1164,9 +1051,9 @@ cmd_dispatch() {
             ;;
         accept)
             # The whole of the acceptance, and all of it the conductor's: check behind every
-            # worker, run the project's check on the assembled branch, clean up after the
-            # fleet, write the trunk, print the report. The human types nothing — they read
-            # this output and answer in words (MODES.md §4, option B).
+            # worker, run the project's check on the assembled branch, clean up, write the
+            # trunk with the round's cards closed in the same merge, print the report. The
+            # human types nothing — they read this output and answer in words (MODES.md §4).
             [ $# -ge 2 ] || die "$(t cli_disp_usage_accept)"
             _arc=0
             build_accept "$_root" "$2" || _arc=$?
@@ -1177,6 +1064,7 @@ cmd_dispatch() {
                 # Addressed to the conductor agent, not the operator: English, inline.
                 dim "    show the human what is above, and say in your own words what the numbers"
                 dim "    do not show and what you are unsure of — the human decides"
+                dim "    the next round: the cards that became ready — fraim tasks"
             else
                 warn "$(t cli_disp_not_accepted build="$2")"
                 exit 1
@@ -1185,132 +1073,44 @@ cmd_dispatch() {
         list)
             build_list "$_root"
             ;;
-        "")
-            die "$(t cli_disp_usage)"
-            ;;
         *)
             _plan=$_sub
             [ -f "$_plan" ] || die "$(t cli_disp_err_no_plan path="$_plan")"
             dispatch_check "$_plan" "$_root" || die "$(t cli_disp_err_plan_bad)"
             dispatch_size_notes "$_plan"
 
-            _bid=build-$(date -u '+%Y%m%d-%H%M%S')
+            # Unique even within one second: rounds follow each other quickly, and a second
+            # build under the first one's id would overwrite its plan and journal. The suffix
+            # is a letter glued to the time, not «-2»: checkouts are named <build>-<subtask>,
+            # and «build-X-2-w1» would read as build X's subtask «2-w1».
+            _bid=build-$(date -u '+%Y%m%d-%H%M%S'); _bbase=$_bid
+            for _bsfx in b c d e f g h i j k l m n o p q r s t u v w x y z; do
+                [ -e "$(build_dir "$_root" "$_bid")" ] ||
+                    git -C "$_root" rev-parse --verify --quiet "refs/heads/$(build_branch "$_bid")" >/dev/null 2>&1 ||
+                    break
+                _bid=$_bbase$_bsfx
+            done
+            [ -e "$(build_dir "$_root" "$_bid")" ] && die "$(t cli_disp_err_journal)"
             build_seal "$_root" "$_bid" "$_plan" >/dev/null || die "$(t cli_disp_err_journal)"
 
             say "$(t cli_disp_build_title build="$_bid")"
-            say ""
             dispatch_report "$_plan" "$_root"
             say ""
 
-            dispatch_parse_plan "$_plan" | while IFS='|' read -r _id _role _sum _paths; do
-                [ -n "$_id" ] || continue
-                _d=$(dispatch_write_task "$_root" "$_bid" "$_id" "$_role" "$_sum" "$_paths") ||
-                    die "$(t cli_disp_err_write_task id="$_id")"
-                dim "  $(t cli_disp_task_written id="$_id" path="${_d#"$_root"/}")"
+            for _id in $(dispatch_subtask_ids "$_plan"); do
+                _d=$(dispatch_write_brief "$_root" "$_bid" "$_id") ||
+                    die "$(t cli_disp_err_write_brief id="$_id")"
+                dim "  $(t cli_disp_brief_written id="$_id" path="${_d#"$_root"/}")"
             done
 
             say ""
-            ok "$(t cli_disp_tasks_done build="$_bid")"
-            if fleet_present; then
-                dim "    $(t cli_disp_plan_hint_run build="$_bid")"
-                dim "    $(t cli_disp_hint_watch build="$_bid")"
-            else
-                dim "    $(t cli_disp_plan_no_ade)"
-            fi
-            dim "    $(t cli_disp_plan_hint_collect build="$_bid")"
+            ok "$(t cli_disp_briefs_done build="$_bid")"
+            dim "    $(t cli_disp_hint_spawn)"
+            dim "    $(t cli_disp_hint_prepare build="$_bid")"
+            dim "    $(t cli_disp_hint_collect build="$_bid")"
             dim "    $(t cli_disp_plan_hint_verify build="$_bid")"
             ;;
     esac
-}
-
-# Interactive assignment. The point is P0: nobody should have to remember that the value
-# is three colon-separated fields, nor type a model id from memory. Where a list can be
-# had it is offered; where it cannot, a typed value is still accepted — see roles.sh for
-# why we do not keep a catalogue of models.
-cmd_roles_set() {
-    _rs_root=$(pwd -P)
-    project_is_managed "$_rs_root" || _rs_root=
-
-    _rs_force_machine=
-    if [ "${1:-}" = --machine ]; then _rs_force_machine=1; shift; fi
-
-    # Non-interactive form: `fraim roles set KEY VALUE`. This is the path a Dockerfile
-    # or a VM recipe takes — an image is built without a terminal, and baking the role
-    # table into the image is the whole point of building one. `fraim config set` cannot
-    # do it: it validates the key against config_table, and role_/tier_ keys are open-ended
-    # by design, so it refuses every one of them.
-    if [ $# -ge 2 ]; then
-        _rs_key=$1; _rs_val=$2
-        case $_rs_key in
-            tier_*|role_*) ;;
-            *) _rs_key=role_$_rs_key ;;
-        esac
-        roles_parse "$_rs_val" >/dev/null ||
-            die "$(t cli_roles_err_form value="$_rs_val")"
-        if [ -n "$_rs_force_machine" ] || [ -z "$_rs_root" ]; then
-            _rs_file=$(config_machine_file)
-        else
-            _rs_file=$(config_project_file "$_rs_root")
-        fi
-        config_set_file "$_rs_file" "$_rs_key" "$_rs_val" || die "$(t cli_roles_err_write path="$_rs_file")"
-        ok "$_rs_key = $_rs_val"
-        dim "    → $_rs_file"
-        return 0
-    fi
-
-    menu_supported || die "$(t cli_roles_err_no_tty)"
-
-    # 1. Which procedure. A tier key is offered too, because setting tier_cheap once is
-    #    usually the right move and setting thirteen roles one by one is usually not.
-    if [ $# -ge 1 ]; then
-        _rs_key=$1
-    else
-        _rs_key=$({ printf 'tier_cheap\ntier_capable\ntier_strong\n'
-                    fraim_procedures 2>/dev/null || :
-                  } | roles_pick "$(t cli_roles_pick_key)") ||
-            die "$(t cli_cancelled)"
-    fi
-    case $_rs_key in
-        tier_*) _rs_ckey=$_rs_key ;;
-        role_*) _rs_ckey=$_rs_key ;;
-        *)      _rs_ckey=role_$_rs_key ;;
-    esac
-
-    # 2-4. The three fields. The agent list comes from harness_detect (harness.sh) —
-    #      the harnesses fraim knows about and that are present on this machine,
-    #      independent of any execution environment. Models offered are the live
-    #      catalogue of THIS agent (roles_models_of asks the agent's own channel —
-    #      see roles.sh), plus the ones already configured here and the tier
-    #      suggestion, so the first run has something to pick even where the agent
-    #      cannot be asked.
-    _rs_agent=$(roles_agents_available | roles_pick "$(t cli_roles_pick_agent)" 1) || die "$(t cli_cancelled)"
-    case $_rs_key in
-        tier_*) _rs_tier=${_rs_key#tier_} ;;
-        *)      _rs_tier=$(roles_tier_of "${_rs_key#role_}" 2>/dev/null || :) ;;
-    esac
-    _rs_model=$({ roles_models_of "$_rs_agent"; roles_models_seen "$_rs_root"; roles_models_suggested "$_rs_tier"; } |
-                grep '[^[:space:]]' | awk '!seen[$0]++' |
-                roles_pick "$(t cli_roles_pick_model)" 1) || die "$(t cli_cancelled)"
-    _rs_effort=$(roles_efforts_of "$_rs_agent" "$_rs_model" | roles_pick "$(t cli_roles_pick_effort)" 2) || die "$(t cli_cancelled)"
-
-    _rs_val="$_rs_agent:$_rs_model:$_rs_effort"
-    roles_parse "$_rs_val" >/dev/null || die "$(t cli_roles_err_result value="$_rs_val")"
-
-    # 5. Which level. Project beats machine (§11.3, C), so the question is real whenever
-    #    we are standing inside a project.
-    _rs_file=$(config_machine_file)
-    if [ -n "$_rs_root" ]; then
-        _rs_lvl=$(printf '%s\n%s\n' "$(t cli_roles_level_machine)" "$(t cli_roles_level_project)" |
-                  roles_pick "$(t cli_roles_pick_level)" 1) || die "$(t cli_cancelled)"
-        case $_rs_lvl in
-            *fraim.conf*) _rs_file=$(config_project_file "$_rs_root") ;;
-        esac
-    fi
-
-    config_set_file "$_rs_file" "$_rs_ckey" "$_rs_val" || die "$(t cli_roles_err_write path="$_rs_file")"
-    say ""
-    ok "$_rs_ckey = $_rs_val"
-    dim "    → $_rs_file"
 }
 
 # The retired project mode (DECISIONS 2026-09-15). There is one way of working — the
@@ -1356,44 +1156,7 @@ cmd_mode() {
     return 0
 }
 
-# cli_pad TEXT WIDTH — TEXT padded with spaces to WIDTH terminal columns.
-cli_pad() {
-    _cp_n=$(str_width "$1")
-    printf '%s' "$1"
-    while [ "$_cp_n" -lt "$2" ]; do printf ' '; _cp_n=$((_cp_n + 1)); done
-}
 
-# The role table (MODES.md §11.3): what a role resolves to here, and from which level.
-cmd_roles() {
-    if [ "${1:-}" = set ]; then shift; cmd_roles_set "$@"; return; fi
-    _root=$(pwd -P)
-    project_is_managed "$_root" || _root=
-    _rs=$(roles_list "$_root")
-    if [ -z "$_rs" ]; then
-        say "$(t cli_roles_none)"
-        printf '  %s\n' "$(roles_resolve default "$_root" | tr '\t' ' ')"
-        say ""
-        dim "    $(t cli_roles_set_hint)"
-        return 0
-    fi
-    # Padded by display width, not with printf: POSIX printf pads to BYTES, and the headings
-    # come from the catalog — %-15s on the 4-letter Cyrillic word for «role» pads 8 bytes to
-    # 15 and lands 4 characters wide. The widths match the row format below.
-    printf '%s %s %s %s %s\n' "$(cli_pad "$(t cli_roles_col_role)" 15)" \
-        "$(cli_pad "$(t cli_roles_col_agent)" 7)" "$(cli_pad "$(t cli_roles_col_model)" 8)" \
-        "$(cli_pad "$(t cli_roles_col_effort)" 7)" "$(t cli_roles_col_source)"
-    for _r in $_rs; do
-        _ex=$(roles_resolve "$_r" "$_root") || continue
-        _ra=$(printf '%s' "$_ex" | cut -f1)
-        _rnote=$(fleet_caps_describe "$_ra" 2>/dev/null || :)
-        printf '%-15s %-7s %-8s %-7s %s%s\n' "$_r" \
-            "$_ra" \
-            "$(printf '%s' "$_ex" | cut -f2)" \
-            "$(printf '%s' "$_ex" | cut -f3)" \
-            "$(roles_source "$_r" "$_root")" \
-            "${_rnote:+  ← $_rnote}"
-    done
-}
 
 # --- dispatch ---------------------------------------------------------------
 # A bare `fraim` is the most common thing typed by someone who does not know
@@ -1435,7 +1198,7 @@ case $_cmd in
     status)        cmd_status "$@" ;;
     fleet)         cmd_fleet "$@" ;;
     dispatch)      cmd_dispatch "$@" ;;
-    roles)         cmd_roles "$@" ;;
+    roles)         die "$(t cli_retired_roles)" ;;
     mode)          cmd_mode "$@" ;;
     projects)      cmd_projects "$@" ;;
     doctor)        cmd_doctor "$@" ;;

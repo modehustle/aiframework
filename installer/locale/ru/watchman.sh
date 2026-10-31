@@ -26,7 +26,6 @@ M_wm_dirty_many='{n} файлов фундамента и ai/ изменены �
 M_wm_worktrees_one='{n} параллельный чекаут: {names}'
 M_wm_worktrees_few='{n} параллельных чекаута: {names}'
 M_wm_worktrees_many='{n} параллельных чекаутов: {names}'
-M_wm_ade='{label}: по этому проекту работает агент по расписанию'
 
 M_wm_queue_one='{n} открытая задача на доске'
 M_wm_queue_few='{n} открытые задачи на доске'

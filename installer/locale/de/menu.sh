@@ -25,10 +25,6 @@ M_ui_projects_empty='die Registry ist leer — fraim init in einem Projekt träg
 M_ui_project_gone='Verzeichnis verschwunden'
 M_ui_act_register='Dieses Projekt in die Registry eintragen'
 M_ui_registered='Projekt in die Registry eingetragen'
-M_ui_tier_cheap='Günstige Modelle'
-M_ui_tier_capable='Mittlere Modelle'
-M_ui_tier_strong='Starke Modelle'
-M_ui_expert_hint='Agenten in der Flotte starten: fraim config set --machine launchcmd_<agent> "…"'
 
 M_ui_act_status='Projekt prüfen'
 M_ui_act_status_hint='das vollständige Urteil des Wächters'

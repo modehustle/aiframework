@@ -5,7 +5,7 @@ Estes você digita
   fraim                     a tela do fraim (no terminal) — o mesmo que fraim menu
   fraim menu                projeto, quadro, backlog, decisões, configurações e idioma numa só tela
   fraim status [PATH]       o que está acontecendo no projeto (--json para máquinas)
-  fraim fleet [PATH]        onde o trabalho está: checkouts do projeto e o ambiente da frota
+  fraim fleet [PATH]        onde o trabalho está: os checkouts do projeto
   fraim undo [HASH]         listar os pontos de salvamento / deixar tudo como estava
   fraim scaffold [PATH]     colocar um projeto sob o sistema
   fraim upgrade [PATH]      colocar todos os projetos do registro no padrão desta versão
@@ -14,15 +14,12 @@ Estes você digita
   fraim publish [--check]   uma cópia do projeto fora desta máquina: criar, enviar, conferir
                             (--brief — uma tarefa para o agente limpar o que foi achado)
   fraim dispatch PLAN       frota: verificar o plano e abrir um build
-  fraim dispatch collect BUILD  fazer merge de uma onda no branch do build
+  fraim dispatch collect BUILD  fazer merge dos resultados da rodada no branch do build
   fraim dispatch accept BUILD   o aceite do maestro: conferir, verificar, limpar, tronco
-                            run BUILD — iniciar a frota no ambiente de execução
-                            watch BUILD — o que o ambiente diz sobre os workers
-                            verify BUILD SUBTASK — conferir a árvore com os caminhos
-                            check PLAN · accept BUILD · list
+                            prepare BUILD — checkouts para um harness sem isolamento
+                            verify BUILD SUBTASK [BRANCH] — um resultado frente aos seus caminhos
+                            check PLAN · list
   fraim mode                remover do projeto as sobras do antigo modo frota
-  fraim roles [set [NAME]]  a tabela de papéis: no que cada papel se resolve nesta máquina
-                            (set — escolher agente, modelo e esforço de uma lista)
   fraim init                instalar as skills / reconhecer um novo harness
   fraim update [--check]    buscar a nova versão e distribuí-la (--check — só verificar;
                             --quiet — para o início automático: silencioso, nunca atrapalha)
@@ -35,6 +32,7 @@ M_cli_usage_tail='
 Serviço
   fraim task-block, task-result, task-revise, plan-seal, reconcile-seal —
                             removidos junto com os planos: uma tarefa agora é um cartão
+  fraim roles               removido com a tabela de papéis: o worker roda no modelo do próprio agente
   fraim show NAME           exibir o texto de um procedimento
   fraim build               recompilar os artefatos do repositório
   fraim version             a versão
@@ -88,11 +86,6 @@ M_cli_fleet_on_board_one='{n} tarefa no quadro'
 M_cli_fleet_on_board_other='{n} tarefas no quadro'
 M_cli_fleet_clean='limpo'
 M_cli_fleet_err_not_repo='{path} não é um repositório — não há checkouts, nem pode haver'
-M_cli_fleet_ade_alive='{label} ({cmd}) — o ambiente responde'
-M_cli_fleet_ade_silent='{label} ({cmd}) — instalado, o ambiente não responde'
-M_cli_fleet_auto_free='{label}: um agente agendado trabalha neste projeto — garanta que ele não edite o código pelas suas costas'
-M_cli_fleet_auto_watchman='{label}: o vigia roda de forma agendada — isso é observação, não edição'
-M_cli_fleet_no_ade='nenhum ambiente de frota encontrado nesta máquina'
 
 # projects
 M_cli_proj_no_dir='(sem diretório)'
@@ -196,67 +189,28 @@ M_cli_commit_err_no_git='não há git aqui — não há onde criar um ponto de s
 M_cli_commit_failed='o commit falhou'
 
 # dispatch
-M_cli_disp_usage='uso: fraim dispatch PLAN (ou check / run / watch / collect / verify / accept / list)'
+M_cli_disp_usage='uso: fraim dispatch PLAN (ou check / prepare / collect / verify / accept / list)'
 M_cli_disp_usage_check='uso: fraim dispatch check PLAN'
-M_cli_disp_usage_verify='uso: fraim dispatch verify BUILD SUBTASK [BASE]'
-M_cli_disp_usage_run='uso: fraim dispatch run BUILD [WAVE]'
-M_cli_disp_usage_watch='uso: fraim dispatch watch BUILD'
-M_cli_disp_usage_collect='uso: fraim dispatch collect BUILD [WAVE]'
+M_cli_disp_usage_verify='uso: fraim dispatch verify BUILD SUBTASK [BRANCH]'
+M_cli_disp_usage_collect='uso: fraim dispatch collect BUILD [SUBTASK=BRANCH …]'
 M_cli_disp_usage_accept='uso: fraim dispatch accept BUILD'
 M_cli_disp_err_plan_bad='o plano não serve para o dispatch paralelo'
 M_cli_disp_check_ok='o plano passa no dispatch-check'
 M_cli_disp_err_no_build_plan='não há plano para o build {build}'
 M_cli_disp_err_no_subtask='o build {build} não tem a subtarefa {sub}'
-M_cli_disp_checkout='checkout da subtarefa: {path}'
-M_cli_disp_no_checkout='não há checkout separado {name} — verificando a raiz do projeto'
-M_cli_disp_launching='Iniciando a frota do build {build}...'
-M_cli_disp_launched='a frota está no ar'
-M_cli_disp_hint_watch='estado:          fraim dispatch watch {build}'
-M_cli_disp_hint_collect='coletar onda:    fraim dispatch collect {build}'
-M_cli_disp_launch_partial='alguns workers não iniciaram — o que iniciou está registrado em ai/builds/{build}/fleet.tsv'
-M_cli_disp_watch_not_up='não iniciou'
-M_cli_disp_watch_unexpected='o ambiente respondeu de forma inesperada:'
-M_cli_disp_watch_note_terminal='o estado do terminal não é o status da tarefa: uma tarefa concluída pode'
-M_cli_disp_watch_note_verify='manter o terminal ativo. O que está feito — o dispatch verify mostra.'
-M_cli_disp_collected='a onda foi coletada no branch {branch}'
-M_cli_disp_next_wave='próxima onda:  fraim dispatch run {build}'
-M_cli_disp_next_wave_note='(onda {wave} — os workers vão partir do branch coletado)'
-M_cli_disp_all_collected='todas as ondas foram coletadas — aceite o trabalho da frota:'
+M_cli_disp_hint_collect='coletar a rodada:  fraim dispatch collect {build} [SUBTASK=BRANCH …]'
+M_cli_disp_collected='a rodada foi coletada no branch {branch}'
 M_cli_disp_accept_hint='fraim dispatch accept {build}  (conferência, verificação mestre, limpeza, relatório)'
-M_cli_disp_err_collect_partial='a onda não foi toda coletada — resolva as rejeitadas e tente de novo'
+M_cli_disp_err_collect_partial='a rodada não foi toda coletada — resolva as rejeitadas e tente de novo'
 M_cli_disp_err_accept='o aceite falhou'
 M_cli_disp_accepted='build {build} aceito, verificado e no tronco'
 M_cli_disp_not_accepted='build {build} verificado, não levado ao tronco — resolva e tente de novo'
 M_cli_disp_err_no_plan='plano inexistente: {path}'
 M_cli_disp_err_journal='não foi possível abrir o diário do build'
 M_cli_disp_build_title='Build {build} — quem faz o quê:'
-M_cli_disp_err_write_task='não foi possível gravar a tarefa da subtarefa {id}'
-M_cli_disp_task_written='tarefa {id} → {path}'
-M_cli_disp_tasks_done='tarefas gravadas, diário aberto: ai/builds/{build}/journal.md'
-M_cli_disp_plan_hint_run='iniciar onda:    fraim dispatch run {build}'
-M_cli_disp_plan_no_ade='não há ambiente de execução nesta máquina — as tarefas podem ser feitas à mão'
-M_cli_disp_plan_hint_collect='coletar onda:      fraim dispatch collect {build}'
-M_cli_disp_plan_hint_verify='conferir a árvore: fraim dispatch verify {build} SUBTASK'
+M_cli_disp_plan_hint_verify='conferir um resultado:  fraim dispatch verify {build} SUBTASK [BRANCH]'
 
 # roles
-M_cli_roles_err_form='«{value}» não está no formato agent:model:effort'
-M_cli_roles_err_write='não foi possível gravar em {path}'
-M_cli_roles_err_no_tty='a escolha precisa de um terminal — ou defina direto: fraim roles set KEY agent:model:effort'
-M_cli_roles_pick_key='O que vamos definir — uma classe de modelo ou um procedimento?'
-M_cli_roles_pick_agent='Agente:'
-M_cli_roles_pick_model='Modelo:'
-M_cli_roles_pick_effort='Esforço:'
-M_cli_roles_err_result='resultou em «{value}» — isso não é agent:model:effort'
-M_cli_roles_pick_level='Onde gravar?'
-M_cli_roles_level_machine='nesta máquina (~/.fraim/config)'
-M_cli_roles_level_project='só neste projeto (ai/fraim.conf)'
-M_cli_roles_none='nenhum papel definido — tudo vai para o padrão embutido:'
-M_cli_roles_set_hint='para definir um: fraim config set role_refactor claude:haiku:medium'
-M_cli_roles_col_role='papel'
-M_cli_roles_col_agent='agente'
-M_cli_roles_col_model='modelo'
-M_cli_roles_col_effort='esforço'
-M_cli_roles_col_source='origem'
 
 # mode
 M_cli_mode_gone='não existem mais modos: o agente trabalha sozinho, na conversa'
@@ -269,3 +223,15 @@ M_cli_mode_hook_done='o hook SessionStart foi removido de .claude/settings.json'
 M_cli_mode_hook_no_python='não há python3 — remova o hook «{mark}» de .claude/settings.json à mão'
 M_cli_mode_hook_unreadable='não foi possível ler .claude/settings.json — o hook «{mark}» continua lá'
 M_cli_mode_nothing='não há sobras do modo antigo aqui'
+M_cli_disp_usage_prepare='uso: fraim dispatch prepare BUILD'
+M_cli_disp_retired='fraim dispatch {verb} não existe mais: os workers são levantados pelos próprios subagentes do seu harness (/conductor, passo 4); checkouts para um harness sem isolamento — fraim dispatch prepare BUILD'
+M_cli_retired_roles='fraim roles não existe mais: os workers rodam no modelo do próprio agente, a menos que a pessoa nomeie outro em palavras'
+M_cli_disp_preparing='Checkouts do build {build}:'
+M_cli_disp_err_prepare='nem todos os checkouts foram criados — veja acima'
+M_cli_disp_hint_spawn_prepared='um subagente por checkout: ele trabalha ali e lê o seu brief'
+M_cli_disp_err_no_result='não há resultado da subtarefa {sub}: informe o branch ou prepare um checkout'
+M_cli_disp_err_write_brief='não foi possível escrever o brief da subtarefa {id}'
+M_cli_disp_brief_written='brief {id} → {path}'
+M_cli_disp_briefs_done='briefs escritos, diário aberto: ai/builds/{build}/journal.md'
+M_cli_disp_hint_spawn='levante um subagente por brief, cada um no próprio worktree (o isolamento do seu harness)'
+M_cli_disp_hint_prepare='seu harness não tem isolamento:  fraim dispatch prepare {build}'

@@ -25,10 +25,6 @@ M_ui_projects_empty='the registry is empty — fraim init inside a project adds 
 M_ui_project_gone='directory is gone'
 M_ui_act_register='Add this project to the registry'
 M_ui_registered='project added to the registry'
-M_ui_tier_cheap='Cheap models'
-M_ui_tier_capable='Capable models'
-M_ui_tier_strong='Strong models'
-M_ui_expert_hint='Launching agents in the fleet: fraim config set --machine launchcmd_<agent> "…"'
 
 M_ui_act_status='Scan the project'
 M_ui_act_status_hint='the watchman'\''s full verdict'

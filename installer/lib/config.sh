@@ -34,24 +34,10 @@ check_parallel|on|watchman|on/off
 abandon_after_days|30|watchman|int
 commit_verbs|on|saving|on/off
 build_check||fleet|text
-fleet_ready_timeout|120|fleet|int
 check_dirty|on|expert|on/off
 check_investigations|on|expert|on/off
 check_shape|on|expert|on/off
 TBL
-}
-
-# Open-ended key families: a key per agent or per procedure. Shown in `fraim config`,
-# accepted by `fraim config set`, never listed one by one in config_table.
-# prefix|section   (the description is the catalog message cfg_fam_<prefix without _>)
-config_families() {
-    cat <<'FAM'
-tier_|models
-role_|models
-launchcmd_|expert
-readypattern_|expert
-modelcmd_|expert
-FAM
 }
 
 # Retired names. Still read, so no project breaks: an old ai/fraim.conf with
@@ -66,8 +52,6 @@ check_foundation|foundation_lag_commits|off→0
 check_lessons|lessons_lag_commits|off→0
 check_remote|unpushed_threshold|off→0
 check_worktrees|check_parallel|off→off
-check_ade|check_parallel|off→off
-fleet_ready_timeout_ms|fleet_ready_timeout|ms→s
 check_git||always on
 check_language||always on
 LEG
@@ -81,21 +65,6 @@ config_section()  { config_table | awk -F'|' -v k="$1" '$1 == k { print $3; exit
 config_type()     { config_table | awk -F'|' -v k="$1" '$1 == k { print $4; exit }'; }
 config_describe() { t "cfg_desc_$1"; }
 config_known()    { config_table | cut -d'|' -f1 | grep -qx "$1"; }
-
-# The family a key belongs to (tier_, role_, launchcmd_…), or nothing.
-config_family() {
-    config_families | while IFS='|' read -r _cf_p _cf_s; do
-        case $1 in "$_cf_p"?*) printf '%s\n' "$_cf_p"; break ;; esac
-    done
-}
-
-# Keys of one family set in either file, one per line, unique.
-config_family_keys() {
-    _cfk_root=$2
-    { [ -n "$_cfk_root" ] && cat "$(config_project_file "$_cfk_root")" 2>/dev/null
-      cat "$(config_machine_file)" 2>/dev/null; } |
-        sed -n "s/^[[:space:]]*\($1[A-Za-z0-9_-]*\)[[:space:]]*=.*/\1/p" | awk '!seen[$0]++'
-}
 
 # The key that replaced a retired one; empty output and status 1 when it is not retired.
 config_replacement() {

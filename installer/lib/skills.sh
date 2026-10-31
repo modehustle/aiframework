@@ -129,7 +129,7 @@ $(vt_intents)
 | make a running service reachable from outside | \`/expose\` | capable |
 | put work on the board for later, or open a project (the human asked) | \`/make-task\` | cheap |
 | take a task from the board (the human asked) | \`/run-task\` | capable |
-| conduct: cheap workers, or a split across directions (the human asked) | \`/conductor\` | capable |
+| two or more subagents writing at once: several board tasks or projects, parallel work | \`/conductor\` | capable |
 | find out where a bug is, or whether X is feasible | \`/investigate\` | strong |
 | reconcile the foundation with reality | \`/prune\` | strong |
 | re-enter a project after a break | \`/orient\` | any |
@@ -155,8 +155,9 @@ and do not announce a procedure you are not running. What still holds:
   reactive work; there is no second log to keep.
 
 Reactive work has **no size limit**. A task on the board is work **put aside for later**, or a
-project made of several tasks — and only the human puts it there; never propose it. The same
-goes for \`/conductor\`. You are about to
+project made of several tasks — and only the human puts it there; never propose it. Parallel
+writing — two or more subagents changing code at once — goes through \`/conductor\`; subagents
+that only read do not need it. You are about to
 change something you do not understand → \`/investigate\`.
 
 ## Deterministic verbs — call them, do not reproduce them
