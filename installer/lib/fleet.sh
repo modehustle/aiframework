@@ -104,7 +104,7 @@ fleet_caps_note() {
 
 # Human-readable line for `fraim roles`, or nothing.
 fleet_caps_describe() {
-    fleet_caps_has "$1" no-launch-model && printf 'модель при запуске не принимает\n'
+    fleet_caps_has "$1" no-launch-model && { t fleet_caps_no_launch_model; printf '\n'; }
     return 0
 }
 
@@ -238,7 +238,7 @@ fleet_call() {
         printf >&2 '%s\n' "$_fc_out"; return 1
     }
     printf '%s' "$_fc_out" | fleet_ok || {
-        printf >&2 'orca отказал:\n%s\n' "$_fc_out"; return 1
+        printf >&2 '%s\n%s\n' "$(t fleet_err_orca_refused)" "$_fc_out"; return 1
     }
     printf '%s\n' "$_fc_out"
 }
@@ -263,7 +263,7 @@ fleet_worktree_create() {
     _fwc_path=$(printf '%s' "$_fwc_out" | fleet_json_str worktreePath)
     [ -n "$_fwc_path" ] || _fwc_path=$(printf '%s' "$_fwc_out" | fleet_json_str path)
     [ -n "$_fwc_path" ] || {
-        printf >&2 'worktree create: в ответе нет пути:\n%s\n' "$_fwc_out"; return 1
+        printf >&2 '%s\n%s\n' "$(t fleet_err_wt_no_path)" "$_fwc_out"; return 1
     }
     _fwc_created=$(printf '%s' "$_fwc_out" | fleet_json_num createdAt)
     case $_fwc_created in
@@ -307,7 +307,7 @@ fleet_terminal_create() {
         --command "$_ftc_cmdline" --json) || return 1
     _ftc_term=$(printf '%s' "$_ftc_out" | fleet_id term)
     [ -n "$_ftc_term" ] || {
-        printf >&2 'terminal create: в ответе нет term_… идентификатора:\n%s\n' "$_ftc_out"
+        printf >&2 '%s\n%s\n' "$(t fleet_err_term_no_id)" "$_ftc_out"
         return 1
     }
     _FLEET_TERM=$_ftc_term
@@ -377,8 +377,7 @@ fleet_terminal_wait_ready() {
         fi
         sleep 2
     done
-    printf >&2 'агент %s запущен, но его баннер не появился в терминале за отведённое время\n' \
-        "$_fwr_agent"
+    printf >&2 '%s\n' "$(t fleet_err_no_banner agent="$_fwr_agent")"
     return 1
 }
 
@@ -442,13 +441,13 @@ fleet_ok() {
 fleet_run_create() {
     _frc_cmd=$(fleet_cli) || return 1
     _frc_out=$("$_frc_cmd" orchestration run-create --objective "$1" --json 2>&1) || {
-        printf >&2 'run-create не удался:\n%s\n' "$_frc_out"; return 1
+        printf >&2 '%s\n%s\n' "$(t fleet_err_run_failed)" "$_frc_out"; return 1
     }
     printf '%s' "$_frc_out" | fleet_ok || {
-        printf >&2 'run-create отказал:\n%s\n' "$_frc_out"; return 1
+        printf >&2 '%s\n%s\n' "$(t fleet_err_run_refused)" "$_frc_out"; return 1
     }
     _frc_id=$(printf '%s' "$_frc_out" | fleet_id run)
-    [ -n "$_frc_id" ] || { printf >&2 'run-create: в ответе нет run_… идентификатора\n'; return 1; }
+    [ -n "$_frc_id" ] || { printf >&2 '%s\n' "$(t fleet_err_run_no_id)"; return 1; }
     printf '%s\n' "$_frc_id"
 }
 
@@ -459,13 +458,13 @@ fleet_task_create() {
     _ftc_cmd=$(fleet_cli) || return 1
     _ftc_out=$("$_ftc_cmd" orchestration task-create \
         --run "$_ftc_run" --task-title "$_ftc_title" --spec "$_ftc_spec" --json 2>&1) || {
-        printf >&2 'task-create не удался:\n%s\n' "$_ftc_out"; return 1
+        printf >&2 '%s\n%s\n' "$(t fleet_err_task_failed)" "$_ftc_out"; return 1
     }
     printf '%s' "$_ftc_out" | fleet_ok || {
-        printf >&2 'task-create отказал:\n%s\n' "$_ftc_out"; return 1
+        printf >&2 '%s\n%s\n' "$(t fleet_err_task_refused)" "$_ftc_out"; return 1
     }
     _ftc_id=$(printf '%s' "$_ftc_out" | fleet_id task)
-    [ -n "$_ftc_id" ] || { printf >&2 'task-create: в ответе нет task_… идентификатора\n'; return 1; }
+    [ -n "$_ftc_id" ] || { printf >&2 '%s\n' "$(t fleet_err_task_no_id)"; return 1; }
     printf '%s\n' "$_ftc_id"
 }
 
@@ -514,8 +513,7 @@ fleet_worker_start_custom() {
 
     if fleet_terminal_wait_ready "$_fwsc_term" "$_fwsc_root" "$_fwsc_agent"; then :; else
         _fwsc_ms=$(fleet_ready_timeout_ms "$_fwsc_root")
-        printf >&2 'агент %s не достиг готовности терминала (tui-idle) за %s мс — задание не отправлено\n' \
-            "$_fwsc_agent" "$_fwsc_ms"
+        printf >&2 '%s\n' "$(t fleet_err_not_ready agent="$_fwsc_agent" ms="$_fwsc_ms")"
         fleet_launch_cleanup "" "$_fwsc_wt" "$_fwsc_term"
         return 1
     fi
@@ -532,8 +530,7 @@ fleet_worker_start_custom() {
     then _fwsc_rc=0; else _fwsc_rc=$?; fi
 
     if [ "$_fwsc_rc" -ne 0 ]; then
-        printf >&2 'worker-start не привязал задание к терминалу %s:\n%s\n' \
-            "$_fwsc_name" "$_fwsc_out"
+        printf >&2 '%s\n%s\n' "$(t fleet_err_bind_failed name="$_fwsc_name")" "$_fwsc_out"
         # The refusal may name the Dispatch it created (their receipts carry
         # effects/residualResources); when it does not, ask Orca directly — a
         # failed bind can still have left one behind, and release is idempotent.
@@ -547,8 +544,7 @@ fleet_worker_start_custom() {
 
     _fwsc_id=$(printf '%s' "$_fwsc_out" | fleet_id "$FLEET_DISPATCH_KIND")
     [ -n "$_fwsc_id" ] || {
-        printf >&2 'worker-start: в ответе нет %s_… идентификатора:\n%s\n' \
-            "$FLEET_DISPATCH_KIND" "$_fwsc_out"
+        printf >&2 '%s\n%s\n' "$(t fleet_err_start_no_id kind="$FLEET_DISPATCH_KIND")" "$_fwsc_out"
         fleet_launch_cleanup "" "$_fwsc_wt" "$_fwsc_term"
         return 1
     }
@@ -591,8 +587,7 @@ fleet_worker_start() {
     # Known from a previous refusal: do not ask again. This is what turns "the fleet dies
     # every time" into "the fleet died once, and only until it was told why".
     if [ -n "$_fws_model" ] && fleet_caps_has "$_fws_agent" no-launch-model; then
-        printf >&2 'агент %s модель при запуске не принимает (известно с прошлого раза) — %s пойдёт через команду запуска\n' \
-            "$_fws_agent" "$_fws_name"
+        printf >&2 '%s\n' "$(t fleet_note_known_no_model agent="$_fws_agent" name="$_fws_name")"
     fi
 
     # A launch command we can vouch for decides the path before anything is
@@ -634,22 +629,21 @@ fleet_worker_start() {
     if [ "$_fws_rc" -ne 0 ] && [ -n "$_fws_model" ] &&
        printf '%s' "$_fws_out" | grep -qi 'launch-time model\|does not support.*model'; then
         fleet_caps_note "$_fws_agent" no-launch-model
-        printf >&2 'агент %s не принимает модель при запуске — поднимаю %s через команду запуска (модель %s не применена Orca)\n' \
-            "$_fws_agent" "$_fws_name" "$_fws_model"
-        printf >&2 '  запомнено: следующие сборки пойдут через команду запуска сразу\n'
+        printf >&2 '%s\n' \
+            "$(t fleet_note_no_model agent="$_fws_agent" name="$_fws_name" model="$_fws_model")"
+        printf >&2 '  %s\n' "$(t fleet_note_remembered)"
         fleet_worker_start_custom "$_fws_task" "$_fws_agent" "" \
             "$_fws_name" "$_fws_root" "$_fws_base"
         return $?
     fi
 
     if [ "$_fws_rc" -ne 0 ]; then
-        printf >&2 'worker-start не поднял воркера %s:\n%s\n' "$_fws_name" "$_fws_out"
+        printf >&2 '%s\n%s\n' "$(t fleet_err_start_failed name="$_fws_name")" "$_fws_out"
         return 1
     fi
     _fws_id=$(printf '%s' "$_fws_out" | fleet_id "$FLEET_DISPATCH_KIND")
     [ -n "$_fws_id" ] || {
-        printf >&2 'worker-start: в ответе нет %s_… идентификатора:\n%s\n' \
-            "$FLEET_DISPATCH_KIND" "$_fws_out"
+        printf >&2 '%s\n%s\n' "$(t fleet_err_start_no_id kind="$FLEET_DISPATCH_KIND")" "$_fws_out"
         return 1
     }
     fleet_launch_report native "" ""
