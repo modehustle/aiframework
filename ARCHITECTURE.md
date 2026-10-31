@@ -18,7 +18,7 @@ convenience in `install.sh`). Distribution: shell installer + Claude Code plugin
 ## Components & responsibilities
 | component / dir | responsibility |
 |---|---|
-| `installer/bin/fraim`, `installer/lib/*.sh` | the CLI: state, lifecycle, watchman, deterministic verbs, the task board and the backlog (`tasks.sh`), reading and writing the foundation (`foundation.sh`: `brief`, `find`, `arch`, line wrapping, moving superseded decisions), the English check (`lang.sh`: every write verb on its text, `fraim commit` on the lines it adds — the foundation and cards whole, code by its comments — and the watchman on the foundation as it stands), the one verb list (`verbtable.sh`), settings (`config.sh`: a table of keys with section and type, open key families, retired names still read), fleet/ADE (plan → waves → per-wave launch → collect → the conductor's acceptance, trunk write included), scaffold, skills generation; the roles picker discovers agents from the harness table (`harness_detect`, independent of any execution environment) and models live from each agent's own source (native command, cache file, embedded binary catalogue); the fleet launch is an explicit lifecycle — worktree create → agent launch command (model in argv via `launchcmd_<agent>` or the devin built-in) → confirmed `tui-idle` → `worker-start --terminal` Dispatch binding, with best-effort cleanup of partial resources |
+| `installer/bin/fraim`, `installer/lib/*.sh` | the CLI: state, lifecycle, watchman, deterministic verbs, the task board and the backlog (`tasks.sh`), reading and writing the foundation (`foundation.sh`: `brief`, `find`, `arch`, line wrapping, moving superseded decisions), the English check (`lang.sh`: every write verb on its text, `fraim commit` on the lines it adds — the foundation and cards whole, code by its comments — and the watchman on the foundation as it stands), the one verb list (`verbtable.sh`), settings (`config.sh`: a table of keys with section and type, retired names still read), the fleet's control layer (`dispatch.sh`: plan check → a build with one brief per subtask → checkouts where the harness has no isolation → collect by branch → the conductor's acceptance, the trunk write and the round's cards included; it launches nothing — the workers are the harness's own subagents), scaffold, skills generation |
 | `installer/lib/menu.sh` | the full-screen interface behind a bare `fraim` on a terminal: alternate screen, sidebar of sections (project, board, backlog, decisions, projects, settings, maintenance), command palette, list dialogs with a filter, settings edited in place, the first-start language question; one awk process composes a frame and fits every line by display width; long actions leave the screen and run the ordinary command; under a pipe it prints the usage |
 | `installer/locale/` | the operator's message catalogs: `en/<module>.sh` is the source, `<lang>/<module>.sh` a translation (`M_<key>='text'`), `languages` lists what the picker offers with a status (source, reviewed, beta); `core.sh` loads them once at start (`t`, `tp`, `i18n_*`) |
 | `procedures/` (11 `.md` + `manifest.json`) | canonical, engine-agnostic methodology text; manifest holds versions, tiers, order |
@@ -64,35 +64,41 @@ convenience in `install.sh`). Distribution: shell installer + Claude Code plugin
   from its closed children; only the human closes a master. Only the human puts a card on the
   board. Old-format tasks (a folder holding a plan) are carried into cards by `fraim upgrade`
   (plan kept in `ai/archive/legacy-plans/`; what did not parse becomes a `fraim-migration` card).
-- **no project mode.** The agent always works reactively in the session. The conductor
-  (`/conductor`) and the board (`/make-task` puts a card, `/run-task` takes one) are
-  procedures the human asks for, never started on the agent's initiative. A fleet worker
-  executes a brief the conductor writes just before dispatch, under the «Воркер флота» rules
-  in `/run-task`. The retired `mode` key is ignored on
-  disk; `fraim mode` only removes the old fleet mode's leftovers (the `mode` line, the
-  conductor section in `AGENTS.md`, the SessionStart hook) and `fraim mode --hook` is a
-  silent success so a leftover hook never breaks a session start.
-- **build** (`ai/builds/<id>/`) — started only on the human's request, one subtask is a valid build:
-  plan copy, journal, `fleet.tsv` (a cache of the
-  environment's ids, one block per wave), `collected.tsv` (our truth: wave, subtask,
-  merged sha, time), and — after `dispatch accept` — the marker `accepted` (who, when, which
-  merge, how to undo it). Each build owns a branch `fraim/<id>` — workers branch from it and
-  `dispatch collect` merges them back into it; `dispatch accept` merges that branch into the
-  trunk.
-- **acceptance** (`dispatch accept`) is the CONDUCTOR's whole stage and produces no file for
-  the human: it refuses while any subtask is uncollected, verifies the assembled branch
-  against the union of the plan's declared paths, runs the project's own check (`build_check`)
-  in a throwaway checkout of the build branch, cleans up the checkouts and workers the build
-  itself created (only those provably redundant), merges the build branch into the current
-  branch of the project root with one `--no-ff` commit carrying the `fraim:` trailer, and
-  prints the report to stdout. The trunk write is skipped — loudly, exit 1 — on a red check,
-  an empty build, a dirty working tree, a conflict or a detached HEAD. The human types
-  nothing: they read the output and answer in words, and the lever behind "не так" is
-  `fraim undo <merge>` (which now passes `-m 1` for merge commits), run by the conductor.
-- **wave**: a subtask may declare `**After**: id[, id]`; waves are derived from that
-  (`dispatch_waves`), never written by hand. Paths may not collide inside a wave and may
-  collide across waves. A wave is launched only when the previous one is fully collected —
-  the barrier is a record in git, not a signal from the environment.
+- **no project mode.** The agent always works reactively in the session. The board (`/make-task`
+  puts a card, `/run-task` takes one) is the human's. Parallel writing — two or more subagents
+  changing code at once, on the human's word or the harness's own decision — goes through
+  `/conductor`; subagents that only read do not. A fleet worker executes a brief from
+  `ai/builds/<build>/<subtask>.md` under the «Fleet worker» rules in `/run-task`. The retired `mode`
+  key is ignored on disk; `fraim mode` only removes the old fleet mode's leftovers (the `mode` line,
+  the conductor section in `AGENTS.md`, the SessionStart hook) and `fraim mode --hook` is a silent
+  success so a leftover hook never breaks a session start.
+- **build** (`ai/builds/<id>/`) — ONE ROUND of parallel work: subtasks that run at the same time;
+  the order between rounds lives on the board (`after:`), never in the plan. It holds the plan copy,
+  the journal, one brief per subtask (`<subtask>.md`: the card's intent and done-when, the files,
+  the plan's contract, the worker's rules), `collected.tsv` (our truth: subtask, merged sha or «—»,
+  time, where it came from; the last record of a subtask wins, so a «—» is looked at again by the
+  next collect) and, after `dispatch accept`, the marker `accepted` (who, when, which merge, which
+  cards, how to undo). The build owns a branch `fraim/<id>`: `dispatch collect` merges each worker's
+  own commits into it — from the branch a harness's worktree produced (`SUBTASK=BRANCH`) or from a
+  checkout `dispatch prepare` made (`.fraim/worktrees/<id>-<subtask>`, under a self-ignoring
+  `.fraim/`) — and `dispatch accept` merges it into the trunk. Build ids stay unique within one
+  second.
+- **build plan** — `## Subtask: <id>` where the id is a board card (its intent goes into the brief)
+  or a plain name carrying `**Summary**:` and `**Done when**:`; `**Files**:` (a path ending with `/`
+  is a directory) or `### \`path\`` headings; an optional `## Contract` copied into every brief.
+  `dispatch check` refuses a subtask with no files, one with no intent, a project card, a duplicate
+  id, `**After**` and two subtasks over one path (a file, or a file inside the other's directory);
+  it warns on size and on several subtasks without a contract.
+- **acceptance** (`dispatch accept`) is the CONDUCTOR's whole stage and produces no file for the
+  human: it refuses while any subtask is uncollected, names files no subtask declared, runs the
+  project's own check (`build_check`) in a throwaway checkout of the build branch, removes the
+  checkouts `prepare` made once their work is in the build branch (a harness's own worktrees are the
+  harness's), closes the round's board cards by a commit ON the build branch, merges the build
+  branch into the current branch of the project root with one `--no-ff` commit carrying the `fraim:`
+  trailer, and prints the report to stdout. The trunk write is skipped — loudly, exit 1 — on a red
+  check, an empty build, a dirty working tree, a conflict or a detached HEAD. `fraim undo <merge>`
+  (it passes `-m 1` for merge commits) takes back the code and reopens the cards together; the
+  conductor types it.
 - **manifest**: procedure name → file, tier, order, description.
 
 ## Data flow
@@ -109,12 +115,12 @@ harness — tells the agent to start with `fraim brief`, so the list it reads is
 CLI it runs.
 In a project: `fraim scaffold`/`stack-passport` write from templates; watchman reads
 git history + foundation files + the board (`tasks_scan`); deterministic verbs (`fraim commit`,
-`fraim decide`, `fraim task-new`/`task-seal`) make the commits themselves. `fraim roles set`
-resolves agent → model → effort:
-the agent list comes from `harness_detect` (the harness table, independent of any
-execution environment), then models are discovered live from the chosen agent itself
-(`roles_models_of`): native listing command first, cache file or embedded binary
-catalogue as fallback, typed value when nothing answers.
+`fraim decide`, `fraim task-new`/`task-seal`) make the commits themselves. A round of parallel work:
+the conductor writes a plan from the board's ready cards → `dispatch check` → `dispatch PLAN`
+(briefs, journal, build branch) → the harness's own subagents write in their worktrees (or in
+checkouts from `dispatch prepare`) → `dispatch collect` merges each worker's commits into the build
+branch → `dispatch accept` runs the project check and merges the round, with its cards closed, into
+the trunk. A worker runs on the agent's own model; there is no role table.
 
 ## External interfaces
 Harness adapters via generated Agent Skills + global context blocks, one table in `harness.sh`
@@ -127,7 +133,9 @@ may name several, Antigravity does). The context block goes to each harness's gl
 our own `fraim.md` where the harness reads a rules directory, nowhere where rules live only in a
 settings screen (`-`). `harness_retired_table` lists where earlier versions wrote and the harness
 never read; `fraim init` takes our files back from there. Paths and their sources:
-`installer/HARNESS_TARGETS.md`. GitHub repo as distribution channel.
+`installer/HARNESS_TARGETS.md`. GitHub repo as distribution channel. The fleet launches nothing
+through these adapters: a harness's own subagents are the workers; what each harness offers for that
+(headless runs, subagents, ACP) is mapped in `AUDIT-FLEET-HARNESSES.md`.
 
 ## Deployment
 No box, no `STACK.md` — the product is a CLI installed on a machine, not a running service.

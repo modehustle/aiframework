@@ -3,6 +3,84 @@
 > Newest on top. One entry per decision. Never rewrite history — supersede with a new
 > entry, or relocate stale entries to `ai/archive/decisions_log.md` via `/prune`.
 
+## 2026-10-31 — a build is one round planned from the board: no waves, the card feeds the brief, directories as paths, a contract section, the round's cards closed in the acceptance merge
+> Supersedes: 2026-09-09 — the fleet gets order: waves, a per-wave barrier, and a collect stage
+
+Context: the board already holds the breakdown (projects, tasks, `after:`), so the fleet plan wrote
+the order a second time. A harness's own worktrees branch from the current branch, so a second wave
+inside one build could not see the first. The second live build failed for a missing contract
+between its pieces, and exact-file paths turned a worker's new file in its own module into a
+refusal.
+Decision: (1) A build is one round: subtasks that run at once. Order lives on the board — the
+dependent piece goes into the next round, after this one is accepted — and `**After**` is refused.
+(2) `## Subtask: <id>` names a board card whose «What and why» and «Done when» go into the worker's
+brief; a plain subtask carries `**Summary**:` and `**Done when**:`; a project card is refused. (3)
+`**Files**:` takes directories — a path ending with `/` covers everything under it; two subtasks
+over one path, a file or a file inside the other's directory, are refused. (4) A `## Contract`
+section is copied into every brief; several subtasks without one get a warning. (5) Briefs live next
+to the plan, `ai/builds/<id>/<subtask>.md`; `ai/parallel/` is gone. (6) `dispatch accept` closes the
+round's cards (never a project card) by a commit on the build branch, so the one trunk merge carries
+them and `fraim undo <merge>` reopens them with the code; the checkouts fraim made, and their
+branches, are removed once their work is in the build branch.
+Alternatives: keeping waves for work off the board rejected — rounds cover it, and waves cannot work
+with a harness's own worktrees; closing the cards after the merge with `task-seal` rejected — an
+undo would bring the code back and leave the cards closed.
+Consequences: collect works per round; the collected record lost its wave column and gained where
+each result came from.
+
+## 2026-10-31 — the role table is gone: a worker runs on the agent's own model unless the human names another
+> Supersedes: 2026-09-08 — role picker models come from per-agent live discovery, not a catalogue
+
+Context: the role table (procedure → tier → agent:model:effort; `fraim roles`, the `tier_` and
+`role_` keys) existed because a build plan travels between machines and must not name models. Under
+the new fleet a plan lives minutes on one machine, and the workers are the harness's own subagents
+on its own models — the table answered a question nobody asks any more.
+Decision: (1) `roles.sh`, `fraim roles` (it answers where it went), the `tier_` and `role_` keys,
+the models section of the settings screen and the per-agent model discovery behind the picker are
+removed; the open key families of `config.sh` are gone with them. (2) A worker runs on the agent's
+own model unless the human names another one in words; the conductor passes it when it raises the
+subagent. Which piece deserves an expensive model stays the human's call, as before. (3) The
+`**Role**` line of a build plan is ignored. This also retires «role picker agent list comes from the
+harness table, not Orca».
+Alternatives: keeping the table as an optional default rejected — a second source of the model next
+to the human's words, and a setting nobody has to fill in.
+Consequences: procedures keep their `tier:` frontmatter as documentation of the model class they
+need (the skills and the manifest show it); `parallel:` is gone from it, nothing reads it. Item (7)
+of «harnesses: 27 rows…» (model discovery for Kilo, Crush, Grok and Cursor) no longer holds.
+
+## 2026-10-31 — the fleet runs on the harness's own subagents; fraim checks the split before and accepts the round after
+> Supersedes: 2026-09-08 — fleet launch waits for confirmed tui-idle and applies the model via a per-agent launch command
+
+Context: the fleet audit (AUDIT-FLEET.md) found the launcher — Orca driving agents through a
+terminal — the slowest and most expensive part of both live builds: about 40% of the conductor's
+context in the second one went to help texts, bookkeeping and polling. The harness survey
+(AUDIT-FLEET-HARNESSES.md) found that by October 2026 most of the 28 harnesses run subagents
+themselves. The owner's own run of three projects through Orca was slower and costlier than Claude's
+own subagents. The owner decided: Orca is not needed; fraim supports and controls whatever harness
+runs the work; other harnesses as workers stay out of this update.
+Decision: (1) Orca, the execution-environment layer and every launch setting are removed:
+`fleet.sh`, `ade.sh`, `dispatch run` and `dispatch watch` (both answer where they went),
+`fleet_ready_timeout`, the `launchcmd_`, `readypattern_` and `modelcmd_` keys, the watchman's
+environment check and the environment section of `fraim fleet`. (2) Workers are the harness's own
+subagents in its own worktrees; a harness without isolation gets checkouts from `fraim dispatch
+prepare` (`.fraim/worktrees/<build>-<subtask>`, under a self-ignoring `.fraim/`). (3) `dispatch
+collect` takes each result from the branch the harness produced (`SUBTASK=BRANCH`) or from the
+prepared checkout, verifies the worker's own commits against its paths, and warns when the project's
+main checkout changed inside the build's paths; a «changed nothing» record is looked at again by the
+next collect. (4) Parallel writing — two or more subagents changing code at once, on the human's
+word or the harness's own decision — goes through `/conductor`; subagents that only read do not; one
+task is never handed out. This replaces the 2026-09-15 rule that the conductor runs only on the
+human's request. (5) Build ids stay unique within one second: rounds follow each other quickly, and
+a second build under the first one's id overwrote its plan and journal.
+Alternatives: headless runs of other harnesses, ACP through `acpx` and generated subagent
+definitions per harness — set aside by the owner for this update: every conductor-and-worker pair of
+harnesses brings its own authentication, permissions, flags and output, and the agent choosing
+between them is a fragile path. Keeping Orca frozen as a fallback rejected — nobody will use it, and
+its adapter was a fifth of the CLI.
+Consequences: AUDIT-FLEET-HARNESSES.md keeps the harness map for a later look at other harnesses as
+workers. A project that set `launchcmd_*` or `fleet_ready_timeout` keeps inert lines. Item (3) of
+«OpenCode is a supported harness» (its built-in fleet launch command) no longer holds.
+
 ## 2026-10-31 — fraim on a terminal is a full-screen program
 
 Context: the owner likes how OpenCode looks — a program of its own in the terminal — and chose
@@ -458,39 +536,12 @@ Decision: (1) `fraim dispatch accept СБОРКА` becomes the CONDUCTOR's stage
 Alternatives: leaving acceptance with the human as before rejected (it made the human do the conductor's checking, which is the cost the mode exists to remove); giving the conductor the trunk write too rejected (that is MODES.md §4 вариант B — the refusal then costs an unwind of N interleaved results, handed to the person least able to do it); a separate `review` verb next to a human `accept` rejected (two verbs for one stage, and the old `accept` would have stayed a stamp with nothing behind it); raising the six-subtask ceiling now that a conductor does the reading rejected and written down as a trap in MODES.md §5 — a report over interleaved results is a retelling (A5), and the ceiling is set by verifiability, not by who reads; a project check baked into the procedure text rejected (the test command is project configuration, C1 — hence `build_check`).
 Consequences: `build_list` has three states (`не принята` / `принята дирижёром — отчёт ждёт человека` / `возвращена человеком`), and «принята» no longer means «готово». `dispatch accept` now exits 1 when the report has findings and 2 when it refuses, so callers must distinguish. A build with no `build_check` configured says so in the report instead of implying a green check. Worker branches are deliberately left alone: their commits are already in the build branch, and deleting a branch we did not create is exactly the "what not to touch" question B6 forbids passing to the user.
 
-## 2026-09-09 — the fleet gets order: waves, a per-wave barrier, and a collect stage
-
-Context: the fleet refused the most common shape of real work. `dispatch_check` rejected any plan where two subtasks claimed one path, and the conductor procedure told the agent to offer the ordinary route in that case — so "the pieces overlap, I cannot isolate them" was the procedure being followed literally, not a model being lazy. Separately, nothing merged the workers' results at all: `build_accept` recorded a time and a HEAD, and integration was manual. A survey of prior art (DESIGN-fleet-prior-art.md) placed our fan-out among six control models and supplied the reasons below.
-Decision: (1) a subtask may declare `**After**: id[, id]`; waves are DERIVED from that, never hand-numbered. (2) The path-collision check becomes per-wave: refused inside a wave, allowed across waves. (3) A strict barrier between waves — chosen over dependency-gated claiming because that model unblocks work on the executor's self-report, which is exactly what MODES.md §3 refuses to trust, and because polling worker state would require a scheduler of our own (MODES.md §10). (4) `fraim dispatch collect` merges a wave into a new per-build branch `fraim/<build>`, refusing on a missing checkout, uncommitted work, a file outside the declared paths, or a merge conflict; it prints the wave's combined diff, which is the only place a semantic divergence the path check cannot see becomes visible. (5) Workers now branch from the build branch, and `dispatch run` launches one wave — the first uncollected one. (6) The conductor's ladder out of a collision is ordered: group → redraw boundaries → order into waves → only then say it does not split. (7) The time threshold ("a piece longer than half an hour") is removed: nobody can measure it, and it read as a rule while working as the cheapest excuse to refuse. It is replaced by a comparison the conductor states out loud (dispatching is worth it when executing costs more than dispatching) and by four countable numbers derived from the single-acceptance ceiling — ≤6 subtasks per build, 3–5 per wave, ≤3 waves, 2–10 paths per subtask — all of them warnings, never refusals.
-Alternatives: `**Wave**: N` written by hand rejected (a global fact needing manual renumbering on every edit, and a stale number is invisible to any check); dependency-gated claiming without a barrier rejected (see above; Claude Code agent teams documents the exact failure — "task status can lag: teammates sometimes fail to mark tasks as completed, which blocks dependent tasks"); speculative parallel merging à la Zuul rejected (it pays off when re-running the check is cheap, and re-running a worker costs a model and an hour); merging an out-of-lane change with a warning rejected (it would make the tree verification decorative); `dispatch accept` merging into the trunk rejected (the gate stands before the trunk write, MODES.md §4 вариант A).
-Consequences: plans without `After` behave exactly as before — one wave. Builds created before this change have no build branch and `collect` says so rather than guessing. `fleet.tsv` is appended per wave instead of truncated. A build's acceptance now covers up to three waves, so the six-subtask ceiling is what keeps "one acceptance" honest — MODES.md §5 carries that arithmetic. Worker isolation remains file-only: ports, databases and caches are shared and no check sees them (BACKLOG §6).
-
 ## 2026-09-09 — two modes, not three: reactive is the default, fleet is the switch
 
 Context: `MODES.md` described three modes (reactive, task, parallel), but the task mode was never one: by the five-row test in MODES.md §1 it differs from reactive in nothing, and the `mode` config key never switched it on — `task` was literally "not parallel". The name promised authority the code did not implement, and the agent read it as licence to write a task for itself and then execute it in the same session.
 Decision: `mode` takes `reactive` (default) and `fleet`. The task ceremony (`/make-task` → `/run-task` → `task-seal`) stays as a PROCEDURE inside the reactive mode — the way to hand work to someone who is not in this conversation — and writing a task for yourself to execute in the same session is now stated as forbidden in the AGENTS.md project block. The legacy values `task` and `parallel` are read as `reactive`/`fleet` (mode_canon in config.sh) but never written; `fraim mode task|parallel` still works and warns. Every "is the fleet on here" test goes through `mode_get`, so a legacy value cannot silently fall back to the default.
 Alternatives: renaming without legacy aliases rejected (every installed project carries `mode = parallel` in ai/fraim.conf and would silently lose the mode); keeping `parallel` as the name rejected (the human switches on a fleet, not a property of the work, and `fraim fleet` already exists); dropping `/make-task` along with the mode rejected (the fleet worker IS a `/run-task`, and handing work to another session is a real need).
 Consequences: MODES.md §2 is now two modes and keeps the old anchor `#2-три-режима` so existing links do not break; the conductor procedure says `fraim mode fleet`. The refusal class "chunks overlap, cannot split" is untouched by this and is the next piece of work (sequential waves + a collect verb).
-
-## 2026-09-08 — role picker agent list comes from the harness table, not Orca
-
-Context: `roles_agents_available` asked Orca (`orca account list --json`) for the list of agents in the role picker, coupling the picker to a specific execution environment. Devin (a harness fraim installs into) was invisible because Orca doesn't list it as a provider; Kimi (not installed, not in the harness table) appeared because Orca knows it as a provider. The product is environment-agnostic — Orca is one possible ADE, not a dependency.
-Decision: `roles_agents_available` now reads from `harness_detect` (harness.sh) — the same table fraim uses to install skills, probed by binary on PATH or home directory. `roles_providers` and `roles_parse_providers` removed as dead code. The picker shows only agents fraim knows and can serve; Orca remains the execution environment for fleet launch (a separate concern).
-Consequences: an agent not in the harness table cannot be picked even if Orca can launch it — add it to `harness_table` first. A harness present on the machine but not on PATH appears via its home directory probe.
-
-## 2026-09-08 — fleet launch waits for confirmed tui-idle and applies the model via a per-agent launch command
-
-Context: Orca 1.4.196 + Devin CLI inject the orchestration preamble before the TUI is ready (agent_prompt_stalled at dispatch_input, every worker of a build dies), and Orca's worker-start --model supports only Claude/Codex/Cursor, so role-table models for other agents were silently dropped. Diagnosis archived in the youtube investigation fleet-agent-prompt-stalled.
-Decision: fleet_worker_start becomes a two-path lifecycle with one contract. Native path (default): worker-start --agent --model --effort as before. Custom path (when a launch command is known via config launchcmd_<agent> or the devin built-in "devin --permission-mode bypass --model %s", or the agent is known no-launch-model): worktree create -> terminal create --command (model in argv) -> terminal wait --for tui-idle (config fleet_ready_timeout_ms, default 120000) -> worker-start --task --terminal --worktree, which keeps full task/dispatch provenance and worker lifecycle. Failures clean up best-effort: worker-release (dispatch recovered from the receipt or dispatch-show), terminal stop, worktree rm. No sleep anywhere; readiness is the terminal's own state. In-session model switching stays only as explicitly configured modelcmd_<agent>.
-Alternatives: increasing sleep rejected (masks the race, still racy); a Devin-only branch rejected (next agent hits the same wall); dispatch --inject rejected (unsupervised, loses worker_done/stop/release accounting); always using the custom path rejected (bypasses Orca's launch.effective reporting for Claude/Codex/Cursor); guessing in-session commands for unknown agents rejected (silently corrupts the first task line).
-Consequences: an agent whose launch argv changes needs a launchcmd_<agent> config update; a tui-idle timeout now fails the worker honestly instead of delivering a prompt into an unready TUI; the stub orca-ide in tests must answer the new subcommands.
-
-## 2026-09-08 — role picker models come from per-agent live discovery, not a catalogue
-
-Context: the roles picker offered only hardcoded claude suggestions plus already-configured models; a wrong id surfaced only at fleet launch, where it degraded silently. Investigations (archived findings 2026-09-08) confirmed every installed agent carries its own fresh model data.
-Decision: the roles picker discovers models live from the chosen agent itself (roles_models_of): native listing command first (devin, pi, cursor-agent), cache file (codex) or embedded binary catalogue (claude) as fallback, typed value when nothing answers. Effort levels come from the same source where provided. No cache, no provider HTTP APIs, one tolerant parser per source tested against fixtures.
-Alternatives: direct provider API queries rejected (keys, network, a second support surface); a baked catalogue rejected (treadmill P0); a single global parser rejected (formats differ per agent and drift independently); a TTL cache rejected (measured source latency 0.06-1.6s makes staleness pointless).
-Consequences: an agent update can break its parser — the failure mode is an empty list degrading to the typed value, and fixture tests catch it before production.
 
 ## 2026-09-08 — onboarded: foundation derived from existing code
 
