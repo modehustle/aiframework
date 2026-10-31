@@ -122,12 +122,11 @@ update_probe_if_due() {
 update_line() {
     case $(update_cache_field 4) in
         behind)
-            printf 'новая версия fraim на хосте (%s) — fraim update\n' \
-                "$(update_cache_field 3 | cut -c1-7)" ;;
+            printf '%s\n' "$(t upd_line_behind rev="$(update_cache_field 3 | cut -c1-7)")" ;;
         ahead)
-            printf 'локальная копия впереди хоста — обновлять нечего\n' ;;
+            printf '%s\n' "$(t upd_line_ahead)" ;;
         unknown)
-            printf 'проверить обновления не удалось — хост не ответил\n' ;;
+            printf '%s\n' "$(t upd_line_unknown)" ;;
         *) return 1 ;;
     esac
 }
@@ -142,22 +141,22 @@ update_apply() {
     # cloned for oneself), updating it with this command would mean updating SOMEONE ELSE'S
     # directory and reporting as if what the human launched us from had been updated.
     if [ "$_u_src" != "$FRAIM_HOME/src" ]; then
-        warn "запущено из $_u_src, а обновление живёт в $FRAIM_HOME/src"
-        dim "    это копия для работы над самой системой — обнови её как обычно"
-        dim "    (git pull), потом fraim init, чтобы разложить по харнесам"
+        warn "$(t upd_dev_copy src="$_u_src" home="$FRAIM_HOME/src")"
+        dim "    $(t upd_dev_copy_hint1)"
+        dim "    $(t upd_dev_copy_hint2)"
         return 1
     fi
     update_src_is_clone "$_u_src" || {
-        warn "источник $_u_src — не git-клон, обновлять нечего"
-        dim "    так бывает у копии, разложенной руками: обнови её тем же способом,"
-        dim "    которым ставил, и запусти fraim init"
+        warn "$(t upd_not_clone src="$_u_src")"
+        dim "    $(t upd_not_clone_hint1)"
+        dim "    $(t upd_not_clone_hint2)"
         return 1
     }
     _u_installer="$_u_src/installer/install.sh"
-    [ -f "$_u_installer" ] || { warn "не найден $_u_installer"; return 1; }
+    [ -f "$_u_installer" ] || { warn "$(t upd_no_installer path="$_u_installer")"; return 1; }
 
     FRAIM_BRANCH=${FRAIM_BRANCH:-$(update_branch "$_u_src")} sh "$_u_installer" || {
-        warn "не удалось обновить исходники"
+        warn "$(t upd_failed)"
         return 1
     }
     # The cache belonged to the previous installation.

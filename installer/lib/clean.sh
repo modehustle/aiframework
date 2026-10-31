@@ -32,7 +32,7 @@ clean_scan() {
     WM_FINDINGS=
     config_is_on check_shape "$_root" && wm_check_shape "$_root"
     if printf '%s' "$WM_FINDINGS" | grep -q '^shape	'; then
-        clean_add upgrade "" "довести фундамент до стандарта (fraim upgrade)"
+        clean_add upgrade "" "$(t clean_act_upgrade)"
     fi
 
     # Investigations. One brought to an outcome — seal it through the regular gate. An
@@ -53,18 +53,18 @@ clean_scan() {
             _age=$(wm_days_since "$(wm_newest_mtime "$_dir")")
             if [ "$_age" -ge "$_days_max" ]; then
                 clean_add investigate-abandon "$_slug" \
-                    "закрыть расследование «$_slug» без findings.md ($_age дн. без движения) — в архив с пометкой"
+                    "$(t clean_act_abandon_no_findings days="$_age" slug="$_slug")"
             fi
             continue
         fi
         if verb_section_filled "$_f" '### DIAGNOSIS' || verb_section_filled "$_f" '### DEAD-END'; then
-            clean_add investigate-seal "$_slug" "запечатать расследование «$_slug» (исход записан)"
+            clean_add investigate-seal "$_slug" "$(t clean_act_seal slug="$_slug")"
             continue
         fi
         _age=$(wm_days_since "$(wm_mtime "$_f")")
         if [ "$_age" -ge "$_days_max" ]; then
             clean_add investigate-abandon "$_slug" \
-                "закрыть брошенное расследование «$_slug» ($_age дн. без исхода) — в архив с пометкой"
+                "$(t clean_act_abandon days="$_age" slug="$_slug")"
         fi
     done
 
@@ -73,7 +73,7 @@ clean_scan() {
     if verb_is_git "$_root" && config_is_on check_dirty "$_root"; then
         _dirty=$(clean_dirty_paths "$_root")
         [ -n "$_dirty" ] && clean_add commit "$_dirty" \
-            "сохранить точкой изменённые файлы фундамента и ai/"
+            "$(t clean_act_commit)"
     fi
     return 0
 }
@@ -91,10 +91,10 @@ clean_dirty_paths() {
 
 clean_show() {
     if [ "$CLEAN_N" -eq 0 ]; then
-        ok "чистить нечего"
+        ok "$(t clean_nothing)"
         return 1
     fi
-    say "${C_BLD}Чистка сделает $CLEAN_N $(wm_plural "$CLEAN_N" действие действия действий):${C_OFF}"
+    say "${C_BLD}$(tp "$CLEAN_N" clean_plan)${C_OFF}"
     _clean_ifs=$IFS; IFS='
 '
     for _line in $CLEAN_PLAN; do
@@ -103,8 +103,8 @@ clean_show() {
     done
     IFS=$_clean_ifs
     say ""
-    dim "  не трогает: доску задач, дрейф фундамента, отправку копии —"
-    dim "  там нужно суждение, и это работа человека и /prune."
+    dim "  $(t clean_not_touched)"
+    dim "  $(t clean_not_touched_why)"
     return 0
 }
 
@@ -150,7 +150,7 @@ clean_run() {
     fi
     [ -n "$_clean_out" ] && printf '%s\n' "$_clean_out"
     _clean_why=$(printf '%s\n' "$_clean_out" | grep -v '^[[:space:]]*$' | tail -1)
-    [ -n "$_clean_why" ] || _clean_why="не удалось"
+    [ -n "$_clean_why" ] || _clean_why=$(t clean_failed)
     CLEAN_LEFT="$CLEAN_LEFT  · $_clean_text
       $_clean_why
 "
@@ -178,7 +178,7 @@ clean_apply() {
                 else _refused=$((_refused + 1)); fi ;;
             investigate-seal)
                 if clean_run "$_text" verb_investigate_seal "$_root" "$_arg"; then _done=$((_done + 1))
-                else _refused=$((_refused + 1)); dim "  гейт отказал — это ответ, а не сбой: доведи расследование до исхода"; fi ;;
+                else _refused=$((_refused + 1)); dim "  $(t clean_gate_refused)"; fi ;;
             investigate-abandon)
                 if clean_run "$_text" clean_investigate_abandon "$_root" "$_arg"; then _done=$((_done + 1))
                 else _refused=$((_refused + 1)); fi ;;
@@ -193,15 +193,15 @@ clean_apply() {
     done
     IFS=$_clean_ifs
     say ""
-    ok "сделано: $_done"
+    ok "$(t clean_done count="$_done")"
     # What remains — as a list, not a number. The tail is printed last and therefore stays
     # visible: the human leaves cleanup knowing the names and the reasons, not guessing why
     # the folders are still there.
     if [ "$_refused" -gt 0 ]; then
         say ""
-        say "${C_BLD}Осталось требующего тебя: $_refused${C_OFF}"
+        say "${C_BLD}$(t clean_left count="$_refused")${C_OFF}"
         printf '%s' "$CLEAN_LEFT"
-        dim "  это ответы гейтов, а не сбои чистки: допиши недостающее и запусти её снова."
+        dim "  $(t clean_left_hint)"
     fi
     return 0
 }
@@ -210,11 +210,11 @@ clean_apply() {
 # and a single way to understand a refusal.
 clean_upgrade() {
     _cu_root=$1
-    scaffold_run "$_cu_root" >/dev/null 2>&1 || { printf 'не удалось развернуть скелет\n' >&2; return 1; }
-    scaffold_sections "$_cu_root" >/dev/null 2>&1 || { printf 'не удалось дописать разделы\n' >&2; return 1; }
-    tasks_upgrade "$_cu_root" >/dev/null 2>&1 || { printf 'не удалось перевести задачи старого формата\n' >&2; return 1; }
+    scaffold_run "$_cu_root" >/dev/null 2>&1 || { printf '%s\n' "$(t clean_err_scaffold)" >&2; return 1; }
+    scaffold_sections "$_cu_root" >/dev/null 2>&1 || { printf '%s\n' "$(t clean_err_sections)" >&2; return 1; }
+    tasks_upgrade "$_cu_root" >/dev/null 2>&1 || { printf '%s\n' "$(t clean_err_tasks)" >&2; return 1; }
     verb_commit "$_cu_root" upgrade "foundation brought up to the standard" \
         README.md ARCHITECTURE.md CONVENTIONS.md DECISIONS.md \
         AGENTS.md CLAUDE.md .gitignore ai >/dev/null 2>&1 || true
-    ok "готово"
+    ok "$(t clean_upgrade_done)"
 }

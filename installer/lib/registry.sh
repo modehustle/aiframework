@@ -24,7 +24,7 @@ registry_list() {
 }
 
 registry_add() {
-    _p=$(cd -- "$1" 2>/dev/null && pwd -P) || { warn "нет такого каталога: $1"; return 1; }
+    _p=$(cd -- "$1" 2>/dev/null && pwd -P) || { warn "$(t reg_no_dir path="$1")"; return 1; }
     registry_init
     if registry_list | grep -qxF "$_p"; then
         return 0

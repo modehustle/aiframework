@@ -84,7 +84,7 @@ harness_detect() {
 # the user's own skills next to it are left alone.
 harness_install() {
     _label=$1; _dest=$2; _build=$3
-    mkdir -p "$_dest" || { warn "$_label: не удалось создать $_dest"; return 1; }
+    mkdir -p "$_dest" || { warn "$(t harn_mkdir_failed label="$_label" path="$_dest")"; return 1; }
 
     # Remove skills we own that no longer exist upstream.
     for _d in "$_dest"/*/; do

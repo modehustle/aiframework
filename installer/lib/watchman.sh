@@ -106,19 +106,19 @@ wm_check_investigations() {
         if [ ! -f "$_f" ]; then
             _days=$(wm_days_since "$(wm_newest_mtime "$_dir")")
             wm_add investigation attention \
-                "расследование «$_slug» без findings.md — ни исхода, ни отчёта об уборке ($_days $(wm_plural "$_days" день дня дней))" \
-                "/investigate или fraim clean"
+                "$(tp "$_days" wm_inv_no_findings slug="$_slug")" \
+                "$(t wm_act_inv_no_findings)"
             continue
         fi
         _days=$(wm_days_since "$(wm_mtime "$_f")")
         if verb_section_filled "$_f" '### DIAGNOSIS' || verb_section_filled "$_f" '### DEAD-END'; then
-            wm_add investigation attention "расследование «$_slug» закончено и не заархивировано" \
+            wm_add investigation attention "$(t wm_inv_done slug="$_slug")" \
                 "fraim investigate-seal $_slug"
         elif [ "$_days" -ge 7 ]; then
             wm_add investigation attention \
-                "расследование «$_slug» открыто $_days $(wm_plural "$_days" день дня дней) без исхода" "/investigate"
+                "$(tp "$_days" wm_inv_stale slug="$_slug")" "/investigate"
         else
-            wm_add investigation info "расследование «$_slug» в работе" ""
+            wm_add investigation info "$(t wm_inv_active slug="$_slug")" ""
         fi
     done
     return 0
@@ -129,11 +129,11 @@ wm_check_investigations() {
 wm_check_git() {
     _root=$1
     if ! command -v git >/dev/null 2>&1; then
-        wm_add git attention "git не установлен — точек сохранения нет" "установи git"
+        wm_add git attention "$(t wm_git_missing)" "$(t wm_act_install_git)"
         return 0
     fi
     wm_is_git "$_root" ||
-        wm_add git attention "нет репозитория — точек сохранения нет" "fraim scaffold"
+        wm_add git attention "$(t wm_git_no_repo)" "fraim scaffold"
     return 0
 }
 
@@ -155,7 +155,7 @@ wm_check_remote() {
     wm_is_git "$_root" || return 0
 
     if [ -z "$(git -C "$_root" remote 2>/dev/null)" ]; then
-        wm_add remote info "нет удалённой копии — проект живёт только на этой машине" "fraim publish"
+        wm_add remote info "$(t wm_remote_none)" "fraim publish"
         return 0
     fi
 
@@ -170,7 +170,7 @@ wm_check_remote() {
     # an unfinished setup does not become normal because the project has only two save points.
     if [ -n "$(git -C "$_root" rev-parse -q --verify HEAD 2>/dev/null)" ] &&
        [ -z "$(git -C "$_root" for-each-ref --count=1 refs/remotes 2>/dev/null)" ]; then
-        wm_add remote attention "адрес копии прописан, но туда ни разу ничего не уезжало" "fraim publish"
+        wm_add remote attention "$(t wm_remote_never)" "fraim publish"
         return 0
     fi
 
@@ -181,12 +181,11 @@ wm_check_remote() {
     [ "$_n" -gt 0 ] || return 0
 
     _max=$(config_get unpushed_threshold "$_root")
-    _w=$(wm_plural "$_n" "точка сохранения" "точки сохранения" "точек сохранения")
-    _v=$(wm_plural "$_n" "не уехала" "не уехали" "не уехали")
+    _w=$(tp "$_n" wm_remote_unpushed)
     if [ "$_n" -ge "$_max" ]; then
-        wm_add remote attention "$_n $_w $_v в удалённую копию" "fraim publish"
+        wm_add remote attention "$_w" "fraim publish"
     else
-        wm_add remote info "$_n $_w $_v в удалённую копию" ""
+        wm_add remote info "$_w" ""
     fi
     return 0
 }
@@ -219,7 +218,7 @@ wm_check_dirty() {
     _n=$((_n + _nt))
     [ "$_n" -gt 0 ] || return 0
     wm_add dirty attention \
-        "$_n $(wm_plural "$_n" файл файла файлов) фундамента и ai/ изменены после последней точки сохранения" \
+        "$(tp "$_n" wm_dirty)" \
         "fraim commit"
     return 0
 }
@@ -261,7 +260,7 @@ wm_check_worktrees() {
 
     [ "$_wt_n" -gt 0 ] || return 0
     wm_add worktree info \
-        "$_wt_n $(wm_plural "$_wt_n" "параллельный чекаут" "параллельных чекаута" "параллельных чекаутов"): $_wt_names" \
+        "$(tp "$_wt_n" wm_worktrees names="$_wt_names")" \
         "fraim fleet"
     return 0
 }
@@ -290,7 +289,7 @@ wm_check_ade() {
         [ "$(printf '%s' "$_ade_a" | cut -f1)" = 1 ] || continue
         [ "$(printf '%s' "$_ade_a" | cut -f2)" = 0 ] || continue
         wm_add ade-automation info \
-            "$_ade_label: по этому проекту работает агент по расписанию" "fraim fleet"
+            "$(t wm_ade label="$_ade_label")" "fraim fleet"
     done
     IFS=$_ade_old_ifs
     return 0
@@ -307,7 +306,7 @@ wm_scan_tasks() {
 wm_check_queue() {
     _n=$(printf '%s' "$WM_TASKS" | grep -c . || true)
     if [ "$_n" -gt 0 ]; then
-        wm_add queue info "$_n $(wm_plural "$_n" "открытая задача" "открытые задачи" "открытых задач") на доске" "fraim tasks"
+        wm_add queue info "$(tp "$_n" wm_queue)" "fraim tasks"
     fi
     return 0
 }
@@ -351,7 +350,7 @@ wm_check_shape() {
     # a cloud session or a second machine then opens the foundation with no reason to read it.
     for _f in AGENTS.md CLAUDE.md; do
         if [ ! -f "$_root/$_f" ]; then _missing="$_missing $_f"
-        elif ! grep -qF "$CTX_BEGIN" "$_root/$_f" 2>/dev/null; then _missing="$_missing $_f(без блока)"
+        elif ! grep -qF "$CTX_BEGIN" "$_root/$_f" 2>/dev/null; then _missing="$_missing $_f$(t wm_shape_no_block)"
         fi
     done
     # Sections that CODE reads. Known Pitfalls is where `fraim pitfall` writes and what
@@ -362,9 +361,9 @@ wm_check_shape() {
     fi
     # Tasks in the old format — a folder holding a plan. They are still somebody's intent,
     # so they are carried over, not dropped: `fraim upgrade` turns each into a card.
-    [ -n "$(tasks_legacy "$_root")" ] && _missing="$_missing ai/tasks:старый-формат"
+    [ -n "$(tasks_legacy "$_root")" ] && _missing="$_missing ai/tasks:$(t wm_shape_old_tasks)"
     [ -n "$_missing" ] &&
-        wm_add shape attention "фундамент отстал от стандарта:$_missing" "fraim upgrade"
+        wm_add shape attention "$(t wm_shape missing="$_missing")" "fraim upgrade"
     return 0
 }
 
@@ -375,7 +374,7 @@ wm_check_foundation() {
     _root=$1
     _arch="$_root/ARCHITECTURE.md"
     if [ ! -f "$_arch" ]; then
-        wm_add foundation attention "нет ARCHITECTURE.md — фундамент не заложен" "/onboard"
+        wm_add foundation attention "$(t wm_no_arch)" "/onboard"
         return 0
     fi
     # A scaffolded file is not a filled one. Without this distinction an empty skeleton
@@ -388,8 +387,8 @@ wm_check_foundation() {
     if [ -n "$_stubs" ]; then
         _n=$(printf '%s' "$_stubs" | wc -w | tr -d ' ')
         wm_add foundation attention \
-            "скелет развёрнут, но не заполнен: $_n $(wm_plural "$_n" файл файла файлов) —$_stubs" \
-            "/bootstrap или /onboard"
+            "$(tp "$_n" wm_stubs files="$_stubs")" \
+            "$(t wm_act_bootstrap)"
         return 0
     fi
     wm_is_git "$_root" || return 0
@@ -415,8 +414,7 @@ wm_check_foundation() {
 
     _max=$(config_get foundation_lag_commits "$_root")
     if [ "$_n" -ge "$_max" ]; then
-        _w=$(wm_plural "$_n" коммит коммита коммитов)
-        wm_add foundation attention "$_n $_w кода с последнего обновления ARCHITECTURE.md" "/prune"
+        wm_add foundation attention "$(tp "$_n" wm_arch_lag)" "/prune"
     fi
     return 0
 }
@@ -453,9 +451,8 @@ wm_check_lessons() {
 
     _max=$(config_get lessons_lag_commits "$_root")
     if [ "$_n" -ge "$_max" ]; then
-        _w=$(wm_plural "$_n" коммит коммита коммитов)
         wm_add lessons attention \
-            "$_n $_w кода с последнего пополнения CONVENTIONS.md — грабли никуда не записывались" "/prune"
+            "$(tp "$_n" wm_lessons_lag)" "/prune"
     fi
     return 0
 }
@@ -472,7 +469,7 @@ wm_check_lessons() {
 wm_check_update() {
     [ "$(update_cache_field 4)" = behind ] || return 0
     wm_add system-update info \
-        "новая версия fraim на хосте ($(update_cache_field 3 | cut -c1-7))" "fraim update"
+        "$(t wm_update rev="$(update_cache_field 3 | cut -c1-7)")" "fraim update"
     return 0
 }
 
@@ -508,8 +505,8 @@ wm_check_language() {
     done
     [ "$_wl_n" -gt 0 ] || return 0
     wm_add language attention \
-        "$_wl_n $(wm_plural "$_wl_n" фрагмент фрагмента фрагментов) фундамента не по-английски: $_wl_files" \
-        "/prune — перевести на английский"
+        "$(tp "$_wl_n" wm_language files="$_wl_files")" \
+        "$(t wm_act_language)"
     return 0
 }
 
@@ -542,7 +539,7 @@ wm_report_human() {
     _root=$1
     _name=$(basename -- "$_root")
     if [ -z "$WM_FINDINGS" ]; then
-        ok "$_name — всё чисто"
+        ok "$(t wm_all_clean name="$_name")"
         return
     fi
     printf '%s%s%s\n' "$C_BLD" "$_name" "$C_OFF"
