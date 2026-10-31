@@ -1,0 +1,27 @@
+# The foundation verbs: find, arch, and the brief's own failure.
+M_fnd_err_tmp='无法创建临时文件'
+M_fnd_err_find_keys='需要关键词：fraim find KEY [KEY…]——2–4 个，中英文都要写，英文用词干（task 任务）'
+M_fnd_find_nothing='没有找到：{keys}——试试其他词形或另一种语言'
+M_fnd_find_footer='—— 找到条目：{count} · 关键词：{keys} ——'
+
+M_fnd_err_in_file='--in 需要一个文件'
+M_fnd_err_unknown_flag='未知选项：{flag}'
+M_fnd_err_extra_arg='多余的参数：{arg}'
+M_fnd_err_decisions_top='DECISIONS.md 只能在顶部写入：fraim decide'
+M_fnd_err_arch_files='fraim arch 只编辑 ARCHITECTURE.md、CONVENTIONS.md 或 STACK.md'
+M_fnd_err_need_section='需要章节名：fraim arch "Components & responsibilities" <<'\''EOF'\'' … EOF'
+M_fnd_err_pitfall_line='经验教训以一行的形式添加：fraim pitfall "…"'
+M_fnd_err_no_file='没有 {file}'
+M_fnd_err_body_stdin='章节正文从标准输入传入：fraim arch "{section}" <<'\''EOF'\'' … EOF'
+M_fnd_err_body_empty='章节正文为空'
+M_fnd_err_body_headings='章节正文里不能有标题——每次调用只写一个章节'
+M_fnd_err_section_exists='{file} 中已有章节“{section}”——不加 --new 时会替换它'
+M_fnd_err_no_section='{file} 中没有章节“{section}”。现有章节：
+{list}
+新章节请加 --new 选项'
+M_fnd_err_section_dup='章节“{section}”在 {file} 中出现了 {count} 次——请手动修正一次文件'
+M_fnd_err_write='无法写入 {file}'
+M_fnd_err_headings_touched='这次编辑碰到了 {file} 的其他标题——什么也没有写入'
+M_fnd_arch_added='{file} ← 已添加章节“{section}”'
+M_fnd_arch_replaced='{file} ← 已替换章节“{section}”'
+M_fnd_arch_unsaved='尚未保存：把 {file} 加进你的 fraim commit'
