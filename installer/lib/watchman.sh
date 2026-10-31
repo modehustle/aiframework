@@ -36,24 +36,12 @@ wm_code_commits_since() {
     fi
 }
 
-# Russian plurals: "hotfix" takes three forms — after 1, after 2 and after 5. The verdict is read
-# daily, so getting this wrong is a small papercut repeated forever.
-wm_plural() {
-    _n=$1; _one=$2; _few=$3; _many=$4
-    _mod100=$(( _n % 100 ))
-    if [ "$_mod100" -ge 11 ] && [ "$_mod100" -le 14 ]; then printf '%s\n' "$_many"; return; fi
-    case $(( _n % 10 )) in
-        1) printf '%s\n' "$_one" ;;
-        2|3|4) printf '%s\n' "$_few" ;;
-        *) printf '%s\n' "$_many" ;;
-    esac
-}
 
 # Pad to a column width in CHARACTERS. printf's %-Ns counts bytes, and every
 # Cyrillic character is two of them, so byte padding shears the columns apart.
 wm_pad() {
     _s=$1; _w=$2
-    _len=$(str_len "$_s")
+    _len=$(str_width "$_s")
     printf '%s' "$_s"
     while [ "$_len" -lt "$_w" ]; do printf ' '; _len=$((_len + 1)); done
 }

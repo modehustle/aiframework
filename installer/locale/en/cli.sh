@@ -2,8 +2,8 @@
 M_cli_usage_head='fraim — the operational layer for agent-driven projects
 
 You type these
-  fraim                     the menu (in a terminal) — same as fraim menu
-  fraim menu                a screen with scan, update, doctor, registry
+  fraim                     the fraim screen (in a terminal) — same as fraim menu
+  fraim menu                project, board, backlog, decisions, settings and language on one screen
   fraim status [PATH]       what is going on in the project (--json for machines)
   fraim fleet [PATH]        where the work lives: project checkouts and the fleet runtime
   fraim undo [HASH]         list the save points / put things back as they were

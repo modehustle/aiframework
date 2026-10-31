@@ -17,12 +17,17 @@
   helpers called from a verb prefix their variables (`_md_`, `_ac_`) — POSIX sh has no locals.
 - Language: the product is English inside — code, comments, procedures, data formats (card
   headings), everything the CLI writes into a project (cards, journals, briefs, commit
-  messages) and everything addressed to the agent (brief, skills, AGENTS.md block). Russian is
-  the operator's locale only: what the CLI says to the human (messages, refusals, the
-  watchman's verdict, `fraim help`). It is still hardcoded in the code and will move into a
-  message catalog (`locale/ru`) so other languages can be added. Project docs (README, MODES,
-  PRINCIPLES, AUDIT*, DESIGN*, BACKLOG, installer/*.md) may stay Russian during development
-  and are translated before a public release. The human talks to the agent in any language.
+  messages) and everything addressed to the agent (brief, skills, AGENTS.md block). What the
+  CLI says to the HUMAN (messages, refusals, the watchman's verdict, `fraim help`, the screen)
+  comes from the message catalog: `$(t key name=value)` and `$(tp N key)` for plurals, the text
+  in `installer/locale/en/<module>.sh` and its translations in `installer/locale/<lang>/`. Never
+  hardcode an operator message — a test refuses Cyrillic in the code outside known data. A new
+  key goes into `en` and every shipped language with the same `{placeholders}`; a key name
+  must not end in `_one`, `_few`, `_many` or `_other` unless it is a plural form. Keys chosen at
+  run time (`t "cfg_label_$k"`) are not seen by the key rail: check them by hand. Project docs
+  (README, MODES, PRINCIPLES, AUDIT*, DESIGN*, BACKLOG, installer/*.md) may stay Russian during
+  development and are translated before a public release. The human talks to the agent in any
+  language.
   The write verbs enforce it (`lang.sh`): text they would put into a project — a decision,
   a pitfall, a map section, a card, a backlog question, a result line, a commit message,
   findings — is refused when it is not English; quoted words are not measured. `fraim

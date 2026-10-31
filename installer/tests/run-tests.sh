@@ -168,6 +168,16 @@ LMISS=
 for k in $USEDK; do printf '%s\n' "$ENK" | grep -qx "$k" || LMISS="$LMISS $k"; done
 check "every message the code asks for is in the English catalog" "${LMISS:-clean}" "clean"
 
+# No operator message is left in the code: the only Cyrillic there is data the CLI reads
+# (old Russian card headings and journal lines it still recognises, a two-language search
+# example). A new hardcoded message lands in this list.
+CYR=$(LC_ALL=C.UTF-8 grep -nP '[\x{0400}-\x{04FF}]' "$REPO/installer/bin/fraim" "$REPO"/installer/lib/*.sh 2>/dev/null |
+      grep -v 'кэш' | grep -v -- '- База: ' | grep -v 'Decision|Решение' |
+      grep -v 'Что и зачем\|Готово, когда\|Ссылки\$\|Почему важно' | sed "s|$REPO/||" | head -3)
+check "no operator message is hardcoded in the code" "${CYR:-clean}" "clean"
+check "yes in the operator's language" "$(FRAIM_LANG=ru sh -c '. "'"$REPO"'/installer/lib/core.sh"; i18n_yes да && echo y')" "y"
+check "no is not yes" "$(FRAIM_LANG=ru sh -c '. "'"$REPO"'/installer/lib/core.sh"; i18n_yes нет || echo n')" "n"
+
 # The language choice.
 LCORE='. "'"$REPO"'/installer/lib/core.sh"'
 check "FRAIM_LANG chooses" "$(FRAIM_LANG=en sh -c "$LCORE"'; printf %s "$I18N_LANG"')" "en"

@@ -3,6 +3,74 @@
 > Newest on top. One entry per decision. Never rewrite history — supersede with a new
 > entry, or relocate stale entries to `ai/archive/decisions_log.md` via `/prune`.
 
+## 2026-10-31 — fraim on a terminal is a full-screen program
+
+Context: the owner likes how OpenCode looks — a program of its own in the terminal — and chose
+variant B of the proposal: a full-screen interface written in POSIX shell, over a line menu tidied
+up (A) or a separate binary (C).
+Decision: (1) A bare `fraim` (or `fraim menu`) on a terminal takes the alternate screen and gives it
+back on exit, with the terminal's modes restored on every way out. (2) Sections on the left —
+project (the watchman's verdict, board, backlog, recent decisions), board, backlog, decisions,
+projects, settings, maintenance — the section's content on the right, key hints at the bottom; a
+command palette (ctrl+p or /) finds any section, action or setting by a few letters,
+case-insensitive in the operator's own locale; list dialogs with the same filter choose the language
+and enum values; `?` shows the keys. (3) Settings are edited in place: Enter toggles on/off, opens a
+choice or asks for a value on the bottom line; `d` returns a key to its default; each row says where
+the value is written. General settings and models are written to the machine, the rest to the
+project when there is one. (4) On the first start, when no language was chosen, the screen asks
+once. (5) Long actions (scan, cleanup, publish, update, upgrade, doctor, the roles picker) leave the
+screen, run the ordinary command with the whole terminal, guarded against its exit code, and come
+back. (6) One awk process composes a frame and fits every line by display width (CJK two columns,
+escapes none, too long → «…»); section bodies are cached and rebuilt only after an action. (7) A
+`theme` setting: `fraim` (256 colours with a fallback to eight) or `mono`; `NO_COLOR` gives mono.
+(8) Under a pipe nothing changes: the usage is printed, no key is awaited.
+Alternatives: a separate binary (Go and Bubble Tea, or TypeScript and OpenTUI) rejected for the
+first release — a second language, cross-compiled binaries and a download in the installer; it stays
+possible later over the same `--json` data when the screen starts launching and watching the fleet;
+mouse support rejected for now — parsing SGR mouse reports in shell for little gain; live text input
+in the palette done byte by byte, typed values through the terminal's own line editing.
+Consequences: the old menu's nine items are gone; its actions live under Maintenance and in the
+palette. A frame costs a few processes; on a slow machine a held arrow key lags.
+
+## 2026-10-31 — The operator's messages live in a catalog; the language is the operator's choice
+
+Context: the owner, preparing the first release, approved localization with the eight most common
+languages of developers (en, ru, es, pt-BR, de, fr, zh-CN, ja) and a language picker. Several
+hundred Russian operator strings were hardcoded across the CLI (the 2026-10-27 decision left them
+for this step), so no second language was possible.
+Decision: (1) `installer/locale/en/<module>.sh` is the source catalog,
+`installer/locale/<lang>/<module>.sh` a translation, plain shell `M_<key>='text'`;
+`installer/locale/languages` lists what the picker offers (code, native name, status source /
+reviewed / beta) and the tests hold it in step with the directories. (2) `core.sh` loads English,
+then the chosen language over it, once at start; `t KEY name=value` fills `{name}` placeholders
+without a fork (named, because dash's printf has no `%1$s` and word order differs between
+languages); `tp N KEY` picks a plural form by a per-language rule (ru, uk, pl: one/few/many; fr,
+pt-BR: 0 and 1 are one; zh-CN, ja, ko, tr: one form; the rest one/other). A missing translation
+shows English, a missing key shows the key. (3) The language: `FRAIM_LANG`, then `lang` in
+`~/.fraim/config` (a machine setting — a project travels to other people; `config set` writes
+general settings to the machine whatever the flag), then `LC_ALL` / `LC_MESSAGES` / `LANG`, then
+English; `auto` means «follow the system»; an explicit language we do not ship gives English, not
+the system's. (4) `str_width` counts CJK as two columns. (5) Every module's operator messages moved
+into the catalog; Russian left in the code is only data the CLI reads (old card headings, the old
+journal line, a two-language search example), and a test refuses anything else. Yes/no prompts
+accept the catalog's own answer words (`i18n_yes`). (6) Moving the strings found Russian that was
+going to the agent or into a project; it is English now: the build journal's acceptance notes and
+its project-check line (`build_master_check` returns `none`/`cannot`), the Orca run objective, the
+publish briefs' finding descriptions (`PUB_STOP` holds a finding kind, the operator sees the
+catalog's words), the `.gitignore` comment written by scaffold. (7) The test suite runs with
+`FRAIM_LANG=ru`, so the existing assertions keep reading the Russian catalog byte for byte; rails
+check that every catalog parses, that translations carry no extra keys and keep the English
+placeholders, and that every literal key the code asks for exists in English.
+Alternatives: gettext rejected — not installed everywhere (macOS), a build step for catalogs, and a
+dependency for a POSIX-shell product; a TSV catalog read per message rejected — a fork per message,
+felt on every redraw of the screen; positional printf arguments rejected — not in dash; rewriting
+the tests' assertions in English rejected — hundreds of edits with no gain, the Russian catalog is
+as good a fixture; a per-project language rejected — the operator's language is a person's, not a
+repository's.
+Consequences: a new operator message is a catalog key in every shipped language. Keys chosen at run
+time are not seen by the key rail. Machine translations ship marked beta until a native speaker
+reads them.
+
 ## 2026-10-31 — Settings: one key per question, sections, retired names still read
 
 Context: the owner, preparing the first release, found the settings confusing. `fraim config` was a

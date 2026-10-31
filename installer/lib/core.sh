@@ -233,6 +233,15 @@ t() {
     printf '%s' "$_t_s"
 }
 
+# Did the operator answer yes? «y» and «yes» always count; each catalog adds its own
+# words (core_yes_words, space-separated) — "j ja" in German, "s sí" in Spanish.
+i18n_yes() {
+    for _iy_w in y Y yes Yes YES $(t core_yes_words); do
+        [ "$1" = "$_iy_w" ] && return 0
+    done
+    return 1
+}
+
 # The plural category of N in the current language: one | few | many | other.
 i18n_plural() {
     _ip_n=$1

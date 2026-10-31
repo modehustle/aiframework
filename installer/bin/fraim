@@ -797,18 +797,16 @@ cmd_publish() {
                 printf '  %s ' "$(t cli_pub_ask)"
             fi
             read -r _ans || _ans=
-            case $_ans in
-                y|Y|д|Д|yes|да) ;;
-                *)
-                    # "No" specifically on the findings question means "I want it, but clean",
-                    # and the answer to that is a task for the agent, not the one word "cancelled".
-                    if [ "$_stops" -gt 0 ]; then
-                        publish_cancel_findings "$_root"
-                    else
-                        say "  $(t cli_cancelled)"
-                    fi
-                    exit 0 ;;
-            esac
+            if ! i18n_yes "$_ans"; then
+                # "No" specifically on the findings question means "I want it, but clean",
+                # and the answer to that is a task for the agent, not the one word "cancelled".
+                if [ "$_stops" -gt 0 ]; then
+                    publish_cancel_findings "$_root"
+                else
+                    say "  $(t cli_cancelled)"
+                fi
+                exit 0
+            fi
         else
             dim "  $(t cli_pub_plan_only)"
             exit 0
@@ -841,7 +839,7 @@ cmd_clean() {
         if [ -t 0 ]; then
             printf '  %s ' "$(t cli_clean_ask)"
             read -r _ans || _ans=
-            case $_ans in y|Y|д|Д|yes|да) ;; *) say "  $(t cli_cancelled)"; return 0 ;; esac
+            i18n_yes "$_ans" || { say "  $(t cli_cancelled)"; return 0; }
         else
             dim "  $(t cli_clean_plan_only)"
             return 0
@@ -852,14 +850,6 @@ cmd_clean() {
 
 # --- config -----------------------------------------------------------------
 config_section_title() { t "cfg_sec_$1"; }
-
-# Keys of one family set in either file, one per line, unique.
-config_family_keys() {
-    _cfk_root=$2
-    { [ -n "$_cfk_root" ] && cat "$(config_project_file "$_cfk_root")" 2>/dev/null
-      cat "$(config_machine_file)" 2>/dev/null; } |
-        sed -n "s/^[[:space:]]*\($1[A-Za-z0-9_-]*\)[[:space:]]*=.*/\1/p" | awk '!seen[$0]++'
-}
 
 config_show_key() {
     _csk_v=$(config_get "$1" "$2")
