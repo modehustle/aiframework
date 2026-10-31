@@ -38,11 +38,13 @@ pub_count() { printf '%s' "$1" | grep -c '[^[:space:]]' 2>/dev/null || true; }
 
 # --- providers --------------------------------------------------------------
 # key|label|cli|creates the repository itself
+# The url row's label is words, not a brand: it comes from the catalog (pub_prov_url),
+# and `-` here only holds the column.
 publish_providers() {
     cat <<'TBL'
 github|GitHub|gh|yes
 gitlab|GitLab|glab|yes
-url|Другой хост (по ссылке)||no
+url|-||no
 TBL
 }
 
@@ -83,20 +85,20 @@ publish_install_hint() {
         gh)
             case $(publish_os) in
                 macos)  dim "    brew install gh" ;;
-                debian) dim "    sudo apt install gh   (если пакета нет: https://cli.github.com)" ;;
+                debian) dim "    sudo apt install gh   ($(t pub_hint_no_pkg url=https://cli.github.com))" ;;
                 fedora) dim "    sudo dnf install gh" ;;
                 arch)   dim "    sudo pacman -S github-cli" ;;
-                *)      dim "    https://cli.github.com — установка под твою систему" ;;
+                *)      dim "    https://cli.github.com — $(t pub_hint_install_page)" ;;
             esac
-            dim "    потом один раз: gh auth login"
+            dim "    $(t pub_hint_then_login cmd='gh auth login')"
             ;;
         glab)
             case $(publish_os) in
                 macos)  dim "    brew install glab" ;;
                 arch)   dim "    sudo pacman -S glab" ;;
-                *)      dim "    https://gitlab.com/gitlab-org/cli — установка под твою систему" ;;
+                *)      dim "    https://gitlab.com/gitlab-org/cli — $(t pub_hint_install_page)" ;;
             esac
-            dim "    потом один раз: glab auth login"
+            dim "    $(t pub_hint_then_login cmd='glab auth login')"
             ;;
     esac
     return 0
@@ -126,28 +128,29 @@ publish_cli_account() {
 # The dependency screen. Answers "what am I missing" for every provider at once, so the
 # user picks with the answer in front of them instead of discovering it after choosing.
 publish_deps_report() {
-    say "${C_BLD}Чем можно опубликовать${C_OFF}"
+    say "${C_BLD}$(t pub_deps_title)${C_OFF}"
     if command -v git >/dev/null 2>&1; then
         printf '  %s✓%s %s %s\n' "$C_GRN" "$C_OFF" "$(wm_pad git 26)" "$(git --version 2>/dev/null)"
     else
-        printf '  %s✗%s %s %s\n' "$C_RED" "$C_OFF" "$(wm_pad git 26)" "не установлен — без него ничего не поедет"
+        printf '  %s✗%s %s %s\n' "$C_RED" "$C_OFF" "$(wm_pad git 26)" "$(t pub_deps_git_missing)"
         publish_install_hint git
     fi
     publish_providers | while IFS='|' read -r _pub_k _pub_lbl _pub_cli _pub_creates; do
         [ -n "$_pub_k" ] || continue
+        [ "$_pub_k" != url ] || _pub_lbl=$(t pub_prov_url)
         if [ -z "$_pub_cli" ]; then
             printf '  %s·%s %s %s\n' "$C_DIM" "$C_OFF" "$(wm_pad "$_pub_lbl" 26)" \
-                "ничего ставить не нужно: --url ССЫЛКА"
+                "$(t pub_deps_url_free)"
             continue
         fi
         publish_cli_state "$_pub_cli" && _pub_st=0 || _pub_st=$?
         case $_pub_st in
             0) printf '  %s✓%s %s %s\n' "$C_GRN" "$C_OFF" "$(wm_pad "$_pub_lbl ($_pub_cli)" 26)" \
-                   "готов$(_pub_acc=$(publish_cli_account "$_pub_cli"); [ -n "$_pub_acc" ] && printf ', вход: %s' "$_pub_acc")" ;;
-            1) printf '  %s·%s %s %s\n' "$C_DIM" "$C_OFF" "$(wm_pad "$_pub_lbl ($_pub_cli)" 26)" "не установлен"
+                   "$(t pub_deps_ready)$(_pub_acc=$(publish_cli_account "$_pub_cli"); [ -n "$_pub_acc" ] && t pub_deps_account account="$_pub_acc")" ;;
+            1) printf '  %s·%s %s %s\n' "$C_DIM" "$C_OFF" "$(wm_pad "$_pub_lbl ($_pub_cli)" 26)" "$(t pub_deps_not_installed)"
                publish_install_hint "$_pub_cli" ;;
             2) printf '  %s!%s %s %s\n' "$C_YEL" "$C_OFF" "$(wm_pad "$_pub_lbl ($_pub_cli)" 26)" \
-                   "установлен, вход не сделан"
+                   "$(t pub_deps_no_login)"
                dim "    $_pub_cli auth login" ;;
         esac
     done
@@ -190,16 +193,20 @@ publish_history_paths() {
 #
 # Matched secret VALUES are never printed. The report gives path and line number; the
 # value stays where it is, out of the terminal, out of scrollback, out of any log.
+#
+# A stop records a KIND (env, ssh, aws…), not words: the same finding is said to the human in
+# their language (pub_find_<kind>) and to the agent, in the brief, in English
+# (publish_finding_en). A warning is only ever shown to the human, so it records the words.
 publish_scan() {
     _pub_root=$1
     PUB_STOP=; PUB_WARN=
 
     verb_is_git "$_pub_root" || {
-        pub_stop_add "-" "здесь нет репозитория — отправлять нечего"
+        pub_stop_add "-" no_repo
         return 0
     }
     [ -n "$(publish_head "$_pub_root")" ] || {
-        pub_stop_add "-" "нет ни одной точки сохранения — отправлять нечего"
+        pub_stop_add "-" no_commits
         return 0
     }
 
@@ -210,38 +217,34 @@ publish_scan() {
     _pub_paths_real=$(printf '%s\n' "$_pub_paths" |
         grep -Ev '\.(example|sample|template|dist)$' || true)
 
-    publish_scan_names "$_pub_paths_real" '(^|/)\.env($|\.)' \
-        "файл окружения — в нём живут пароли и ключи"
-    publish_scan_names "$_pub_paths_real" '(^|/)id_(rsa|dsa|ecdsa|ed25519)$|(^|/)\.ssh/' \
-        "приватный ssh-ключ"
+    publish_scan_names "$_pub_paths_real" '(^|/)\.env($|\.)' env
+    publish_scan_names "$_pub_paths_real" '(^|/)id_(rsa|dsa|ecdsa|ed25519)$|(^|/)\.ssh/' ssh
     # .asc and .gpg are not included: release signatures and sops/git-crypt files live in
     # repositories legitimately and encrypted, and a false stop teaches people to walk past stops.
-    publish_scan_names "$_pub_paths_real" '\.(pem|key|p12|pfx|jks|keystore|ppk)$' \
-        "ключ или сертификат"
-    publish_scan_names "$_pub_paths_real" '(^|/)\.(npmrc|pypirc|netrc|htpasswd)$' \
-        "файл с токеном доступа"
+    publish_scan_names "$_pub_paths_real" '\.(pem|key|p12|pfx|jks|keystore|ppk)$' keyfile
+    publish_scan_names "$_pub_paths_real" '(^|/)\.(npmrc|pypirc|netrc|htpasswd)$' tokenfile
     publish_scan_names "$_pub_paths_real" '(^|/)(credentials|secrets?)\.(json|ya?ml|toml|ini)$|(^|/)service[-_]account[^/]*\.json$' \
-        "файл учётных данных"
+        credfile
 
     # Contents, current snapshot. -I skips binaries; the pattern set is deliberately the
     # shape of issued credentials (prefix + length), not the word "password", because a
     # scanner that fires on every README is a scanner people learn to wave through.
-    publish_scan_content "$_pub_root" '-----BEGIN [A-Z ]*PRIVATE KEY-----' "приватный ключ прямо в файле"
-    publish_scan_content "$_pub_root" 'AKIA[0-9A-Z]{16}' "ключ AWS"
-    publish_scan_content "$_pub_root" '(gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,})' "токен GitHub"
-    publish_scan_content "$_pub_root" 'glpat-[A-Za-z0-9_-]{16,}' "токен GitLab"
-    publish_scan_content "$_pub_root" 'sk-(ant-)?[A-Za-z0-9_-]{24,}' "ключ API (OpenAI / Anthropic)"
-    publish_scan_content "$_pub_root" 'xox[baprs]-[A-Za-z0-9-]{10,}' "токен Slack"
-    publish_scan_content "$_pub_root" 'AIza[0-9A-Za-z_-]{35}' "ключ Google"
+    publish_scan_content "$_pub_root" '-----BEGIN [A-Z ]*PRIVATE KEY-----' pem
+    publish_scan_content "$_pub_root" 'AKIA[0-9A-Z]{16}' aws
+    publish_scan_content "$_pub_root" '(gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,})' github
+    publish_scan_content "$_pub_root" 'glpat-[A-Za-z0-9_-]{16,}' gitlab
+    publish_scan_content "$_pub_root" 'sk-(ant-)?[A-Za-z0-9_-]{24,}' api
+    publish_scan_content "$_pub_root" 'xox[baprs]-[A-Za-z0-9-]{10,}' slack
+    publish_scan_content "$_pub_root" 'AIza[0-9A-Za-z_-]{35}' google
 
     # Below the line: visible in the plan, never blocking. Each of these is legitimate in
     # somebody's project, and a stop that is wrong half the time teaches the user to pass
     # --force by reflex — which is how the real stop above stops working.
     publish_scan_warn_names "$_pub_paths" '(^|/)(node_modules|venv|\.venv|__pycache__|vendor)/' \
-        "воспроизводимые зависимости в истории — клон будет тяжёлым"
+        "$(t pub_warn_deps)"
     # No .sql: migrations are code, and they sit in everyone's history.
     publish_scan_warn_names "$_pub_paths" '\.(sqlite3?|db|dump|tfstate)$' \
-        "похоже на данные, а не на код — проверь, что там нет живых записей"
+        "$(t pub_warn_data)"
 
     publish_scan_size "$_pub_root"
     publish_scan_worktree "$_pub_root"
@@ -303,7 +306,7 @@ publish_scan_size() {
     _pub_ifs=$IFS; IFS='
 '
     for _pub_line in $_pub_big; do
-        pub_warn_add "${_pub_line#*	}" "$(printf '%s МБ в истории' "${_pub_line%%	*}")"
+        pub_warn_add "${_pub_line#*	}" "$(t pub_warn_size mb="${_pub_line%%	*}")"
     done
     IFS=$_pub_ifs
     return 0
@@ -317,7 +320,7 @@ publish_scan_worktree() {
         [ -f "$_pub_root/$_pub_f" ] || continue
         git -C "$_pub_root" check-ignore -q "$_pub_f" 2>/dev/null && continue
         git -C "$_pub_root" ls-files --error-unmatch "$_pub_f" >/dev/null 2>&1 && continue
-        pub_warn_add "$_pub_f" "лежит в папке и не закрыт .gitignore — закрой (fraim upgrade)"
+        pub_warn_add "$_pub_f" "$(t pub_warn_unignored)"
     done
     return 0
 }
@@ -326,17 +329,17 @@ publish_scan_show() {
     _pub_ns=$(pub_count "$PUB_STOP")
     _pub_nw=$(pub_count "$PUB_WARN")
     if [ "$_pub_ns" -eq 0 ] && [ "$_pub_nw" -eq 0 ]; then
-        ok "проверка безопасности: ничего похожего на секреты и данные не нашлось"
-        dim "  имена — по всей истории, содержимое — в текущем снимке"
+        ok "$(t pub_scan_clean)"
+        dim "  $(t pub_scan_scope)"
         return 0
     fi
-    say "${C_BLD}Проверка безопасности${C_OFF}"
+    say "${C_BLD}$(t pub_scan_title)${C_OFF}"
     _pub_ifs=$IFS; IFS='
 '
     for _pub_line in $PUB_STOP; do
         [ -n "$_pub_line" ] || continue
         printf '  %s✗%s %s %s— %s%s\n' "$C_RED" "$C_OFF" "${_pub_line%%	*}" \
-            "$C_DIM" "${_pub_line#*	}" "$C_OFF"
+            "$C_DIM" "$(t "pub_find_${_pub_line#*	}")" "$C_OFF"
     done
     for _pub_line in $PUB_WARN; do
         [ -n "$_pub_line" ] || continue
@@ -344,8 +347,29 @@ publish_scan_show() {
             "$C_DIM" "${_pub_line#*	}" "$C_OFF"
     done
     IFS=$_pub_ifs
-    dim "  имена — по всей истории, содержимое — в текущем снимке; значения ключей не печатаются"
+    dim "  $(t pub_scan_scope_values)"
     return 0
+}
+
+# The agent's words for a stop kind — the brief is English whatever the operator's language.
+publish_finding_en() {
+    case $1 in
+        no_repo)    printf 'there is no repository here — nothing to send' ;;
+        no_commits) printf 'there is not a single save point — nothing to send' ;;
+        env)        printf 'environment file — passwords and keys live in it' ;;
+        ssh)        printf 'private ssh key' ;;
+        keyfile)    printf 'key or certificate' ;;
+        tokenfile)  printf 'file with an access token' ;;
+        credfile)   printf 'credentials file' ;;
+        pem)        printf 'private key right in the file' ;;
+        aws)        printf 'AWS key' ;;
+        github)     printf 'GitHub token' ;;
+        gitlab)     printf 'GitLab token' ;;
+        api)        printf 'API key (OpenAI / Anthropic)' ;;
+        slack)      printf 'Slack token' ;;
+        google)     printf 'Google key' ;;
+        *)          printf '%s' "$1" ;;
+    esac
 }
 
 # --- naming -----------------------------------------------------------------
@@ -363,9 +387,9 @@ publish_repo_name() {
 
 publish_vis_label() {
     case $1 in
-        private) printf 'приватный — видишь только ты и те, кого позовёшь\n' ;;
-        public)  printf '%sПУБЛИЧНЫЙ — код и вся история видны всему интернету%s\n' "$C_YEL" "$C_OFF" ;;
-        *)       printf 'приватность задаётся при создании репозитория на хосте\n' ;;
+        private) printf '%s\n' "$(t pub_vis_private)" ;;
+        public)  printf '%s%s%s\n' "$C_YEL" "$(t pub_vis_public)" "$C_OFF" ;;
+        *)       printf '%s\n' "$(t pub_vis_host)" ;;
     esac
 }
 
@@ -380,24 +404,24 @@ publish_plan_show() {
     _pub_size=$(du -sh "$_pub_root/.git" 2>/dev/null | cut -f1)
     _pub_have=$(publish_remote_url "$_pub_root")
 
-    say "${C_BLD}Публикация проекта $(basename -- "$_pub_root")${C_OFF}"
+    say "${C_BLD}$(t pub_plan_title name="$(basename -- "$_pub_root")")${C_OFF}"
     say ""
     # wm_pad, not printf's %-10s: %-Ns counts BYTES, and every Cyrillic letter is two of
     # them — the labels "access" and "what goes" would sit in different columns.
     if [ -n "$_pub_have" ]; then
-        printf '  %s %s\n' "$(wm_pad куда 9)" "$_pub_have (ремоут уже настроен)"
+        printf '  %s %s\n' "$(wm_pad "$(t pub_plan_where)" 9)" "$(t pub_plan_have url="$_pub_have")"
     elif [ "$_pub_prov" = url ]; then
-        printf '  %s %s\n' "$(wm_pad куда 9)" "$_pub_url"
+        printf '  %s %s\n' "$(wm_pad "$(t pub_plan_where)" 9)" "$_pub_url"
     else
-        printf '  %s %s\n' "$(wm_pad куда 9)" \
-            "$(publish_provider_field "$_pub_prov" 2), репозиторий «$_pub_name» — будет создан"
+        printf '  %s %s\n' "$(wm_pad "$(t pub_plan_where)" 9)" \
+            "$(t pub_plan_create host="$(publish_provider_field "$_pub_prov" 2)" name="$_pub_name")"
     fi
-    [ -z "$PUB_HOST" ] || printf '  %s %s\n' "$(wm_pad 'на хосте' 9)" "$(publish_host_line)"
-    printf '  %s %s\n' "$(wm_pad доступ 9)" "$(publish_vis_label "$_pub_vis")"
-    printf '  %s %s\n' "$(wm_pad 'что едет' 9)" \
-        "ветка $_pub_branch, $_pub_n $(wm_plural "${_pub_n:-0}" \
-        "точка сохранения" "точки сохранения" "точек сохранения")${_pub_size:+, история ~$_pub_size}"
-    dim "            едет код и история; данные и секреты в неё не клали — их не приходится оттуда убирать"
+    [ -z "$PUB_HOST" ] || printf '  %s %s\n' "$(wm_pad "$(t pub_plan_host)" 9)" "$(publish_host_line)"
+    printf '  %s %s\n' "$(wm_pad "$(t pub_plan_access)" 9)" "$(publish_vis_label "$_pub_vis")"
+    printf '  %s %s%s\n' "$(wm_pad "$(t pub_plan_goes)" 9)" \
+        "$(tp "${_pub_n:-0}" pub_plan_payload branch="$_pub_branch")" \
+        "${_pub_size:+$(t pub_plan_size size="$_pub_size")}"
+    dim "            $(t pub_plan_note)"
     say ""
     publish_scan_show
     return 0
@@ -408,31 +432,32 @@ publish_plan_show() {
 # who carries it: it used to be a conversation the user had to know how to start, and now
 # it is two numbered lines with the state of each option already filled in.
 publish_ask_provider() {
-    say "${C_BLD}Где будет жить копия${C_OFF}" >&2
+    say "${C_BLD}$(t pub_ask_where)${C_OFF}" >&2
     _pub_i=0
     _pub_def=
     publish_providers | while IFS='|' read -r _pub_k _pub_lbl _pub_cli _pub_creates; do
         [ -n "$_pub_k" ] || continue
         _pub_i=$((_pub_i + 1))
+        [ "$_pub_k" != url ] || _pub_lbl=$(t pub_prov_url)
         if [ -z "$_pub_cli" ]; then
-            printf '  %s) %s %sработает всегда%s\n' "$_pub_i" "$(wm_pad "$_pub_lbl" 34)" \
-                "$C_DIM" "$C_OFF" >&2
+            printf '  %s) %s %s%s%s\n' "$_pub_i" "$(wm_pad "$_pub_lbl" 34)" \
+                "$C_DIM" "$(t pub_ask_always)" "$C_OFF" >&2
             continue
         fi
         publish_cli_state "$_pub_cli" && _pub_st=0 || _pub_st=$?
         case $_pub_st in
-            0) printf '  %s) %s %s%s готов%s\n' "$_pub_i" "$(wm_pad "$_pub_lbl" 34)" \
-                   "$C_GRN" "$_pub_cli" "$C_OFF" >&2 ;;
-            1) printf '  %s) %s %s%s не установлен%s\n' "$_pub_i" "$(wm_pad "$_pub_lbl" 34)" \
-                   "$C_DIM" "$_pub_cli" "$C_OFF" >&2 ;;
-            2) printf '  %s) %s %s%s без входа, нужен %s auth login%s\n' "$_pub_i" \
-                   "$(wm_pad "$_pub_lbl" 34)" "$C_YEL" "$_pub_cli" "$_pub_cli" "$C_OFF" >&2 ;;
+            0) printf '  %s) %s %s%s%s\n' "$_pub_i" "$(wm_pad "$_pub_lbl" 34)" \
+                   "$C_GRN" "$(t pub_ask_ready cli="$_pub_cli")" "$C_OFF" >&2 ;;
+            1) printf '  %s) %s %s%s%s\n' "$_pub_i" "$(wm_pad "$_pub_lbl" 34)" \
+                   "$C_DIM" "$(t pub_ask_missing cli="$_pub_cli")" "$C_OFF" >&2 ;;
+            2) printf '  %s) %s %s%s%s\n' "$_pub_i" "$(wm_pad "$_pub_lbl" 34)" \
+                   "$C_YEL" "$(t pub_ask_no_login cli="$_pub_cli")" "$C_OFF" >&2 ;;
         esac
     done
     # The default is the first READY option, not the first in the list: offering GitHub
     # where gh is not installed means leading the human into a refusal two screens later.
     _pub_def=$(publish_default_provider)
-    printf '  Номер [%s]: ' "$_pub_def" >&2
+    printf '  %s ' "$(t pub_ask_number def="$_pub_def")" >&2
     read -r _pub_ans || _pub_ans=
     [ -n "$_pub_ans" ] || _pub_ans=$_pub_def
     _pub_pick=$(publish_providers | sed -n "${_pub_ans}p" | cut -d'|' -f1 2>/dev/null)
@@ -453,10 +478,10 @@ publish_default_provider() {
 }
 
 publish_ask_visibility() {
-    say "${C_BLD}Кто сможет это читать${C_OFF}" >&2
-    printf '  1) приватный %s— видишь только ты (по умолчанию)%s\n' "$C_DIM" "$C_OFF" >&2
-    printf '  2) публичный %s— виден всему интернету, вместе со всей историей%s\n' "$C_DIM" "$C_OFF" >&2
-    printf '  Номер [1]: ' >&2
+    say "${C_BLD}$(t pub_ask_who)${C_OFF}" >&2
+    printf '  1) %s %s— %s%s\n' "$(t pub_ask_private)" "$C_DIM" "$(t pub_ask_private_note)" "$C_OFF" >&2
+    printf '  2) %s %s— %s%s\n' "$(t pub_ask_public)" "$C_DIM" "$(t pub_ask_public_note)" "$C_OFF" >&2
+    printf '  %s ' "$(t pub_ask_number def=1)" >&2
     read -r _pub_ans || _pub_ans=
     case $_pub_ans in
         2) printf 'public\n' ;;
@@ -465,10 +490,10 @@ publish_ask_visibility() {
 }
 
 publish_ask_url() {
-    say "${C_BLD}Ссылка на пустой репозиторий${C_OFF}" >&2
-    dim "  создай его на своём хосте (GitHub, GitLab, Gitea, Codeberg — всё равно) и" >&2
-    dim "  скопируй адрес: git@host:имя/проект.git или https://host/имя/проект.git" >&2
-    printf '  Ссылка: ' >&2
+    say "${C_BLD}$(t pub_ask_url_title)${C_OFF}" >&2
+    dim "  $(t pub_ask_url_hint1)" >&2
+    dim "  $(t pub_ask_url_hint2)" >&2
+    printf '  %s ' "$(t pub_ask_url_prompt)" >&2
     read -r _pub_ans || _pub_ans=
     [ -n "$_pub_ans" ] || return 1
     printf '%s\n' "$_pub_ans"
@@ -520,14 +545,14 @@ publish_transport_https() {
         # loud — like everything else this command touches outside the project.
         gh auth setup-git >/dev/null 2>&1 || return 1
         publish_https_credentials https://github.com || return 1
-        dim "  git научен брать логин у gh (gh auth setup-git)"
+        dim "  $(t pub_tr_setup_git)"
     fi
 
     git -C "$_pub_root" remote set-url origin "$_pub_alt" 2>/dev/null || return 1
     say ""
-    ok "адрес переключён на https: $_pub_alt"
-    dim "  ssh-ключ этой машины хост не принял, а вход gh для https уже есть —"
-    dim "  репозиторий тот же самый, поменялся только транспорт"
+    ok "$(t pub_tr_switched url="$_pub_alt")"
+    dim "  $(t pub_tr_why1)"
+    dim "  $(t pub_tr_why2)"
     return 0
 }
 
@@ -535,18 +560,18 @@ publish_transport_https() {
 publish_transport_hint() {
     _pub_have=$1
     _pub_alt=$(publish_ssh_to_https "$_pub_have") || {
-        dim "    хост не принял логин — проверь доступ к репозиторию под своей учёткой"
+        dim "    $(t pub_th_login)"
         return 0
     }
-    dim "    хост не принял ssh-ключ этой машины. Два выхода, оба рабочие:"
-    dim "    · по https (ключ не нужен):  fraim publish --url $_pub_alt"
+    dim "    $(t pub_th_key)"
+    dim "    · $(wm_pad "$(t pub_th_https)" 26) fraim publish --url $_pub_alt"
     case $_pub_have in
-        *github.com*) dim "      для GitHub логин к https даёт gh: gh auth login, затем gh auth setup-git" ;;
-        *)            dim "      логин к https спросит хост — понадобится токен доступа" ;;
+        *github.com*) dim "      $(t pub_th_gh_https)" ;;
+        *)            dim "      $(t pub_th_token)" ;;
     esac
-    dim "    · по ssh (ключ нужен):       ssh-keygen -t ed25519, затем ключ на хост"
+    dim "    · $(wm_pad "$(t pub_th_ssh)" 26) $(t pub_th_ssh_do)"
     case $_pub_have in
-        *github.com*) dim "      для GitHub это одна команда: gh ssh-key add ~/.ssh/id_ed25519.pub" ;;
+        *github.com*) dim "      $(t pub_th_gh_ssh)" ;;
     esac
     return 0
 }
@@ -559,14 +584,14 @@ publish_do() {
     _pub_root=$1; _pub_prov=$2; _pub_name=$3; _pub_url=$4; _pub_vis=$5
     _pub_branch=$(publish_branch "$_pub_root")
     [ -n "$_pub_branch" ] && [ "$_pub_branch" != HEAD ] ||
-        { warn "ветка не определена (detached HEAD) — отправлять нечего"; return 1; }
+        { warn "$(t pub_do_detached)"; return 1; }
 
     if [ -z "$(publish_remote_url "$_pub_root")" ]; then
         case $_pub_prov in
             url)
                 git -C "$_pub_root" remote add origin "$_pub_url" 2>/dev/null ||
-                    { warn "не удалось прописать адрес: $_pub_url"; return 1; }
-                ok "адрес прописан: $_pub_url"
+                    { warn "$(t pub_do_addr_fail url="$_pub_url")"; return 1; }
+                ok "$(t pub_do_addr_set url="$_pub_url")"
                 ;;
             *)
                 publish_create "$_pub_root" "$_pub_prov" "$_pub_name" "$_pub_vis" || return 1
@@ -576,7 +601,7 @@ publish_do() {
 
     _pub_have=$(publish_remote_url "$_pub_root")
     say ""
-    say "Отправляю $_pub_branch → $_pub_have"
+    say "$(t pub_do_sending branch="$_pub_branch" url="$_pub_have")"
     if ! _pub_out=$(git -C "$_pub_root" push -u origin "$_pub_branch" 2>&1); then
         # One and only one retry, and only on a key refusal: the transport changes to the one
         # for which a login already exists. Repeating anything else would be hope, not
@@ -587,7 +612,7 @@ publish_do() {
                 if publish_transport_https "$_pub_root"; then
                     _pub_have=$(publish_remote_url "$_pub_root")
                     say ""
-                    say "Отправляю $_pub_branch → $_pub_have"
+                    say "$(t pub_do_sending branch="$_pub_branch" url="$_pub_have")"
                     _pub_retried=1
                 fi ;;
         esac
@@ -595,29 +620,29 @@ publish_do() {
             _pub_out=$(git -C "$_pub_root" push -u origin "$_pub_branch" 2>&1) || _pub_retried=2
         fi
         if [ "$_pub_retried" != 1 ]; then
-            warn "отправка не удалась"
+            warn "$(t pub_do_push_failed)"
             printf '%s\n' "$_pub_out" | sed 's/^/    /' | while read -r _pub_l; do dim "$_pub_l"; done
             publish_push_hint "$_pub_out" "$_pub_have"
             return 1
         fi
     fi
-    ok "отправлено"
+    ok "$(t pub_do_sent)"
 
     # Verification, not optimism.
     _pub_local=$(publish_head "$_pub_root")
     _pub_remote=$(git -C "$_pub_root" ls-remote origin "refs/heads/$_pub_branch" 2>/dev/null | cut -f1)
     if [ -n "$_pub_remote" ] && [ "$_pub_remote" = "$_pub_local" ]; then
-        ok "проверено: на хосте лежит ровно то, что здесь ($(printf '%s' "$_pub_local" | cut -c1-7))"
+        ok "$(t pub_do_verified sha="$(printf '%s' "$_pub_local" | cut -c1-7)")"
     else
-        warn "отправка прошла, но сверка не сошлась — на хосте ${_pub_remote:-ничего не видно}"
-        dim "    проверь репозиторий глазами, прежде чем считать копию сделанной"
+        warn "$(t pub_do_mismatch remote="${_pub_remote:-$(t pub_do_nothing_seen)}")"
+        dim "    $(t pub_do_look)"
         return 1
     fi
 
     say ""
-    ok "копия есть: $_pub_have"
-    dim "  дальше точки сохранения уезжают той же командой: fraim publish"
-    dim "  это копия кода и истории, а не бэкап данных — данных в истории нет"
+    ok "$(t pub_do_done url="$_pub_have")"
+    dim "  $(t pub_do_next)"
+    dim "  $(t pub_do_not_backup)"
     return 0
 }
 
@@ -626,15 +651,15 @@ publish_push_hint() {
         *'Permission denied'*|*'publickey'*)
             publish_transport_hint "${2:-}" ;;
         *'rejected'*|*'non-fast-forward'*|*'fetch first'*)
-            dim "    в репозитории на хосте уже есть своя история — возьми пустой репозиторий или другое имя" ;;
+            dim "    $(t pub_ph_rejected)" ;;
         *'could not read Username'*|*'Authentication failed'*)
-            dim "    хост просит логин к https по этому адресу:"
+            dim "    $(t pub_ph_https_login)"
             case ${2:-} in
-                *github.com*) dim "    · gh auth login, затем gh auth setup-git — дальше git берёт логин сам" ;;
-                *)            dim "    · нужен токен доступа этого хоста, либо ssh-адрес и ключ на хосте" ;;
+                *github.com*) dim "    · $(t pub_ph_gh)" ;;
+                *)            dim "    · $(t pub_ph_token)" ;;
             esac ;;
         *'not found'*|*'does not appear to be a git repository'*)
-            dim "    адрес не найден — проверь ссылку: fraim publish --url ССЫЛКА" ;;
+            dim "    $(t pub_ph_not_found)" ;;
     esac
     return 0
 }
@@ -647,34 +672,34 @@ publish_create() {
     _pub_cli=$(publish_provider_field "$_pub_prov" 3)
     publish_cli_state "$_pub_cli" && _pub_st=0 || _pub_st=$?
     case $_pub_st in
-        1) warn "$_pub_cli не установлен — создать репозиторий нечем"
+        1) warn "$(t pub_cr_no_cli cli="$_pub_cli")"
            publish_install_hint "$_pub_cli"
-           dim "    или создай репозиторий в браузере и запусти: fraim publish --url ССЫЛКА"
+           dim "    $(t pub_cr_or_browser)"
            return 1 ;;
-        2) warn "$_pub_cli установлен, но вход не сделан"
+        2) warn "$(t pub_cr_no_login cli="$_pub_cli")"
            dim "    $_pub_cli auth login"
-           dim "    или создай репозиторий в браузере и запусти: fraim publish --url ССЫЛКА"
+           dim "    $(t pub_cr_or_browser)"
            return 1 ;;
     esac
 
     say ""
-    say "Создаю репозиторий «$_pub_name» ($_pub_vis) через $_pub_cli"
+    say "$(t pub_cr_creating name="$_pub_name" vis="$_pub_vis" cli="$_pub_cli")"
     case $_pub_prov in
         github)
             _pub_out=$(gh repo create "$_pub_name" "--$_pub_vis" \
                 --source "$_pub_root" --remote origin 2>&1) || {
-                warn "gh не смог создать репозиторий"
+                warn "$(t pub_cr_failed cli=gh)"
                 printf '%s\n' "$_pub_out" | while read -r _pub_l; do dim "    $_pub_l"; done
-                dim "    имя занято — попробуй 'fraim publish --name другое-имя'"
-                dim "    нет прав на создание — 'gh auth refresh -s repo'"
+                dim "    $(t pub_cr_name_taken)"
+                dim "    $(t pub_cr_no_rights)"
                 return 1
             }
             ;;
         gitlab)
             _pub_out=$(cd "$_pub_root" && glab repo create "$_pub_name" "--$_pub_vis" 2>&1) || {
-                warn "glab не смог создать репозиторий"
+                warn "$(t pub_cr_failed cli=glab)"
                 printf '%s\n' "$_pub_out" | while read -r _pub_l; do dim "    $_pub_l"; done
-                dim "    создай репозиторий в браузере и запусти: fraim publish --url ССЫЛКА"
+                dim "    $(t pub_cr_browser)"
                 return 1
             }
             ;;
@@ -691,11 +716,11 @@ publish_create() {
     fi
     _pub_have=$(publish_remote_url "$_pub_root")
     [ -n "$_pub_have" ] || {
-        warn "репозиторий создан, но адрес не прописался"
-        dim "    возьми ссылку на него и запусти: fraim publish --url ССЫЛКА"
+        warn "$(t pub_cr_no_addr)"
+        dim "    $(t pub_cr_take_link)"
         return 1
     }
-    ok "репозиторий создан: $_pub_have"
+    ok "$(t pub_cr_done url="$_pub_have")"
     return 0
 }
 
@@ -771,12 +796,12 @@ publish_host_state() {
 
 publish_host_line() {
     case $PUB_HOST in
-        denied)      printf 'хост не принял доступ по этому адресу — сверить не с чем\n' ;;
-        unreachable) printf 'хост не ответил — сверить не с чем\n' ;;
-        empty)       printf 'репозиторий создан, но ПУСТ — история туда не доехала\n' ;;
-        synced)      printf 'там ровно то же, что здесь\n' ;;
-        behind)      printf 'там старее, чем здесь — часть точек не доехала\n' ;;
-        diverged)    printf 'там есть работа, которой нет здесь\n' ;;
+        denied)      printf '%s\n' "$(t pub_host_denied)" ;;
+        unreachable) printf '%s\n' "$(t pub_host_unreachable)" ;;
+        empty)       printf '%s\n' "$(t pub_host_empty)" ;;
+        synced)      printf '%s\n' "$(t pub_host_synced)" ;;
+        behind)      printf '%s\n' "$(t pub_host_behind)" ;;
+        diverged)    printf '%s\n' "$(t pub_host_diverged)" ;;
         *)           printf '\n' ;;
     esac
 }
@@ -795,7 +820,7 @@ PUB_RULE='───────────────────────�
 
 publish_brief_open() {
     say ""
-    say "  ${C_BLD}Отдай это агенту — скопируй всё между линиями:${C_OFF}"
+    say "  ${C_BLD}$(t pub_brief_hand)${C_OFF}"
     printf '  %s%s%s\n' "$C_DIM" "$PUB_RULE" "$C_OFF"
 }
 publish_brief_close() {
@@ -806,36 +831,32 @@ publish_refuse_secret() {
     _pub_root=$1; _pub_why=${2:-public}
     _pub_n=$(pub_count "$PUB_STOP")
     say ""
-    printf '%s✗%s публикация остановлена: %s %s %s уезжать туда, где %s прочитают чужие\n' \
-        "$C_RED" "$C_OFF" "$_pub_n" \
-        "$(wm_plural "$_pub_n" находка находки находок)" \
-        "$(wm_plural "$_pub_n" "не должна" "не должны" "не должны")" \
-        "$(wm_plural "$_pub_n" "её" "их" "их")"
+    printf '%s✗%s %s\n' "$C_RED" "$C_OFF" "$(tp "$_pub_n" pub_refuse_stopped)"
     say ""
     if [ "$_pub_why" = unknown ]; then
-        say "  Кто увидит эту копию — неизвестно: адрес не GitHub или вход не сделан,"
-        say "  проверить нечем. В приватную копию это можно отправить, приняв риск:"
-        say "  скажи об этом явно — ${C_BLD}fraim publish --private${C_OFF} — или запусти команду в терминале"
-        say "  и ответь на вопрос. Публичной копии находки не отдаются вовсе."
+        say "  $(t pub_rs_unknown1)"
+        say "  $(t pub_rs_unknown2)"
+        say "  $(t pub_rs_unknown3 cmd="${C_BLD}fraim publish --private${C_OFF}")"
+        say "  $(t pub_rs_unknown4)"
         say ""
     else
-        say "  Репозиторий ${C_BLD}публичный${C_OFF} ($PUB_VIS_SRC): всё, что уедет, увидит любой."
-        say "  Здесь нет варианта «приму риск» — принимать его пришлось бы не тебе одному."
+        say "  $(t pub_rs_public public="${C_BLD}$(t pub_rs_public_word)${C_OFF}" src="$PUB_VIS_SRC")"
+        say "  $(t pub_rs_no_accept)"
         say ""
     fi
-    say "  По порядку:"
-    say "  1. Смени сам ключ там, где он выдан — он уже полежал в файле, это не отменить."
+    say "  $(t pub_rs_order)"
+    say "  $(t pub_rs_step1)"
     if [ -z "$(publish_remote_url "$_pub_root")" ]; then
-        say "  2. Копии нет: файл видели только на этой машине, спешки нет."
+        say "  $(t pub_rs_step2_none)"
     else
-        say "  2. Копия уже есть — считай, что файл там. Ключ меняется в любом случае."
+        say "  $(t pub_rs_step2_copy)"
     fi
-    say "  3. Убрать его из истории — это переписывание истории. Единственная операция,"
-    say "     которую система себе не позволяет: это работа для агента, не для fraim."
+    say "  $(t pub_rs_step3a)"
+    say "     $(t pub_rs_step3b)"
 
     publish_brief_secret "$_pub_root"
     say ""
-    dim "  Если находка ложная (тестовая фикстура, пример в документации) — fraim publish --force."
+    dim "  $(t pub_rs_false)"
     return 0
 }
 
@@ -852,7 +873,7 @@ publish_brief_secret() {
 '
     for _pub_line in $PUB_STOP; do
         [ -n "$_pub_line" ] || continue
-        printf -- '  - %s — %s\n' "${_pub_line%%	*}" "${_pub_line#*	}"
+        printf -- '  - %s — %s\n' "${_pub_line%%	*}" "$(publish_finding_en "${_pub_line#*	}")"
     done
     IFS=$_pub_ifs
     cat <<'BRIEF'
@@ -880,11 +901,11 @@ publish_refuse_diverged() {
     _pub_root=$1; _pub_url=$2; _pub_br=$3
     _pub_local=$(publish_head "$_pub_root")
     say ""
-    printf '%s✗%s на хосте есть работа, которой нет здесь — отправлять нельзя\n' "$C_RED" "$C_OFF"
+    printf '%s✗%s %s\n' "$C_RED" "$C_OFF" "$(t pub_rd_title)"
     say ""
-    say "  Это не поломка, а развилка: кто-то отправлял в эту копию не с этой машины"
-    say "  (вторая машина, веб-сессия, CI, другой человек). Свести их — суждение, и"
-    say "  единственный способ сделать это «одной кнопкой» затёр бы чью-то работу."
+    say "  $(t pub_rd_1)"
+    say "  $(t pub_rd_2)"
+    say "  $(t pub_rd_3)"
 
     publish_brief_open
     printf 'Project: %s\n' "$_pub_root"
@@ -955,29 +976,29 @@ publish_visibility_effective() {
        { [ "$_pub_vis" = private ] || [ "$_pub_vis" = public ]; }; then
         # The repository does not exist yet, and we are the ones creating it — here the
         # visibility is not hearsay but comes from the very command that is about to create it.
-        PUB_VIS=$_pub_vis; PUB_VIS_SRC="создаём таким"
+        PUB_VIS=$_pub_vis; PUB_VIS_SRC=$(t pub_vis_src_creating)
         return 0
     fi
     if [ -n "$_pub_have" ]; then
         _pub_hv=$(publish_host_visibility "$_pub_have")
         if [ "$_pub_hv" != unknown ]; then
-            PUB_VIS=$_pub_hv; PUB_VIS_SRC="по данным хоста"
+            PUB_VIS=$_pub_hv; PUB_VIS_SRC=$(t pub_vis_src_host)
             return 0
         fi
     fi
     case $_pub_vis in
-        private|public) PUB_VIS=$_pub_vis; PUB_VIS_SRC="с твоих слов" ;;
+        private|public) PUB_VIS=$_pub_vis; PUB_VIS_SRC=$(t pub_vis_src_said) ;;
         *)              PUB_VIS=unknown;   PUB_VIS_SRC= ;;
     esac
     return 0
 }
 
 publish_ask_private() {
-    say "${C_BLD}Кто сможет прочитать эту копию?${C_OFF}" >&2
-    printf '  Проверить сами мы не можем: адрес не GitHub или вход не сделан.\n' >&2
-    printf '  1) приватный %s— беру риск на себя, находки уедут как есть%s\n' "$C_DIM" "$C_OFF" >&2
-    printf '  2) публичный или не знаю %s— остановиться (по умолчанию)%s\n' "$C_DIM" "$C_OFF" >&2
-    printf '  Номер [2]: ' >&2
+    say "${C_BLD}$(t pub_ap_title)${C_OFF}" >&2
+    printf '  %s\n' "$(t pub_ap_cant)" >&2
+    printf '  1) %s %s— %s%s\n' "$(t pub_ask_private)" "$C_DIM" "$(t pub_ap_private_note)" "$C_OFF" >&2
+    printf '  2) %s %s— %s%s\n' "$(t pub_ap_public)" "$C_DIM" "$(t pub_ap_public_note)" "$C_OFF" >&2
+    printf '  %s ' "$(t pub_ask_number def=2)" >&2
     read -r _pub_ans || _pub_ans=
     case $_pub_ans in
         1) printf 'private\n' ;;
@@ -991,14 +1012,12 @@ publish_ask_private() {
 publish_accept_notice() {
     _pub_n=$1
     say ""
-    printf '%s!%s %s %s %s в приватную копию как есть — %sпринято%s\n' \
-        "$C_YEL" "$C_OFF" "$_pub_n" \
-        "$(wm_plural "$_pub_n" "находка" "находки" "находок")" \
-        "$(wm_plural "$_pub_n" "уедет" "уедут" "уедут")" "$C_BLD" "$C_OFF"
-    dim "  приватность известна: $PUB_VIS_SRC"
-    dim "  чего это не отменяет: ключ увидят все, у кого есть доступ к репозиторию, и он"
-    dim "  останется в истории, если репозиторий когда-нибудь станет публичным"
-    dim "  вычистить, а не принимать — ответь «нет»: команда отдаст задание агенту"
+    printf '%s!%s %s — %s%s%s\n' "$C_YEL" "$C_OFF" "$(tp "$_pub_n" pub_accept_goes)" \
+        "$C_BLD" "$(t pub_accept_accepted)" "$C_OFF"
+    dim "  $(t pub_accept_src src="$PUB_VIS_SRC")"
+    dim "  $(t pub_accept_not1)"
+    dim "  $(t pub_accept_not2)"
+    dim "  $(t pub_accept_no)"
     return 0
 }
 
@@ -1015,16 +1034,13 @@ publish_cancel_findings() {
     _pub_root=$1
     _pub_n=$(pub_count "$PUB_STOP")
     say ""
-    say "  ${C_BLD}Отменено — публикуем после чистки.${C_OFF}"
-    printf '  %s %s %s в истории. Убрать их оттуда — значит переписать историю,
-' \
-        "$_pub_n" "$(wm_plural "$_pub_n" находка находки находок)" \
-        "$(wm_plural "$_pub_n" остаётся остаются остаются)"
-    say "  а это единственная операция, которую система себе не позволяет: работа для агента."
+    say "  ${C_BLD}$(t pub_cancel_title)${C_OFF}"
+    say "  $(tp "$_pub_n" pub_cancel_remain)"
+    say "  $(t pub_cancel_agent)"
     publish_brief_secret "$_pub_root"
     say ""
-    dim "  когда агент отчитается — проверь сам: fraim publish --check должен сказать «чисто»,"
-    dim "  и тогда fraim publish отправит копию уже без находок"
-    dim "  находки ложные (фикстура, пример в документации) — fraim publish --force"
+    dim "  $(t pub_cancel_check)"
+    dim "  $(t pub_cancel_then)"
+    dim "  $(t pub_cancel_false)"
     return 0
 }
