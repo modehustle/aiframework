@@ -19,6 +19,11 @@ trap 'rm -rf "$SANDBOX"' EXIT
 export HOME="$SANDBOX/home"
 export FRAIM_HOME="$HOME/.fraim"
 mkdir -p "$HOME" "$FRAIM_HOME"
+# The operator's messages come from installer/locale. The assertions below were written
+# against the Russian catalog and keep checking it; the English source and the language
+# choice have a section of their own («message catalogs»).
+export FRAIM_LOCALE_DIR="$REPO/installer/locale"
+export FRAIM_LANG=ru
 
 # The fixtures below are deliberately minimal directories: they have neither AGENTS.md nor ai/fraim.conf,
 # because each one checks a single thing. The standard-conformance check would fire on
@@ -104,6 +109,89 @@ check "headings read by gates exist in templates" "${MISSING_HEAD:-none}" "none"
 GITHAND=$(grep -lE 'git (commit|add|init|restore|checkout|reset|stash|clean|push)' \
           "$REPO"/procedures/*.md | while read -r f; do basename "$f"; done | sort | tr '\n' ' ')
 check "procedures do not touch git by hand" "$GITHAND" ""
+
+# ---------------------------------------------------------------- message catalogs
+printf '\nmessage catalogs (installer/locale)\n'
+LOC="$REPO/installer/locale"
+
+# Every catalog file is plain shell that parses.
+LBAD=
+for f in "$LOC"/*/*.sh; do sh -n "$f" 2>/dev/null || LBAD="$LBAD ${f#"$LOC"/}"; done
+check "every catalog parses" "${LBAD:-clean}" "clean"
+
+# Every shipped language has a directory, and every directory is a shipped language.
+LCODES=$(grep -v '^#' "$LOC/languages" | cut -d'|' -f1 | sort)
+LDIRS=$(cd "$LOC" && for d in */; do printf '%s\n' "${d%/}"; done | sort)
+check "languages file and catalog directories agree" "$LDIRS" "$LCODES"
+
+# The keys of a catalog: M_<key>, with a plural suffix folded to its base.
+cat_keys() { sed -n "s/^M_\([A-Za-z0-9_]*\)=.*/\1/p" "$@" 2>/dev/null | sed 's/_\(one\|few\|many\|other\)$//' | sort -u; }
+# key<TAB>sorted placeholders, one line per key (plural forms merged).
+cat_holes() {
+    sh -c 'for f in "$@"; do . "$f"; done; set | sed -n "s/^M_\([A-Za-z0-9_]*\)=.*/\1/p"' x "$@" 2>/dev/null |
+    while read -r k; do
+        v=$(sh -c 'for f in "$@"; do . "$f"; done; eval "printf %s \"\${M_'"$k"'}\""' x "$@" 2>/dev/null)
+        base=$(printf '%s' "$k" | sed 's/_\(one\|few\|many\|other\)$//')
+        printf '%s\t%s\n' "$base" "$(printf '%s' "$v" | grep -o '{[a-z_]*}' | grep -v '^{n}$' | sort -u | tr '\n' ' ')"
+    done | sort -u
+}
+LUNK=; LHOLE=
+for d in "$LOC"/*/; do
+    l=$(basename "$d"); [ "$l" = en ] && continue
+    for f in "$d"*.sh; do
+        [ -f "$f" ] || continue
+        m=$(basename "$f")
+        extra=$(comm -13 "/dev/fd/3" "/dev/fd/4" 3<<EOF3 4<<EOF4
+$(cat_keys "$LOC/en/$m")
+EOF3
+$(cat_keys "$f")
+EOF4
+)
+        [ -z "$extra" ] || LUNK="$LUNK $l/$m:$(printf '%s' "$extra" | head -1)"
+        diffh=$(comm -13 "/dev/fd/3" "/dev/fd/4" 3<<EOF3 4<<EOF4
+$(cat_holes "$LOC/en/$m")
+EOF3
+$(cat_holes "$f")
+EOF4
+)
+        [ -z "$diffh" ] || LHOLE="$LHOLE $l/$m:$(printf '%s' "$diffh" | head -1 | cut -f1)"
+    done
+done
+check "no translation carries a key English does not have" "${LUNK:-clean}" "clean"
+check "every translation keeps the placeholders of the English text" "${LHOLE:-clean}" "clean"
+
+# Every key the code asks for exists in English.
+USEDK=$(grep -ohE '\$\(t [a-z][a-z0-9_]*|\$\(tp [^ ]+ [a-z][a-z0-9_]*|^[[:space:]]*t [a-z][a-z0-9_]*' \
+        "$REPO"/installer/lib/*.sh "$REPO/installer/bin/fraim" | awk '{print $NF}' | sort -u)
+ENK=$(cat_keys "$LOC"/en/*.sh)
+LMISS=
+for k in $USEDK; do printf '%s\n' "$ENK" | grep -qx "$k" || LMISS="$LMISS $k"; done
+check "every message the code asks for is in the English catalog" "${LMISS:-clean}" "clean"
+
+# The language choice.
+LCORE='. "'"$REPO"'/installer/lib/core.sh"'
+check "FRAIM_LANG chooses" "$(FRAIM_LANG=en sh -c "$LCORE"'; printf %s "$I18N_LANG"')" "en"
+check "the system locale chooses when nothing is set" \
+      "$(env -u FRAIM_LANG LANG=ru_RU.UTF-8 LC_ALL= sh -c "$LCORE"'; printf %s "$I18N_LANG"')" "ru"
+check "a locale we do not ship gives English" \
+      "$(env -u FRAIM_LANG LANG=xx_XX.UTF-8 LC_ALL= sh -c "$LCORE"'; printf %s "$I18N_LANG"')" "en"
+LH="$SANDBOX/langhome"; mkdir -p "$LH"; printf 'lang = en\n' > "$LH/config"
+check "the machine setting wins over the system locale" \
+      "$(env -u FRAIM_LANG FRAIM_HOME="$LH" LANG=ru_RU.UTF-8 sh -c "$LCORE"'; printf %s "$I18N_LANG"')" "en"
+check "an explicit language we do not ship gives English, not the system's" \
+      "$(FRAIM_LANG=xx LANG=ru_RU.UTF-8 sh -c "$LCORE"'; printf %s "$I18N_LANG"')" "en"
+check "a placeholder is filled, every time it occurs" \
+      "$(sh -c "$LCORE"'; M_x="{a} and {a} of {b}"; t x a=1 b="{a}"')" "1 and 1 of {a}"
+check "a missing key prints the key, not nothing" "$(sh -c "$LCORE"'; t no_such_key')" "no_such_key"
+PL='M_w_one="{n} коммит"; M_w_few="{n} коммита"; M_w_many="{n} коммитов"; for n in 1 2 5 11 21 112; do tp $n w; printf "|"; done'
+check "Russian plural forms" "$(FRAIM_LANG=ru sh -c "$LCORE; $PL")" "1 коммит|2 коммита|5 коммитов|11 коммитов|21 коммит|112 коммитов|"
+PL='M_w_one="{n} commit"; M_w_other="{n} commits"; for n in 1 2 0; do tp $n w; printf "|"; done'
+check "English plural forms" "$(FRAIM_LANG=en sh -c "$LCORE; $PL")" "1 commit|2 commits|0 commits|"
+check "display width counts a CJK character as two columns" "$(sh -c "$LCORE"'; str_width "日本語 ok"')" "9"
+check "the English catalog speaks English" \
+      "$(FRAIM_LANG=en "$FRAIM" config set check_git off 2>&1 | grep -c 'always on')" "1"
+"$FRAIM" config set lang xx >/dev/null 2>&1
+check "lang refuses a language we do not ship" "$?" "2"
 
 # ---------------------------------------------------------------- menu
 printf '\nfraim menu (screen)\n'

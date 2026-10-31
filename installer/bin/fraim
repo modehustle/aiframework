@@ -25,6 +25,8 @@ _libdir=$(cd -- "$(dirname -- "$_self")/../lib" 2>/dev/null && pwd -P) || {
     exit 2
 }
 
+# The operator's message catalogs sit next to lib/. Set before core.sh, which loads them.
+FRAIM_LOCALE_DIR=${FRAIM_LOCALE_DIR:-$(cd -- "$_libdir/../locale" 2>/dev/null && pwd -P)}
 # shellcheck source=../lib/core.sh
 . "$_libdir/core.sh"
 . "$_libdir/skills.sh"
@@ -885,16 +887,7 @@ cmd_clean() {
 }
 
 # --- config -----------------------------------------------------------------
-config_section_title() {
-    case $1 in
-        general)  printf 'Общие\n' ;;
-        watchman) printf 'Сторож\n' ;;
-        saving)   printf 'Сохранение\n' ;;
-        models)   printf 'Модели\n' ;;
-        fleet)    printf 'Флот\n' ;;
-        expert)   printf 'Для опытных\n' ;;
-    esac
-}
+config_section_title() { t "cfg_sec_$1"; }
 
 # Keys of one family set in either file, one per line, unique.
 config_family_keys() {
@@ -915,16 +908,17 @@ config_show_key() {
 config_show() {
     _cs_root=$(pwd -P)
     project_is_managed "$_cs_root" || _cs_root=
-    say "${C_BLD}Действующие настройки${C_OFF}"
-    [ -n "$_cs_root" ] && dim "  проект: $_cs_root" || dim "  вне проекта — показаны машинные и умолчания"
+    say "${C_BLD}$(t cfg_show_title)${C_OFF}"
+    [ -n "$_cs_root" ] && dim "  $(t cfg_show_project path="$_cs_root")" || dim "  $(t cfg_show_outside)"
     for _cs_sec in general watchman saving models fleet expert; do
         say ""
         say "${C_BLD}$(config_section_title "$_cs_sec")${C_OFF}"
-        config_table | while IFS='|' read -r _cs_k _cs_def _cs_s _cs_t _cs_desc; do
+        config_table | while IFS='|' read -r _cs_k _cs_def _cs_s _cs_t; do
             [ "$_cs_s" = "$_cs_sec" ] || continue
-            config_show_key "$_cs_k" "$_cs_root" "$_cs_desc"
+            config_show_key "$_cs_k" "$_cs_root" "$(config_describe "$_cs_k")"
         done
-        config_families | while IFS='|' read -r _cs_p _cs_s _cs_desc; do
+        config_families | while IFS='|' read -r _cs_p _cs_s; do
+            _cs_desc=$(t "cfg_fam_${_cs_p%_}")
             [ "$_cs_s" = "$_cs_sec" ] || continue
             _cs_keys=$(config_family_keys "$_cs_p" "$_cs_root")
             if [ -z "$_cs_keys" ]; then
@@ -934,12 +928,23 @@ config_show() {
             fi
             printf '    %s%s%s\n' "$C_DIM" "$_cs_desc" "$C_OFF"
         done
-        [ "$_cs_sec" = models ] && dim "    выбрать из списка: fraim roles set"
+        [ "$_cs_sec" = models ] && dim "    $(t cfg_show_roles_hint)"
     done
     say ""
-    dim "  fraim config set КЛЮЧ ЗНАЧЕНИЕ            — в проект (ai/fraim.conf)"
-    dim "  fraim config set --machine КЛЮЧ ЗНАЧЕНИЕ  — на машину (~/.fraim/config)"
-    dim "  fraim config unset [--machine] КЛЮЧ       — вернуть значение уровнем выше"
+    dim "  $(t cfg_show_hint_set)"
+    dim "  $(t cfg_show_hint_machine)"
+    dim "  $(t cfg_show_hint_unset)"
+}
+
+# What a key accepts, in words: "on or off", "a number", "notify or off".
+config_type_words() {
+    case $(config_type "$1") in
+        on/off) t cfg_type_onoff ;;
+        int)    t cfg_type_int ;;
+        lang)   t cfg_type_lang codes="$(i18n_languages | cut -d'|' -f1 | tr '\n' ' ' | sed 's/ $//')" ;;
+        enum:*) _ctw=$(config_type "$1"); printf '%s' "${_ctw#enum:}" | sed "s/,/ $(t cfg_type_or) /g" ;;
+        *)      t cfg_type_text ;;
+    esac
 }
 
 # Check a key and value before writing. Dies with the reason.
@@ -947,20 +952,20 @@ config_check_set() {
     _ccs_k=$1; _ccs_v=$2
     if config_known "$_ccs_k"; then
         config_valid "$_ccs_k" "$_ccs_v" ||
-            die "«$_ccs_v» не подходит для $_ccs_k: нужно $(config_type "$_ccs_k" | sed 's/^enum://; s/^int$/число/; s/,/ или /g')"
+            die "$(t cfg_err_value value="$_ccs_v" key="$_ccs_k" need="$(config_type_words "$_ccs_k")")"
         return 0
     fi
     case $(config_family "$_ccs_k") in
         tier_|role_)
-            roles_parse "$_ccs_v" >/dev/null || die "«$_ccs_v» не в форме агент:модель:усилие"
+            roles_parse "$_ccs_v" >/dev/null || die "$(t cfg_err_role value="$_ccs_v")"
             return 0 ;;
         ?*) return 0 ;;
     esac
     if _ccs_new=$(config_replacement "$_ccs_k"); then
-        [ -n "$_ccs_new" ] || die "$_ccs_k больше не настраивается: эта проверка включена всегда"
-        die "$_ccs_k заменён ключом $_ccs_new (fraim config — что он значит)"
+        [ -n "$_ccs_new" ] || die "$(t cfg_err_always_on key="$_ccs_k")"
+        die "$(t cfg_err_replaced key="$_ccs_k" new="$_ccs_new")"
     fi
-    die "неизвестный ключ: $_ccs_k (список — fraim config)"
+    die "$(t cfg_err_unknown key="$_ccs_k")"
 }
 
 cmd_config() {
@@ -971,30 +976,33 @@ cmd_config() {
             _scope=project
             if [ "${1:-}" = --machine ]; then _scope=machine; shift; fi
             if [ "$_cc_op" = set ]; then
-                [ $# -ge 2 ] || die "нужно: fraim config set КЛЮЧ ЗНАЧЕНИЕ"
+                [ $# -ge 2 ] || die "$(t cfg_err_usage_set)"
                 _k=$1; _v=$2
                 config_check_set "$_k" "$_v"
             else
-                [ $# -ge 1 ] || die "нужно: fraim config unset КЛЮЧ"
+                [ $# -ge 1 ] || die "$(t cfg_err_usage_unset)"
                 _k=$1
             fi
+            # The operator's own settings (language, updates) live on the machine whatever
+            # the flag: a project travels to other people.
+            [ "$(config_section "$_k")" = general ] && _scope=machine
             if [ "$_scope" = machine ]; then
                 _cc_f=$(config_machine_file); _cc_where='~/.fraim/config'
             else
                 _root=$(pwd -P)
                 project_is_managed "$_root" ||
-                    die "здесь нет ai/ — это не проект под системой. Для машинной настройки: --machine"
+                    die "$(t cfg_err_not_project)"
                 _cc_f=$(config_project_file "$_root"); _cc_where=ai/fraim.conf
             fi
             if [ "$_cc_op" = set ]; then
-                config_set_file "$_cc_f" "$_k" "$_v" || die "не удалось записать"
+                config_set_file "$_cc_f" "$_k" "$_v" || die "$(t cfg_err_write)"
                 ok "$_k = $_v → $_cc_where"
             else
-                config_unset_file "$_cc_f" "$_k" || die "не удалось записать"
-                ok "$_k убран из $_cc_where"
+                config_unset_file "$_cc_f" "$_k" || die "$(t cfg_err_write)"
+                ok "$(t cfg_unset_done key="$_k" where="$_cc_where")"
             fi
             ;;
-        *) die "неизвестная подкоманда: $1" ;;
+        *) die "$(t cfg_err_subcommand sub="$1")" ;;
     esac
 }
 

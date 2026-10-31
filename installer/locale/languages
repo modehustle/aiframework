@@ -1,0 +1,6 @@
+# code|native name|status — the languages the picker offers, in this order.
+# status: source (the catalog everything is translated from), reviewed (read by a native
+# speaker), beta (machine translation, not reviewed yet). A language is listed here only
+# together with its directory — the tests hold the two in step.
+en|English|source
+ru|Русский|reviewed

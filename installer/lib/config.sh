@@ -12,7 +12,7 @@
 # Format is `key = value`, one per line, `#` comments. Deliberately not JSON or YAML:
 # it must stay editable by hand and parsable without a dependency.
 
-# key|default|section|type|description
+# key|default|section|type   (the description is the catalog message cfg_desc_<key>)
 #
 # section: general · watchman · saving · fleet · expert — the order of the settings screen.
 # type:    on/off · int · enum:<a>,<b> · text — what `fraim config set` accepts.
@@ -23,32 +23,33 @@
 # one key answers one question, and the retired names are still read — see config_legacy.
 config_table() {
     cat <<'TBL'
-updates|notify|general|enum:notify,off|Новая версия fraim: notify — проверять и сообщать, off — не проверять
-update_check_days|1|general|int|Как часто проверять, есть ли новая версия, дней
-foundation_lag_commits|10|watchman|int|Сколько коммитов кода без обновления ARCHITECTURE.md считать дрейфом (0 — не проверять)
-lessons_lag_commits|25|watchman|int|Сколько коммитов кода без единой записи в Known Pitfalls считать потерей уроков (0 — не проверять)
-unpushed_threshold|5|watchman|int|Сколько точек сохранения без удалённой копии считать проблемой (0 — не проверять копию)
-check_parallel|on|watchman|on/off|Следить за параллельной работой: чекауты проекта и среда флота
-abandon_after_days|30|watchman|int|Через сколько дней без исхода чистка закрывает расследование
-commit_verbs|on|saving|on/off|Детерминированные глаголы делают коммит сами
-build_check||fleet|text|Команда мастер-проверки: чем дирижёр проверяет собранную сборку целиком (пусто — проверки нет)
-fleet_ready_timeout|120|fleet|int|Сколько секунд ждать готовности терминала агента при запуске воркера флота
-check_dirty|on|expert|on/off|Проверять несохранённые изменения фундамента и ai/
-check_investigations|on|expert|on/off|Проверять расследования без исхода и незаархивированные
-check_shape|on|expert|on/off|Проверять, что фундамент соответствует текущему стандарту
+lang||general|lang
+updates|notify|general|enum:notify,off
+update_check_days|1|general|int
+foundation_lag_commits|10|watchman|int
+lessons_lag_commits|25|watchman|int
+unpushed_threshold|5|watchman|int
+check_parallel|on|watchman|on/off
+abandon_after_days|30|watchman|int
+commit_verbs|on|saving|on/off
+build_check||fleet|text
+fleet_ready_timeout|120|fleet|int
+check_dirty|on|expert|on/off
+check_investigations|on|expert|on/off
+check_shape|on|expert|on/off
 TBL
 }
 
 # Open-ended key families: a key per agent or per procedure. Shown in `fraim config`,
 # accepted by `fraim config set`, never listed one by one in config_table.
-# prefix|section|description
+# prefix|section   (the description is the catalog message cfg_fam_<prefix without _>)
 config_families() {
     cat <<'FAM'
-tier_|models|Класс моделей (cheap, capable, strong) → агент:модель:усилие
-role_|models|Отдельная процедура → агент:модель:усилие, поверх класса
-launchcmd_|expert|Команда запуска агента во флоте, %s — модель
-readypattern_|expert|Строка на экране агента, означающая готовность
-modelcmd_|expert|Команда смены модели внутри сессии агента, %s — модель
+tier_|models
+role_|models
+launchcmd_|expert
+readypattern_|expert
+modelcmd_|expert
 FAM
 }
 
@@ -77,12 +78,12 @@ config_project_file() { printf '%s/ai/fraim.conf\n' "$1"; }
 config_default()  { config_table | awk -F'|' -v k="$1" '$1 == k { print $2; exit }'; }
 config_section()  { config_table | awk -F'|' -v k="$1" '$1 == k { print $3; exit }'; }
 config_type()     { config_table | awk -F'|' -v k="$1" '$1 == k { print $4; exit }'; }
-config_describe() { config_table | awk -F'|' -v k="$1" '$1 == k { print $5; exit }'; }
+config_describe() { t "cfg_desc_$1"; }
 config_known()    { config_table | cut -d'|' -f1 | grep -qx "$1"; }
 
 # The family a key belongs to (tier_, role_, launchcmd_…), or nothing.
 config_family() {
-    config_families | while IFS='|' read -r _cf_p _cf_s _cf_d; do
+    config_families | while IFS='|' read -r _cf_p _cf_s; do
         case $1 in "$_cf_p"?*) printf '%s\n' "$_cf_p"; break ;; esac
     done
 }
@@ -154,6 +155,8 @@ config_valid() {
     case $(config_type "$1") in
         on/off) case $2 in on|off) return 0 ;; esac; return 1 ;;
         int)    case $2 in ''|*[!0-9]*) return 1 ;; esac; return 0 ;;
+        lang)   [ -z "$2" ] || [ "$2" = auto ] && return 0
+                i18n_languages | cut -d'|' -f1 | grep -qxF -- "$2" ;;
         enum:*) _cv_set=$(config_type "$1"); _cv_set=${_cv_set#enum:}
                 printf '%s\n' "$_cv_set" | tr ',' '\n' | grep -qxF -- "$2" ;;
         *)      return 0 ;;
@@ -170,9 +173,9 @@ config_source() {
         printf '~/.fraim/config\n'; return
     fi
     if [ -n "$(config_from_legacy "$_k" "$_root")" ]; then
-        printf 'старый ключ\n'; return
+        t cfg_src_legacy; printf '\n'; return
     fi
-    printf 'по умолчанию\n'
+    t cfg_src_default; printf '\n'
 }
 
 # A threshold check is on unless its threshold is 0.
@@ -200,7 +203,7 @@ config_conf_refresh() {
         config_conf_header
         grep -v '^[[:space:]]*#' "$_cr_f" | grep '[^[:space:]]' || :
         printf '#\n'
-        config_table | while IFS='|' read -r _cr_k _cr_v _cr_s _cr_t _cr_d; do
+        config_table | while IFS='|' read -r _cr_k _cr_v _cr_s _cr_t; do
             [ -n "$(config_read_file "$_cr_f" "$_cr_k")" ] && continue
             printf '# %s = %s\n' "$_cr_k" "$_cr_v"
         done
