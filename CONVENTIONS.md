@@ -58,16 +58,12 @@
 > next change does not walk into the same trap. Two things add to the list, both on your
 > approval: any session the moment something bites (`fraim pitfall`), and `/prune` when it
 > finds a lesson in the save points that never got written down. `/prune` also curates.
-- pi --list-models prints its model table to stderr, not stdout — a blind 2>/dev/null around a command source silently empties it; join streams and let pattern-based parsers filter
-- roles.sh sourced standalone has no ade_timeout_bin (it lives in ade.sh); call sites must silence and tolerate its absence
-- POSIX printf with more arguments than conversions reprocesses the surplus as FORMAT (dash) — build the string in a variable, then printf '%s
-- '
-- A stub CLI keyed on "$1 $2" must order overlapping patterns (worktree rm before worktree*) or cleanup verbs answer with the wrong subcommand's JSON
+- POSIX printf with more arguments than conversions reprocesses the surplus as FORMAT (dash) — build the string in a variable, then `printf '%s\n'` it
 - Projects switched into the retired fleet mode carry a SessionStart hook that runs `fraim mode --hook` on every session start: that invocation must stay a silent exit 0 forever, or removing the verb breaks sessions in projects nobody is looking at
-- A pipeline's exit status is its LAST command's: `dispatch_waves … | cut` (and `… | awk`) reported the filter's success and turned a refused plan (cycle, ghost After) into a confident answer — take the output into a variable first, then filter it. Both helpers had the bug; it survived one review
+- A pipeline's exit status is its LAST command's: `helper … | cut` (and `… | awk`) reported the filter's success and turned a refused plan into a confident answer — take the output into a variable first, then filter it. It survived one review
 - `sh -c '…$VAR…'` inside single quotes runs in a child shell that has none of the caller's variables: the test harness must `export` every path it passes that way, or the child silently works on an empty path and the assertion fails somewhere else
 - Worker checkouts are isolated by FILES only — ports, databases, caches and anything outside the repository are shared, and no check sees it (BACKLOG §6)
-- `build_next_wave` answers "nothing left" both when every wave is collected and when the plan cannot be read — the same shape as the pipeline-exit bug above. Anything that must know "is this build finished" asks positively (every subtask present in `collected.tsv`), never by the absence of a next wave
+- Anything that must know "is this build finished" asks positively (every subtask present in `collected.tsv`), never by the absence of something left to do: an unreadable plan gives the same empty answer — the shape of the pipeline-exit bug above
 - `read` with IFS set to a tab collapses empty fields and shifts the rest left (an empty `parent`
   moved every later field of a board line) — a record with possibly empty fields needs a
   non-whitespace separator (`\037`)
@@ -75,3 +71,9 @@
   (`decide` lost its `_entry` to `fnd_move_decision`) — helpers prefix theirs (`_md_`, `_ac_`)
 - A background command in a non-interactive shell reads /dev/null, not the caller's stdin — pass the
   descriptor explicitly (`exec 3<&0; cat <&3 &`), or the read silently gets nothing
+- A build id made from the time to the second collides when two builds start within one second — the
+  second overwrote the first's plan and journal; make it unique, with a suffix that cannot be read
+  as part of a later `<build>-<subtask>` name (a letter glued on, not «-2»)
+- `git branch -d` checks a branch against the CURRENT branch: a branch already merged into another
+  one (the build branch, before it reaches the trunk) is refused and silently stays — delete it with
+  `-D`, and only after checking its commit is an ancestor of where it was merged
