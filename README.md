@@ -89,8 +89,8 @@ payments-api
 ```
 
 Находка помечена точкой, а не восклицанием: она про твою машину, а не про проект, и
-вердикт по проекту не портит. Не хочешь её видеть — `fraim config set check_update off`;
-не хочешь и самой проверки — `update_check off`.
+вердикт по проекту не портит. Не хочешь ни находки, ни самой проверки —
+`fraim config set --machine updates off`.
 
 **Настоящее автообновление** — то есть без тебя — делается одной строкой в том
 планировщике, который у тебя и так есть (cron, launchd, systemd timer, Routines):
@@ -154,8 +154,7 @@ payments-api
 приезжающие по будильнику, объясняют дрейф, который иначе выглядит беспричинным.
 Запланированный `fraim status` находкой не считается: это наблюдение, а не правка.
 
-Обе проверки выключаются как всякие другие: `fraim config set check_worktrees off`,
-`fraim config set check_ade off`.
+Обе проверки выключаются одной настройкой: `fraim config set check_parallel off`.
 
 Рамка, из которой это выросло, — [MODES.md](MODES.md); разбор сред исполнения —
 [installer/ADE_TARGETS.md](installer/ADE_TARGETS.md).

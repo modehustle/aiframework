@@ -561,10 +561,21 @@ mkdir -p "$NOREMOTE"; cd "$NOREMOTE" || exit 1
 "$FRAIM" scaffold >/dev/null 2>&1
 "$FRAIM" status "$NOREMOTE" 2>/dev/null | grep -q 'нет удалённой копии'
 check "project without a remote is named honestly" "$?" "0"
-"$FRAIM" config set check_remote off >/dev/null 2>&1
+"$FRAIM" config set unpushed_threshold 0 >/dev/null 2>&1
 "$FRAIM" status "$NOREMOTE" 2>/dev/null | grep -c 'удалённой копии' | grep -q '^0$'
-check "disabled remote check is silent" "$?" "0"
+check "threshold 0 silences the remote check" "$?" "0"
+"$FRAIM" config unset unpushed_threshold >/dev/null 2>&1
+# A retired switch in an old ai/fraim.conf is still honoured.
+printf 'check_remote = off\n' >> "$NOREMOTE/ai/fraim.conf"
+"$FRAIM" status "$NOREMOTE" 2>/dev/null | grep -c 'удалённой копии' | grep -q '^0$'
+check "retired check_remote = off still silences it" "$?" "0"
+"$FRAIM" config 2>/dev/null | grep unpushed_threshold | grep -q 'старый ключ'
+check "the value's source names the retired key" "$?" "0"
 "$FRAIM" config set check_remote on >/dev/null 2>&1
+check "a retired key is not written — the new one is named" "$?" "2"
+"$FRAIM" config set check_remote on 2>&1 | grep -q 'unpushed_threshold'
+check "the refusal names the replacement" "$?" "0"
+grep -v '^check_remote' "$NOREMOTE/ai/fraim.conf" > "$NOREMOTE/ai/fraim.conf.t" && mv "$NOREMOTE/ai/fraim.conf.t" "$NOREMOTE/ai/fraim.conf"
 
 # The blind spot that mattered once reactive work became the main mode: a foundation
 # file that never entered history at all is invisible to --untracked-files=no.
@@ -588,6 +599,20 @@ check "value source shown" "$("$FRAIM" config 2>/dev/null | grep foundation_lag_
 check "machine setting written" "$(grep -c 'abandon_after_days = 31' "$FRAIM_HOME/config")" "1"
 "$FRAIM" config set nonsense_key 1 >/dev/null 2>&1
 check "unknown key rejected" "$?" "2"
+"$FRAIM" config set foundation_lag_commits many >/dev/null 2>&1
+check "a number key refuses a word" "$?" "2"
+"$FRAIM" config set updates sometimes >/dev/null 2>&1
+check "an enum key refuses a value outside its list" "$?" "2"
+"$FRAIM" config set check_git off >/dev/null 2>&1
+check "an always-on check cannot be switched off" "$?" "2"
+"$FRAIM" config set --machine launchcmd_devin 'devin --model %s' >/dev/null 2>&1
+check "a family key is accepted" "$(grep -c '^launchcmd_devin = ' "$FRAIM_HOME/config")" "1"
+"$FRAIM" config 2>/dev/null | grep -q 'launchcmd_devin'
+check "a set family key is listed" "$?" "0"
+"$FRAIM" config unset --machine launchcmd_devin >/dev/null 2>&1
+check "unset removes the line" "$(grep -c '^launchcmd_devin' "$FRAIM_HOME/config")" "0"
+"$FRAIM" config set role_investigate nonsense >/dev/null 2>&1
+check "a role value is checked for agent:model:effort" "$?" "2"
 
 # A check turned off must actually stop firing.
 for i in 1 2 3; do
@@ -597,10 +622,9 @@ for i in 1 2 3; do
 done
 "$FRAIM" status "$PROJ2" >/dev/null 2>&1
 check "drift above threshold → exit 1" "$?" "1"
-"$FRAIM" config set check_foundation off >/dev/null 2>&1
+"$FRAIM" config set foundation_lag_commits 0 >/dev/null 2>&1
 "$FRAIM" status "$PROJ2" >/dev/null 2>&1
-check "disabled check does not fire" "$?" "0"
-"$FRAIM" config set check_foundation on >/dev/null 2>&1
+check "threshold 0 — the check does not fire" "$?" "0"
 "$FRAIM" config set foundation_lag_commits 10 >/dev/null 2>&1
 
 # ---------------------------------------------------------------- verbs
@@ -1300,6 +1324,12 @@ check "upgrade is idempotent" "$("$FRAIM" status "$OLD" 2>/dev/null | grep -c '�
 check "map without sections — a migration task" "$(grep -c 'ARCHITECTURE.md has no' "$OLD/ai/tasks/fraim-migration.md" 2>/dev/null)" "1"
 check "repeated upgrade does not duplicate the item" "$(grep -c 'ARCHITECTURE.md has no' "$OLD/ai/tasks/fraim-migration.md" 2>/dev/null)" "1"
 check "upgrade created the backlog" "$([ -d "$OLD/ai/backlog" ] && echo yes || echo no)" "yes"
+check "upgrade keeps a setting the project made" "$(grep -c '^check_shape = on$' "$OLD/ai/fraim.conf")" "1"
+check "upgrade lists the current settings as comments" "$(grep -c '^# check_parallel = on$' "$OLD/ai/fraim.conf")" "1"
+printf '# check_blockers = on\n# mode = reactive\n' >> "$OLD/ai/fraim.conf"
+"$FRAIM" upgrade . >/dev/null 2>&1
+check "upgrade drops comments for removed keys" "$(grep -c 'check_blockers\|^# mode' "$OLD/ai/fraim.conf")" "0"
+check "the settings refresh is a save point" "$(git -C "$OLD" status --porcelain -- ai/fraim.conf | grep -c .)" "0"
 mkdir -p "$OLD/ai/tasks/empty-plan"; printf '# Task\n' > "$OLD/ai/tasks/empty-plan/task.md"
 "$FRAIM" upgrade . >/dev/null 2>&1
 check "unsorted task — a second item on the same card" \
@@ -1954,10 +1984,10 @@ check "and does not raise its severity" "$UPRC" "$(printf '%s %s %s current\n' "
 
 # Can be turned off, like any watchman check.
 printf '%s %s %s behind\n' "$(date +%s)" aaaaaaa bbbbbbb > "$FRAIM_HOME/update-check"
-"$FRAIM" config set --machine check_update off >/dev/null 2>&1
+"$FRAIM" config set --machine updates off >/dev/null 2>&1
 "$FRAIM" status "$SANDBOX/proj" --json 2>/dev/null | grep -q '"id": "system-update"'
-check "check_update off — no finding" "$?" "1"
-"$FRAIM" config set --machine check_update on >/dev/null 2>&1
+check "updates off — no finding" "$?" "1"
+"$FRAIM" config unset --machine updates >/dev/null 2>&1
 
 # The cache goes stale by a setting, not by taste.
 printf '%s %s %s current\n' "$(( $(date +%s) - 100 ))" a a > "$FRAIM_HOME/update-check"
@@ -2057,14 +2087,12 @@ check "and the decoy orca is still silent" "$([ -f "$SANDBOX/screen-reader-ran" 
 rm -f "$ADEBIN/orca"
 
 # Both checks can be turned off, like any watchman check.
-"$FRAIM" config set --machine check_worktrees off >/dev/null 2>&1
+"$FRAIM" config set --machine check_parallel off >/dev/null 2>&1
 "$FRAIM" status "$FLEET" --json 2>/dev/null | grep -q '"id": "worktree'
-check "check_worktrees off — no checkout findings" "$?" "1"
-"$FRAIM" config set --machine check_worktrees on >/dev/null 2>&1
-"$FRAIM" config set --machine check_ade off >/dev/null 2>&1
+check "check_parallel off — no checkout findings" "$?" "1"
 env PATH="$ADEBIN:$PATH" STUB_REPO="$FLEET" "$FRAIM" status "$FLEET" --json 2>/dev/null | grep -q 'ade-automation'
-check "check_ade off — no environment findings" "$?" "1"
-"$FRAIM" config set --machine check_ade on >/dev/null 2>&1
+check "check_parallel off — no environment findings" "$?" "1"
+"$FRAIM" config unset --machine check_parallel >/dev/null 2>&1
 
 # The watchman's contract: no network, no model. We ask the local runtime and read git.
 NETADE=$(grep -c 'curl\|wget\|https\?://' "$REPO/installer/lib/ade.sh" || true)
@@ -2221,6 +2249,9 @@ check "readiness timeout defaults to 120000" "$FLRT" "120000"
 printf 'fleet_ready_timeout_ms = 5000\n' >> "$FLPROJ/ai/fraim.conf"
 FLRT=$(FRAIM_HOME="$FLHOME" PATH="$ADEBIN:/usr:/bin" sh -c "$FLLIB"'; fleet_ready_timeout_ms "$FLPROJ"')
 check "and is overridden from the project" "$FLRT" "5000"
+printf 'fleet_ready_timeout = 7\n' >> "$FLPROJ/ai/fraim.conf"
+FLRT=$(FRAIM_HOME="$FLHOME" PATH="$ADEBIN:/usr:/bin" sh -c "$FLLIB"'; fleet_ready_timeout_ms "$FLPROJ"')
+check "the new key in seconds wins over the retired one in ms" "$FLRT" "7000"
 rm -f "$FLPROJ/ai/fraim.conf"
 
 # 9. Capabilities cache and report: no-launch-model no longer means «model lost».

@@ -78,7 +78,7 @@ fraim — эксплуатационный слой для проектов на
   fraim update [--check]    привезти новую версию и разложить (--check — только узнать;
                             --quiet — для автозапуска: молча, и никогда не мешает старту)
   fraim doctor              что и куда установлено, что разошлось
-  fraim config              что действует и откуда (set КЛЮЧ ЗНАЧЕНИЕ)
+  fraim config              что действует и откуда (set / unset КЛЮЧ)
   fraim projects            реестр проектов (add ПУТЬ / rm ПУТЬ)
 
 Это зовут агенты и процедуры — тебе их помнить не нужно
@@ -605,6 +605,10 @@ upgrade_project() {
         verb_commit "$_root" upgrade "foundation brought up to the standard" CONVENTIONS.md
     fi
     tasks_upgrade "$_root" || die "не удалось перевести задачи старого формата"
+    if [ "$(config_conf_refresh "$_root")" = changed ]; then
+        ok "ai/fraim.conf — список настроек обновлён, удалённые ключи убраны"
+        verb_commit "$_root" upgrade "settings list brought up to date" ai/fraim.conf
+    fi
     say ""
     ok "готово — проверить: fraim status"
 }
@@ -881,41 +885,113 @@ cmd_clean() {
 }
 
 # --- config -----------------------------------------------------------------
+config_section_title() {
+    case $1 in
+        general)  printf 'Общие\n' ;;
+        watchman) printf 'Сторож\n' ;;
+        saving)   printf 'Сохранение\n' ;;
+        models)   printf 'Модели\n' ;;
+        fleet)    printf 'Флот\n' ;;
+        expert)   printf 'Для опытных\n' ;;
+    esac
+}
+
+# Keys of one family set in either file, one per line, unique.
+config_family_keys() {
+    _cfk_root=$2
+    { [ -n "$_cfk_root" ] && cat "$(config_project_file "$_cfk_root")" 2>/dev/null
+      cat "$(config_machine_file)" 2>/dev/null; } |
+        sed -n "s/^[[:space:]]*\($1[A-Za-z0-9_-]*\)[[:space:]]*=.*/\1/p" | awk '!seen[$0]++'
+}
+
+config_show_key() {
+    _csk_v=$(config_get "$1" "$2")
+    _csk_s=$(config_source "$1" "$2")
+    printf '  %s %s %s← %s%s\n' "$(wm_pad "$1" 22)" "$(wm_pad "${_csk_v:-—}" 6)" "$C_DIM" "$_csk_s" "$C_OFF"
+    [ -n "${3:-}" ] && printf '    %s%s%s\n' "$C_DIM" "$3" "$C_OFF"
+    return 0
+}
+
+config_show() {
+    _cs_root=$(pwd -P)
+    project_is_managed "$_cs_root" || _cs_root=
+    say "${C_BLD}Действующие настройки${C_OFF}"
+    [ -n "$_cs_root" ] && dim "  проект: $_cs_root" || dim "  вне проекта — показаны машинные и умолчания"
+    for _cs_sec in general watchman saving models fleet expert; do
+        say ""
+        say "${C_BLD}$(config_section_title "$_cs_sec")${C_OFF}"
+        config_table | while IFS='|' read -r _cs_k _cs_def _cs_s _cs_t _cs_desc; do
+            [ "$_cs_s" = "$_cs_sec" ] || continue
+            config_show_key "$_cs_k" "$_cs_root" "$_cs_desc"
+        done
+        config_families | while IFS='|' read -r _cs_p _cs_s _cs_desc; do
+            [ "$_cs_s" = "$_cs_sec" ] || continue
+            _cs_keys=$(config_family_keys "$_cs_p" "$_cs_root")
+            if [ -z "$_cs_keys" ]; then
+                printf '  %s %s—%s\n' "$(wm_pad "${_cs_p}…" 22)" "$C_DIM" "$C_OFF"
+            else
+                for _cs_fk in $_cs_keys; do config_show_key "$_cs_fk" "$_cs_root"; done
+            fi
+            printf '    %s%s%s\n' "$C_DIM" "$_cs_desc" "$C_OFF"
+        done
+        [ "$_cs_sec" = models ] && dim "    выбрать из списка: fraim roles set"
+    done
+    say ""
+    dim "  fraim config set КЛЮЧ ЗНАЧЕНИЕ            — в проект (ai/fraim.conf)"
+    dim "  fraim config set --machine КЛЮЧ ЗНАЧЕНИЕ  — на машину (~/.fraim/config)"
+    dim "  fraim config unset [--machine] КЛЮЧ       — вернуть значение уровнем выше"
+}
+
+# Check a key and value before writing. Dies with the reason.
+config_check_set() {
+    _ccs_k=$1; _ccs_v=$2
+    if config_known "$_ccs_k"; then
+        config_valid "$_ccs_k" "$_ccs_v" ||
+            die "«$_ccs_v» не подходит для $_ccs_k: нужно $(config_type "$_ccs_k" | sed 's/^enum://; s/^int$/число/; s/,/ или /g')"
+        return 0
+    fi
+    case $(config_family "$_ccs_k") in
+        tier_|role_)
+            roles_parse "$_ccs_v" >/dev/null || die "«$_ccs_v» не в форме агент:модель:усилие"
+            return 0 ;;
+        ?*) return 0 ;;
+    esac
+    if _ccs_new=$(config_replacement "$_ccs_k"); then
+        [ -n "$_ccs_new" ] || die "$_ccs_k больше не настраивается: эта проверка включена всегда"
+        die "$_ccs_k заменён ключом $_ccs_new (fraim config — что он значит)"
+    fi
+    die "неизвестный ключ: $_ccs_k (список — fraim config)"
+}
+
 cmd_config() {
     case ${1:-show} in
-        show|"")
-            _root=$(pwd -P)
-            project_is_managed "$_root" || _root=
-            say "${C_BLD}Действующие настройки${C_OFF}"
-            [ -n "$_root" ] && dim "  проект: $_root" || dim "  вне проекта — показаны машинные и умолчания"
-            say ""
-            config_table | while IFS='|' read -r _k _def _desc; do
-                [ -n "$_k" ] || continue
-                _v=$(config_get "$_k" "$_root")
-                _s=$(config_source "$_k" "$_root")
-                printf '  %s %s %s← %s%s\n' "$(wm_pad "$_k" 22)" "$(wm_pad "$_v" 6)" "$C_DIM" "$_s" "$C_OFF"
-                printf '    %s%s%s\n' "$C_DIM" "$_desc" "$C_OFF"
-            done
-            say ""
-            dim "  fraim config set КЛЮЧ ЗНАЧЕНИЕ          — в проект (ai/fraim.conf)"
-            dim "  fraim config set --machine КЛЮЧ ЗНАЧЕНИЕ — на машину (~/.fraim/config)"
-            ;;
-        set)
-            shift
+        show|"") config_show ;;
+        set|unset)
+            _cc_op=$1; shift
             _scope=project
             if [ "${1:-}" = --machine ]; then _scope=machine; shift; fi
-            [ $# -ge 2 ] || die "нужно: fraim config set КЛЮЧ ЗНАЧЕНИЕ"
-            _k=$1; _v=$2
-            config_known "$_k" || die "неизвестный ключ: $_k (список — fraim config)"
+            if [ "$_cc_op" = set ]; then
+                [ $# -ge 2 ] || die "нужно: fraim config set КЛЮЧ ЗНАЧЕНИЕ"
+                _k=$1; _v=$2
+                config_check_set "$_k" "$_v"
+            else
+                [ $# -ge 1 ] || die "нужно: fraim config unset КЛЮЧ"
+                _k=$1
+            fi
             if [ "$_scope" = machine ]; then
-                config_set_file "$(config_machine_file)" "$_k" "$_v" || die "не удалось записать"
-                ok "$_k = $_v → ~/.fraim/config"
+                _cc_f=$(config_machine_file); _cc_where='~/.fraim/config'
             else
                 _root=$(pwd -P)
                 project_is_managed "$_root" ||
                     die "здесь нет ai/ — это не проект под системой. Для машинной настройки: --machine"
-                config_set_file "$(config_project_file "$_root")" "$_k" "$_v" || die "не удалось записать"
-                ok "$_k = $_v → ai/fraim.conf"
+                _cc_f=$(config_project_file "$_root"); _cc_where=ai/fraim.conf
+            fi
+            if [ "$_cc_op" = set ]; then
+                config_set_file "$_cc_f" "$_k" "$_v" || die "не удалось записать"
+                ok "$_k = $_v → $_cc_where"
+            else
+                config_unset_file "$_cc_f" "$_k" || die "не удалось записать"
+                ok "$_k убран из $_cc_where"
             fi
             ;;
         *) die "неизвестная подкоманда: $1" ;;

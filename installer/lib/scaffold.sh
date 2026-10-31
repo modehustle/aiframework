@@ -116,9 +116,9 @@ scaffold_run() {
     # A project-level settings file, so thresholds travel with the repository.
     if [ ! -f "$_root/ai/fraim.conf" ]; then
         {
-            printf '# fraim — settings of this project. They travel in git with the repository.\n'
-            printf '# What is in effect and where it came from, with descriptions: fraim config\n#\n'
-            config_table | while IFS='|' read -r _k _v _d; do
+            config_conf_header
+            printf '#\n'
+            config_table | while IFS='|' read -r _k _v _s _t _d; do
                 printf '# %s = %s\n' "$_k" "$_v"
             done
         } > "$_root/ai/fraim.conf"

@@ -111,7 +111,7 @@ update_cache_stale() {
 
 # Check, if it is time and if checking is enabled at all. Quietly: background, not a command.
 update_probe_if_due() {
-    config_is_on update_check || return 0
+    [ "$(config_get updates)" = off ] && return 0
     update_cache_stale || return 0
     update_probe >/dev/null 2>&1 || :
     return 0

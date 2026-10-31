@@ -520,16 +520,16 @@ wm_run() {
     wm_scan_foundation "$_root"
     config_is_on check_shape        "$_root" && wm_check_shape "$_root"
     config_is_on check_investigations "$_root" && wm_check_investigations "$_root"
-    config_is_on check_git            "$_root" && wm_check_git "$_root"
-    config_is_on check_remote         "$_root" && wm_check_remote "$_root"
+    wm_check_git "$_root"
+    config_threshold_on unpushed_threshold "$_root" && wm_check_remote "$_root"
     config_is_on check_dirty          "$_root" && wm_check_dirty "$_root"
-    config_is_on check_worktrees      "$_root" && wm_check_worktrees "$_root"
-    config_is_on check_ade            "$_root" && wm_check_ade "$_root"
+    config_is_on check_parallel       "$_root" && wm_check_worktrees "$_root"
+    config_is_on check_parallel       "$_root" && wm_check_ade "$_root"
     wm_check_queue
-    config_is_on check_foundation   "$_root" && wm_check_foundation "$_root"
-    config_is_on check_lessons      "$_root" && wm_check_lessons "$_root"
-    config_is_on check_language     "$_root" && wm_check_language "$_root"
-    config_is_on check_update       "$_root" && wm_check_update
+    config_threshold_on foundation_lag_commits "$_root" && wm_check_foundation "$_root"
+    config_threshold_on lessons_lag_commits "$_root" && wm_check_lessons "$_root"
+    wm_check_language "$_root"
+    [ "$(config_get updates "$_root")" = off ] || wm_check_update
     return 0
 }
 

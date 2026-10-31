@@ -3,6 +3,38 @@
 > Newest on top. One entry per decision. Never rewrite history — supersede with a new
 > entry, or relocate stale entries to `ai/archive/decisions_log.md` via `/prune`.
 
+## 2026-10-31 — Settings: one key per question, sections, retired names still read
+
+Context: the owner, preparing the first release, found the settings confusing. `fraim config` was a
+flat list of twenty keys: eleven `check_*` switches in the watchman's vocabulary, three keys about
+updates (`check_update`, `update_check`, `update_check_days`) where two differed only by word order,
+thresholds that came with their own on/off switch, a timeout in milliseconds, role keys refused by
+`config set` and shown only by `fraim roles`, and expert keys (`launchcmd_*`, `readypattern_*`,
+`modelcmd_*`) listed nowhere. Old projects kept comments for keys removed months ago in
+`ai/fraim.conf`.
+Decision: (1) `config_table` carries a section (general, watchman, saving, fleet, expert) and a type
+(on/off, int, enum, text); `fraim config` shows the settings by section, and `config set` validates
+the value against the type. (2) One key per question: `updates = notify | off` replaces
+`check_update` and `update_check`; a threshold of 0 means «do not check» and replaces
+`check_foundation`, `check_lessons`, `check_remote`; `check_parallel` replaces `check_worktrees` and
+`check_ade`; `fleet_ready_timeout` is in seconds. (3) `check_git` and `check_language` are always
+on; `check_dirty`, `check_investigations`, `check_shape` move to the expert section. (4) Open
+families (`tier_`, `role_`, `launchcmd_`, `readypattern_`, `modelcmd_`) are listed in `fraim config`
+and accepted by `config set`, role values checked as agent:model:effort. (5) `fraim config unset
+[--machine] KEY` removes a line. (6) Retired names are still read (`config_legacy`): an old
+`check_foundation = off` keeps the check off, and `fraim config` names «старый ключ» as the source;
+`config set` on a retired name refuses and names the replacement. (7) `fraim upgrade` rewrites the
+commented list in `ai/fraim.conf` from the table, keeps the lines the project set, drops comments
+for removed keys, and makes it a save point.
+Alternatives: rewriting retired keys in place on upgrade rejected — a machine file is not in any
+project, and translating `check_ade = off` into `check_parallel = off` would also switch off the
+checkout check the human never touched; keeping the switch next to each threshold rejected — two
+keys for one question is the confusion being removed; dropping `check_shape` as a setting rejected —
+the test fixtures rely on switching it off machine-wide.
+Consequences: the settings screen of the new interface reads sections and types from `config_table`,
+not from a list of its own. Descriptions are still Russian strings in the table until the message
+catalog lands.
+
 ## 2026-10-28 — fraim upgrade is a machine command over the registry
 
 Context: the owner noticed the asymmetry: `fraim update` brings a new release to the machine once,

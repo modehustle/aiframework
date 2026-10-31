@@ -217,10 +217,17 @@ fleet_launch_command() {
 # How long a fresh agent TUI may take to reach tui-idle. Devin cold starts are
 # the slow case; the default is generous because a timeout here fails the
 # worker, and a too-small timeout would manufacture failures.
+# The setting is in seconds (fleet_ready_timeout); Orca takes milliseconds. A retired
+# fleet_ready_timeout_ms is still honoured exactly as written, not rounded through seconds.
 fleet_ready_timeout_ms() {
-    _frt=$(config_get fleet_ready_timeout_ms "${1:-}" 2>/dev/null || :)
-    [ -n "$_frt" ] || _frt=120000
-    printf '%s\n' "$_frt"
+    _frt=$(config_explicit fleet_ready_timeout "${1:-}" 2>/dev/null || :)
+    if [ -z "$_frt" ]; then
+        _frt=$(config_explicit fleet_ready_timeout_ms "${1:-}" 2>/dev/null || :)
+        case $_frt in ''|*[!0-9]*) _frt=120000 ;; esac
+        printf '%s\n' "$_frt"; return 0
+    fi
+    case $_frt in ''|*[!0-9]*) _frt=120 ;; esac
+    printf '%s\n' $(( _frt * 1000 ))
 }
 
 # One Orca call, ok-gated, with the failure printed for the human. The shared
