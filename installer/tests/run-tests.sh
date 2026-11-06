@@ -941,6 +941,29 @@ check "investigation provenance set" \
     "$(grep -c '^- Based on: HEAD ' "$PROJ2/ai/investigations/selector-flicker/findings.md")" "1"
 check "slug substituted" \
     "$(grep -c 'INVESTIGATION — selector-flicker' "$PROJ2/ai/investigations/selector-flicker/findings.md")" "1"
+# BSD awk and older mawk die on a newline inside a -v value ("newline in string"); gawk
+# forgives it, so the bug hid on Linux. A strict awk shim makes it visible everywhere.
+STRICT_AWK="$SANDBOX/strict-awk"; mkdir -p "$STRICT_AWK"
+REAL_AWK=$(command -v awk); export REAL_AWK
+cat > "$STRICT_AWK/awk" <<'SHIM'
+#!/bin/sh
+nl='
+'
+prev=
+for a in "$@"; do
+    if [ "$prev" = -v ]; then
+        case $a in *"$nl"*) echo "awk: newline in string" >&2; exit 2 ;; esac
+    fi
+    prev=$a
+done
+exec "$REAL_AWK" "$@"
+SHIM
+chmod +x "$STRICT_AWK/awk"
+PATH="$STRICT_AWK:$PATH" "$FRAIM" investigate-new strict-awk-one >/dev/null 2>&1
+check "investigate-new works under an awk that rejects newlines in -v" "$?" "0"
+check "strict awk: provenance written whole" \
+    "$(grep -c '^- \(Planned\|Based on\|System\): ' "$PROJ2/ai/investigations/strict-awk-one/findings.md" 2>/dev/null)" "3"
+rm -rf "$PROJ2/ai/investigations/strict-awk-one"
 "$FRAIM" investigate-seal selector-flicker >/dev/null 2>&1
 check "gate: does not archive an investigation stub" "$?" "2"
 

@@ -104,9 +104,25 @@ verb_investigate_new() {
 
     mkdir -p "$_dir" || die "$(t verbs_err_mkdir path="$_dir")"
     _prov=$(verb_provenance "$_root")
-    awk -v slug="$_slug" -v prov="$_prov" '
-        { gsub(/\{\{SLUG\}\}/, slug); if ($0 == "{{PROVENANCE}}") { print prov; next } print }
-    ' "$_tpl" > "$_dir/findings.md" || die "$(t verbs_err_write file=findings.md)"
+    # Values travel through ENVIRON, not -v: the stamp is multi-line, and a newline inside
+    # a -v value is a fatal "newline in string" in BSD awk and older mawk (gawk forgives it).
+    # The slug is spliced literally (index/substr), so no awk replacement syntax applies.
+    FRAIM_SLUG=$_slug FRAIM_PROV=$_prov awk '
+        BEGIN { slug = ENVIRON["FRAIM_SLUG"]; prov = ENVIRON["FRAIM_PROV"]; tag = "{{SLUG}}" }
+        $0 == "{{PROVENANCE}}" { print prov; next }
+        {
+            out = ""
+            while ((i = index($0, tag)) > 0) {
+                out = out substr($0, 1, i - 1) slug
+                $0 = substr($0, i + length(tag))
+            }
+            print out $0
+        }
+    ' "$_tpl" > "$_dir/findings.md" || {
+        # A half-made folder would make the retry die with "already exists".
+        rm -rf "$_dir"
+        die "$(t verbs_err_write file=findings.md)"
+    }
 
     ok "ai/investigations/$_slug/findings.md"
     dim "  $(t verbs_inv_manifests)"
