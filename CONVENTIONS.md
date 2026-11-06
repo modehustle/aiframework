@@ -77,3 +77,5 @@
 - `git branch -d` checks a branch against the CURRENT branch: a branch already merged into another
   one (the build branch, before it reaches the trunk) is refused and silently stays — delete it with
   `-D`, and only after checking its commit is an ancestor of where it was merged
+- Multi-line text passed to `awk -v` is fatal in BSD awk and older mawk ("newline in string") while
+  gawk forgives it — the bug stays invisible on Linux; pass values through ENVIRON
